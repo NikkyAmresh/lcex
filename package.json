@@ -6,7 +6,7 @@
   "publisher": "lcex",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other"],
-  "activationEvents": ["onStartupFinished", "onCommand:leetcode-practice.openProblem", "onCommand:leetcode-practice.openQotd", "onCommand:leetcode-practice.runExamples", "onCommand:leetcode-practice.runInTerminal", "onCommand:leetcode-practice.signIn", "onCommand:leetcode-practice.signOut", "onCommand:leetcode-practice.refreshProblems", "onCommand:leetcode-practice.markAsSolved", "onCommand:leetcode-practice.markAsAttempting", "onCommand:leetcode-practice.clearProblemStatus", "onView:leetcode-practice.problemsView", "onView:leetcode-practice.topInterview150View", "onView:leetcode-practice.qotdView"],
+  "activationEvents": ["workspaceContains:**/.leetcode", "onStartupFinished", "onCommand:leetcode-practice.openProblem", "onCommand:leetcode-practice.openQotd", "onCommand:leetcode-practice.runExamples", "onCommand:leetcode-practice.runInTerminal", "onCommand:leetcode-practice.signIn", "onCommand:leetcode-practice.signOut", "onCommand:leetcode-practice.refreshProblems", "onCommand:leetcode-practice.markAsSolved", "onCommand:leetcode-practice.markAsAttempting", "onCommand:leetcode-practice.clearProblemStatus", "onView:leetcode-practice.problemsView", "onView:leetcode-practice.topInterview150View", "onView:leetcode-practice.qotdView"],
   "main": "./out/extension.js",
   "repository": {
     "type": "git",
@@ -76,6 +76,10 @@
       {
         "command": "leetcode-practice.viewStats",
         "title": "LeetCode: View Stats"
+      },
+      {
+        "command": "leetcode-practice.applyTheme",
+        "title": "LeetCode: Apply Theme"
       }
     ],
     "menus": {
@@ -147,6 +151,17 @@
       {
         "view": "leetcode-practice.topInterview150View",
         "contents": "Must-do list for interview prep (150 problems).\n\n[Open study plan in browser](https://leetcode.com/studyplan/top-interview-150/)"
+      }
+    ],
+    "languages": [
+      {
+        "id": "leetcode-config",
+        "aliases": ["LeetCode Config"],
+        "filenames": [".leetcode"],
+        "icon": {
+          "light": "./icons/leetcode.svg",
+          "dark": "./icons/leetcode.svg"
+        }
       }
     ],
     "configuration": {

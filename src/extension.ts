@@ -27,11 +27,72 @@ function getProvider(): IProblemProvider {
   return new LeetCodeProvider();
 }
 
+const LEETCODE_MARKER = ".leetcode";
+const LEETCODE_THEME = "LeetCode Dark";
+
+function hasLeetcodeMarker(workspaceFolder: vscode.WorkspaceFolder): boolean {
+  const markerPath = path.join(workspaceFolder.uri.fsPath, LEETCODE_MARKER);
+  return fs.existsSync(markerPath);
+}
+
+function shouldAutoApplyTheme(): boolean {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders?.length) {
+    Logger.log("Theme auto-apply: no workspace folders, skipping");
+    return false;
+  }
+  const hasMarker = folders.some(hasLeetcodeMarker);
+  folders.forEach((f) => {
+    const markerPath = path.join(f.uri.fsPath, LEETCODE_MARKER);
+    Logger.log(`Theme auto-apply: folder=${f.uri.fsPath} .leetcode exists=${fs.existsSync(markerPath)}`);
+  });
+  Logger.log(`Theme auto-apply: shouldApply=${hasMarker}`);
+  return hasMarker;
+}
+
+async function applyLeetcodeThemeIfNeeded(): Promise<void> {
+  Logger.log("Theme auto-apply: checking...");
+  if (!shouldAutoApplyTheme()) {
+    Logger.log("Theme auto-apply: skipped (no .leetcode in workspace root)");
+    return;
+  }
+  const config = vscode.workspace.getConfiguration();
+  const currentTheme = config.get<string>("workbench.colorTheme");
+  const preferredDark = config.get<string>("workbench.preferredDarkColorTheme");
+  Logger.log(`Theme auto-apply: colorTheme="${currentTheme}" preferredDark="${preferredDark}" target="${LEETCODE_THEME}"`);
+  const needsUpdate =
+    currentTheme !== LEETCODE_THEME || preferredDark !== LEETCODE_THEME;
+  if (!needsUpdate) {
+    Logger.log("Theme auto-apply: already set (colorTheme + preferredDark), skipping");
+    return;
+  }
+  try {
+    Logger.log("Theme auto-apply: updating workbench.colorTheme and preferredDarkColorTheme...");
+    await config.update("workbench.colorTheme", LEETCODE_THEME, vscode.ConfigurationTarget.Workspace);
+    await config.update("workbench.preferredDarkColorTheme", LEETCODE_THEME, vscode.ConfigurationTarget.Workspace);
+    Logger.log("Theme auto-apply: applied LeetCode Dark (workspace has .leetcode)");
+  } catch (e) {
+    Logger.logError("Theme auto-apply: failed to update theme settings", e);
+  }
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("LeetCode Practice");
   context.subscriptions.push(outputChannel);
   Logger.init(outputChannel);
+  Logger.log("Extension activated");
 
+  // Defer theme apply so the contributed theme is registered before we set it
+  setImmediate(() => {
+    Logger.log("Theme auto-apply: scheduled (setImmediate)");
+    void applyLeetcodeThemeIfNeeded();
+  });
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      Logger.log("Theme auto-apply: workspace folders changed, rechecking...");
+      void applyLeetcodeThemeIfNeeded();
+    })
+  );
   // Register sign-in/sign-out first so they always exist
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.signIn", () => {
@@ -45,6 +106,16 @@ export function activate(context: vscode.ExtensionContext): void {
       Authentication.signOut(context).catch((e) => {
         vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e));
       });
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.applyTheme", async () => {
+      await applyLeetcodeThemeIfNeeded();
+      if (shouldAutoApplyTheme()) {
+        vscode.window.showInformationMessage("LeetCode Dark theme applied (workspace has .leetcode)");
+      } else {
+        vscode.window.showWarningMessage("No .leetcode file in workspace root. Add one to auto-apply the theme.");
+      }
     })
   );
 

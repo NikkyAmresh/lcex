@@ -1,0 +1,12 @@
+{
+  "$schema": "vscode://schemas/icon-theme",
+  "extends": "vs-seti",
+  "iconDefinitions": {
+    "leetcode-file": {
+      "iconPath": "./leetcode.svg"
+    }
+  },
+  "fileNames": {
+    ".leetcode": "leetcode-file"
+  }
+}
