@@ -1,0 +1,39 @@
+<% let heading, subheading %>
+<% if (status) { %>
+  <% heading = "Congratulations! :)"; subheading = "You have passed the sample testcases. Click the submit button to run your code against all the code test cases."; %>
+<% } else { %>
+  <% heading = "Wrong answer :("; subheading = "Check the compiler error, fix the error and try again"; %>
+<% } %>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Testcases</title>
+    <style>
+      body { margin: 0; padding: 1em; font-family: var(--vscode-font-family); }
+      p { font-size: 15px; color: var(--vscode-editor-foreground); }
+      h2 { font-size: 30px; line-height: 1; margin: 20px 0; }
+      .success { color: #26a641; }
+      .fail { color: #d11534; }
+      section { margin-top: 40px; border: 1px solid grey; border-radius: 5px; padding: 20px 10px; }
+      section p { font-size: 16px; font-weight: bold; }
+      h4 { font-size: 20px; margin: 0 0 8px 0; display: inline-block; }
+      code { display: block; padding: 10px 13px; border-radius: 5px; background-color: rgb(31, 31, 31); font-size: 14px; line-height: 1.6; color: var(--vscode-editor-foreground); white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h2 class="<%= status ? 'success' : 'fail' %>"><%= heading %></h2>
+    <p><%= subheading %></p>
+    <% testcaseResults.forEach(function(tc) { %>
+    <section>
+      <h4 class="<%= tc.status ? 'success' : 'fail' %>">Sample Test Case <%= tc.id + 1 %></h4>
+      <% if (tc.stdin && tc.stdin.length) { %><p>Input (stdin)</p><code><%- tc.stdin.replace(/\n/g, "<br/>") %></code><% } %>
+      <p>Your Output (stdout)</p>
+      <code><%- (tc.stdout || "—").replace(/\n/g, "<br/>") %></code>
+      <p>Expected Output</p>
+      <code><%- (tc.expectedOutput || "—").replace(/\n/g, "<br/>") %></code>
+    </section>
+    <% }); %>
+  </body>
+</html>

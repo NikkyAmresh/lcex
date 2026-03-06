@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Testcases</title>
+    <style>
+      body { margin: 0; padding: 1em; font-family: var(--vscode-font-family); }
+      p { font-size: 15px; }
+      h2 { font-size: 30px; line-height: 1; margin: 20px 0; }
+      .fail { color: #d11534; }
+      section { margin-top: 40px; border: 1px solid grey; border-radius: 5px; padding: 20px 10px; }
+      section p { font-size: 16px; font-weight: bold; }
+      code { display: block; padding: 10px 13px; border-radius: 5px; background-color: rgb(31, 31, 31); font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h2 class="fail">Compilation Error :(</h2>
+    <p>Check the compiler output, fix the error and try again.</p>
+    <section>
+      <p>Compile Message</p>
+      <code><%- compileMessage.replace(/\n/g, "<br/>") %></code>
+      <p>Exit Status</p>
+      <code>1</code>
+    </section>
+  </body>
+</html>

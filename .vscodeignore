@@ -1,0 +1,8 @@
+src/**
+tsconfig.json
+.gitignore
+*.md
+.vscode/**
+test/**
+test-output/**
+hackerrank-vscode-ref/**

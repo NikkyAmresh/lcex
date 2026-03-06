@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= id %>. <%= title %></title>
+    <style>
+      :root {
+        --bg: #1e1e1e;
+        --bg-secondary: #252526;
+        --text: #e5e5e5;
+        --text-muted: #9d9d9d;
+        --accent: #FFA116;
+        --easy: #26a641;
+        --medium: #d39b00;
+        --hard: #dc3545;
+        --code-bg: #2d2d2d;
+        --border: #3c3c3c;
+      }
+      body {
+        margin: 0;
+        padding: 0 24px 24px;
+        font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+        font-size: 14px;
+        line-height: 1.6;
+        background: var(--bg);
+        color: var(--text);
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+      .title {
+        font-size: 28px;
+        font-weight: 600;
+        margin: 0;
+        color: var(--text);
+      }
+      .solved-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--easy);
+        font-size: 14px;
+        font-weight: 500;
+        flex-shrink: 0;
+      }
+      .solved-badge svg {
+        width: 18px;
+        height: 18px;
+      }
+      .timer-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .timer {
+        font-variant-numeric: tabular-nums;
+        font-size: 18px;
+        color: var(--text-muted);
+        min-width: 4ch;
+      }
+      .timer-btn {
+        font-size: 12px;
+        padding: 4px 8px;
+        border: 1px solid var(--border);
+        background: var(--bg-secondary);
+        color: var(--text-muted);
+        border-radius: 4px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .timer-btn:hover { opacity: 0.9; }
+      .tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 20px;
+      }
+      .tag {
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 12px;
+        font-weight: 500;
+        border: none;
+        cursor: default;
+      }
+      .tag.difficulty-easy { background: var(--easy); color: #fff; }
+      .tag.difficulty-medium { background: var(--medium); color: #1a1a1a; }
+      .tag.difficulty-hard { background: var(--hard); color: #fff; }
+      .tag.difficulty-unknown { background: var(--code-bg); color: var(--text-muted); }
+      .tag.extra { background: var(--code-bg); color: var(--text-muted); }
+      .buttons {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+      }
+      .btn {
+        font-size: 14px;
+        padding: 8px 20px;
+        border: none;
+        cursor: pointer;
+        font-weight: 500;
+        border-radius: 6px;
+        font-family: inherit;
+      }
+      .btn.solve { background: var(--accent); color: #000; }
+      .btn.run { background: var(--bg-secondary); color: var(--text); border: 1px solid var(--border); }
+      .btn.submit { background: var(--accent); color: #000; }
+      .btn:hover { opacity: 0.9; }
+      .content {
+        line-height: 1.7;
+        color: var(--text);
+      }
+      .content p, .content li { margin: 8px 0; }
+      .content code {
+        background: var(--code-bg);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 13px;
+        font-family: var(--vscode-editor-font-family, monospace);
+      }
+      .content pre {
+        background: var(--code-bg);
+        padding: 16px;
+        border-radius: 8px;
+        overflow-x: auto;
+        font-size: 13px;
+        line-height: 1.5;
+        border: 1px solid var(--border);
+      }
+      .content pre code { padding: 0; background: none; }
+      .content strong { color: var(--text); }
+      .content h3, .content h4 { margin: 20px 0 10px; color: var(--text); }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1 class="title"><%= id %>. <%= title %></h1>
+      <div class="timer-row">
+        <span class="timer" id="timer">00:00</span>
+        <button type="button" class="timer-btn" id="timerPause" title="Pause">Pause</button>
+        <button type="button" class="timer-btn" id="timerRestart" title="Restart">Restart</button>
+      </div>
+      <% if (isSolved) { %>
+        <span class="solved-badge">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+          Solved
+        </span>
+      <% } %>
+    </div>
+    <div class="tags">
+      <span class="tag difficulty-<%= difficulty.toLowerCase() %>"><%= difficulty %></span>
+      <span class="tag extra">Topics</span>
+      <span class="tag extra">Companies</span>
+      <span class="tag extra">Hint</span>
+    </div>
+    <div class="buttons">
+      <button class="btn solve" onclick="solve()"><%= typeof hasSolution !== 'undefined' && hasSolution ? 'Open Solution' : 'Solve' %></button>
+      <button class="btn run" onclick="run()">Run</button>
+      <% if (isLoggedIn) { %><button class="btn run" onclick="runOnLeetCode()">Run on LeetCode</button><button class="btn submit" onclick="submit()">Submit</button><% } %>
+    </div>
+    <% if (isLoggedIn) { %>
+    <div class="custom-input-section" style="margin-bottom: 16px;">
+      <label class="stat-label" for="customInput" style="display:block; margin-bottom: 6px;">Custom test input (for Run on LeetCode)</label>
+      <textarea id="customInput" rows="3" style="width: 100%; box-sizing: border-box; background: var(--code-bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-family: var(--vscode-editor-font-family, monospace); font-size: 13px;"><%= typeof sampleTestCase !== 'undefined' ? (sampleTestCase || '') : '' %></textarea>
+    </div>
+    <% } %>
+    <div class="content"><%- content %></div>
+    <details style="margin-top: 24px;">
+      <summary style="cursor: pointer; color: var(--text-muted);">Notes</summary>
+      <textarea id="notes" rows="4" style="width: 100%; box-sizing: border-box; margin-top: 8px; background: var(--code-bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-family: inherit; font-size: 13px;"><%= typeof note !== 'undefined' ? (note || '') : '' %></textarea>
+    </details>
+    <script>
+      const vscode = acquireVsCodeApi();
+      const titleSlug = "<%= titleSlug %>";
+      vscode.setState({ titleSlug });
+      const state = vscode.getState() || {};
+      let elapsed = typeof state.timerElapsed === "number" ? state.timerElapsed : 0;
+      let timerPaused = state.timerPaused === true;
+      let timerId = null;
+      const timerEl = document.getElementById("timer");
+      const pauseBtn = document.getElementById("timerPause");
+      const restartBtn = document.getElementById("timerRestart");
+      function fmt(sec) {
+        const m = Math.floor(sec / 60);
+        const s = sec % 60;
+        return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+      }
+      function saveTimerState() {
+        vscode.setState({ titleSlug, timerElapsed: elapsed, timerPaused: timerPaused });
+      }
+      function tick() {
+        elapsed++;
+        timerEl.textContent = fmt(elapsed);
+        saveTimerState();
+      }
+      function startTimer() {
+        if (timerId) return;
+        timerId = setInterval(tick, 1000);
+        pauseBtn.textContent = "Pause";
+        timerPaused = false;
+        saveTimerState();
+      }
+      function pauseTimer() {
+        if (timerId) clearInterval(timerId);
+        timerId = null;
+        pauseBtn.textContent = "Resume";
+        timerPaused = true;
+        saveTimerState();
+      }
+      function restartTimer() {
+        if (timerId) clearInterval(timerId);
+        timerId = null;
+        elapsed = 0;
+        timerEl.textContent = fmt(0);
+        pauseBtn.textContent = "Pause";
+        timerPaused = false;
+        saveTimerState();
+        timerId = setInterval(tick, 1000);
+      }
+      timerEl.textContent = fmt(elapsed);
+      if (timerPaused) {
+        pauseBtn.textContent = "Resume";
+      } else {
+        timerId = setInterval(tick, 1000);
+      }
+      pauseBtn.addEventListener("click", function () {
+        if (timerPaused) startTimer();
+        else pauseTimer();
+      });
+      restartBtn.addEventListener("click", restartTimer);
+      function solve() { vscode.postMessage({ event: "solve", titleSlug }); }
+      function run() { vscode.postMessage({ event: "run", titleSlug }); }
+      function runOnLeetCode() {
+        var el = document.getElementById("customInput");
+        vscode.postMessage({ event: "runOnLeetCode", titleSlug, customInput: el ? el.value : "" });
+      }
+      function submit() { vscode.postMessage({ event: "submit", titleSlug }); }
+      (function () {
+        var notesEl = document.getElementById("notes");
+        var debounce;
+        notesEl.addEventListener("input", function () {
+          clearTimeout(debounce);
+          debounce = setTimeout(function () {
+            vscode.postMessage({ event: "saveNote", titleSlug: titleSlug, note: notesEl.value });
+          }, 400);
+        });
+      })();
+    </script>
+  </body>
+</html>

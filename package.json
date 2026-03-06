@@ -1,0 +1,206 @@
+{
+  "name": "leetcode-practice",
+  "displayName": "LeetCode Practice",
+  "description": "Generate TS templates with example test cases and run them for LeetCode practice",
+  "version": "0.1.0",
+  "publisher": "lcex",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished", "onLanguage:typescript", "onCommand:leetcode-practice.openProblem", "onCommand:leetcode-practice.openQotd", "onCommand:leetcode-practice.runExamples", "onCommand:leetcode-practice.runInTerminal", "onCommand:leetcode-practice.signIn", "onCommand:leetcode-practice.signOut", "onCommand:leetcode-practice.refreshProblems", "onCommand:leetcode-practice.markAsSolved", "onCommand:leetcode-practice.markAsAttempting", "onCommand:leetcode-practice.clearProblemStatus", "onView:leetcode-practice.problemsView", "onView:leetcode-practice.topInterview150View", "onView:leetcode-practice.qotdView"],
+  "main": "./out/extension.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lcex/leetcode-practice"
+  },
+  "license": "MIT",
+  "keywords": [
+    "leetcode",
+    "practice",
+    "vscode",
+    "extension"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "leetcode-practice.openProblem",
+        "title": "LeetCode: Open/Create Problem"
+      },
+      {
+        "command": "leetcode-practice.openQotd",
+        "title": "LeetCode: Open Question of the Day"
+      },
+      {
+        "command": "leetcode-practice.runExamples",
+        "title": "LeetCode: Run Examples"
+      },
+      {
+        "command": "leetcode-practice.runInTerminal",
+        "title": "LeetCode: Run in Terminal (ts-node)"
+      },
+      {
+        "command": "leetcode-practice.signIn",
+        "title": "LeetCode: Sign In"
+      },
+      {
+        "command": "leetcode-practice.signOut",
+        "title": "LeetCode: Sign Out"
+      },
+      {
+        "command": "leetcode-practice.refreshProblems",
+        "title": "LeetCode: Refresh Problems"
+      },
+      {
+        "command": "leetcode-practice.markAsSolved",
+        "title": "Mark as Solved"
+      },
+      {
+        "command": "leetcode-practice.markAsAttempting",
+        "title": "Mark as Attempting"
+      },
+      {
+        "command": "leetcode-practice.clearProblemStatus",
+        "title": "Clear Status"
+      },
+      {
+        "command": "leetcode-practice.filterByDifficulty",
+        "title": "LeetCode: Filter by Difficulty"
+      },
+      {
+        "command": "leetcode-practice.searchProblems",
+        "title": "LeetCode: Search Problems"
+      },
+      {
+        "command": "leetcode-practice.openRandomProblem",
+        "title": "LeetCode: Open Random Problem"
+      },
+      {
+        "command": "leetcode-practice.viewStats",
+        "title": "LeetCode: View Stats"
+      }
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "leetcode-practice.markAsSolved",
+          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.qotdView"
+        },
+        {
+          "command": "leetcode-practice.markAsAttempting",
+          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.qotdView"
+        },
+        {
+          "command": "leetcode-practice.clearProblemStatus",
+          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.qotdView"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "leetcode-practice.filterByDifficulty",
+          "when": "view == leetcode-practice.problemsView",
+          "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.searchProblems",
+          "when": "view == leetcode-practice.problemsView",
+          "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.filterByDifficulty",
+          "when": "view == leetcode-practice.topInterview150View",
+          "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.searchProblems",
+          "when": "view == leetcode-practice.topInterview150View",
+          "group": "navigation"
+        }
+      ]
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "leetcode-practice.problemsView",
+          "name": "LeetCode"
+        },
+        {
+          "id": "leetcode-practice.topInterview150View",
+          "name": "Top Interview 150"
+        },
+        {
+          "id": "leetcode-practice.qotdView",
+          "name": "Question of the Day"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "leetcode-practice.runInTerminal",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r"
+      }
+    ],
+    "viewsWelcome": [
+      {
+        "view": "leetcode-practice.problemsView",
+        "contents": "Sign in to your LeetCode account and start practicing.\n\n[Sign in to LeetCode](command:leetcode-practice.signIn)"
+      },
+      {
+        "view": "leetcode-practice.topInterview150View",
+        "contents": "Must-do list for interview prep (150 problems).\n\n[Open study plan in browser](https://leetcode.com/studyplan/top-interview-150/)"
+      }
+    ],
+    "configuration": {
+      "title": "LeetCode Practice",
+      "properties": {
+        "leetcodePractice.defaultDirectory": {
+          "type": "string",
+          "default": ".",
+          "description": "Default directory for new problem files (relative to workspace root or current file)."
+        },
+        "leetcodePractice.fileNamePattern": {
+          "type": "string",
+          "enum": ["id", "slug"],
+          "default": "id",
+          "description": "New file name: 'id' → 167.ts, 'slug' → two-sum-ii-input-array-is-sorted.ts"
+        },
+        "leetcodePractice.language": {
+          "type": "string",
+          "enum": ["typescript", "javascript", "python"],
+          "default": "typescript",
+          "description": "Language for generated solution files and run/submit."
+        },
+        "leetcodePractice.internalApiUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Optional internal API base URL. If set, fetches problem data from here instead of LeetCode."
+        },
+        "leetcodePractice.enableProfiler": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable realtime profiler when running examples or in terminal. Shows execution time and CPU profile (Node/TS)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./ && npm run copy-assets",
+    "copy-assets": "copyfiles -u 1 \"src/templates/*.ejs\" out",
+    "watch": "tsc -w -p ./",
+    "test": "node --test --import tsx test/integration.test.ts",
+    "package": "npm run compile && npx vsce package",
+    "install-extension": "npm run package && code --install-extension leetcode-practice-0.1.0.vsix --force"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/ejs": "^3.1.3",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.1",
+    "copyfiles": "^2.4.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "ejs": "^3.1.9"
+  }
+}

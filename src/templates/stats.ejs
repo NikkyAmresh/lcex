@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LeetCode Practice Stats</title>
+    <style>
+      :root {
+        --bg: #1e1e1e;
+        --text: #e5e5e5;
+        --text-muted: #9d9d9d;
+        --easy: #26a641;
+        --medium: #d39b00;
+        --hard: #dc3545;
+        --border: #3c3c3c;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+        font-size: 14px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      h1 { font-size: 22px; margin: 0 0 20px; }
+      .stat { margin-bottom: 16px; }
+      .stat-label { color: var(--text-muted); font-size: 12px; }
+      .stat-value { font-size: 28px; font-weight: 600; }
+      .stat.easy .stat-value { color: var(--easy); }
+      .stat.medium .stat-value { color: var(--medium); }
+      .stat.hard .stat-value { color: var(--hard); }
+      .row { display: flex; gap: 24px; flex-wrap: wrap; }
+      .row .stat { min-width: 80px; }
+      .profile-section { margin-bottom: 28px; }
+      .profile-card { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+      .profile-avatar { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; }
+      .profile-info { display: flex; flex-direction: column; gap: 2px; }
+      .profile-username { font-weight: 600; font-size: 16px; }
+      .profile-realname { color: var(--text-muted); font-size: 13px; }
+      .subsection { font-size: 16px; margin: 16px 0 12px; color: var(--text-muted); font-weight: 500; }
+      .local-section { border-top: 1px solid var(--border); padding-top: 20px; }
+    </style>
+  </head>
+  <body>
+    <% if (typeof leetcodeProfile !== 'undefined' && leetcodeProfile) { %>
+    <section class="profile-section">
+      <h1>Profile</h1>
+      <div class="profile-card">
+        <% if (leetcodeProfile.userAvatar) { %>
+        <img class="profile-avatar" src="<%= leetcodeProfile.userAvatar %>" alt="" />
+        <% } %>
+        <div class="profile-info">
+          <span class="profile-username"><%= leetcodeProfile.username %></span>
+          <% if (leetcodeProfile.realName) { %>
+          <span class="profile-realname"><%= leetcodeProfile.realName %></span>
+          <% } %>
+        </div>
+      </div>
+      <h2 class="subsection">Solved on LeetCode</h2>
+      <div class="stat">
+        <div class="stat-label">Total solved</div>
+        <div class="stat-value"><%= leetcodeProfile.totalSolved %></div>
+      </div>
+      <div class="row">
+        <div class="stat easy">
+          <div class="stat-label">Easy</div>
+          <div class="stat-value"><%= leetcodeProfile.easySolved %></div>
+        </div>
+        <div class="stat medium">
+          <div class="stat-label">Medium</div>
+          <div class="stat-value"><%= leetcodeProfile.mediumSolved %></div>
+        </div>
+        <div class="stat hard">
+          <div class="stat-label">Hard</div>
+          <div class="stat-value"><%= leetcodeProfile.hardSolved %></div>
+        </div>
+      </div>
+    </section>
+    <% } else { %>
+    <section class="local-section">
+      <h1>Practice Stats (local)</h1>
+      <div class="stat">
+        <div class="stat-label">Total solved</div>
+        <div class="stat-value"><%= totalSolved %></div>
+      </div>
+      <div class="row">
+        <div class="stat easy">
+          <div class="stat-label">Easy</div>
+          <div class="stat-value"><%= easySolved %></div>
+        </div>
+        <div class="stat medium">
+          <div class="stat-label">Medium</div>
+          <div class="stat-value"><%= mediumSolved %></div>
+        </div>
+        <div class="stat hard">
+          <div class="stat-label">Hard</div>
+          <div class="stat-value"><%= hardSolved %></div>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Attempting</div>
+        <div class="stat-value"><%= attempting %></div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Current streak (days)</div>
+        <div class="stat-value"><%= streak %></div>
+      </div>
+    </section>
+    <% } %>
+  </body>
+</html>
