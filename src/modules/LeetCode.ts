@@ -60,6 +60,11 @@ export interface DailyChallengeEntry {
   date: string;
 }
 
+export interface StudyPlanGroup {
+  category: string;
+  problems: ProblemListItem[];
+}
+
 const QOTD_QUERY = `
 query questionOfToday {
   activeDailyCodingChallengeQuestion {
@@ -73,6 +78,7 @@ query studyPlanPastSolved($slug: String!) {
   studyPlanV2Detail(planSlug: $slug) {
     planSubGroups {
       slug
+      name
       questions {
         titleSlug
         status
@@ -346,22 +352,68 @@ export class LeetCodeProvider implements IProblemProvider {
     }));
   }
 
+  /** Returns grouped problem list for a study plan (e.g. top-interview-150), ordered by API. */
+  async getStudyPlanProblemListGrouped(planSlug: string): Promise<StudyPlanGroup[]> {
+    const res = await fetch(GRAPHQL_URL, {
+      method: "POST",
+      headers: FETCH_HEADERS,
+      body: JSON.stringify({
+        operationName: "studyPlanPastSolved",
+        variables: { slug: planSlug },
+        query: STUDY_PLAN_QUERY,
+      }),
+    });
+    if (!res.ok) return [];
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) return [];
+    let json: {
+      data?: {
+        studyPlanV2Detail?: {
+          planSubGroups?: Array<{
+            slug?: string;
+            name?: string;
+            questions?: Array<{ titleSlug: string }>;
+          }>;
+        };
+      };
+    };
+    try {
+      json = (await res.json()) as typeof json;
+    } catch {
+      return [];
+    }
+    const rawGroups = json.data?.studyPlanV2Detail?.planSubGroups ?? [];
+    if (rawGroups.length === 0) return [];
+    const slugToItem = await this.getSlugToProblemListItemMap();
+    const groups: StudyPlanGroup[] = [];
+    let problemIndex = 0;
+    for (const g of rawGroups) {
+      const category = g.name ?? (g.slug ? slugToTitle(g.slug) : "General");
+      const problems: ProblemListItem[] = [];
+      for (const q of g.questions ?? []) {
+        if (!q.titleSlug) continue;
+        problemIndex += 1;
+        const item = slugToItem.get(q.titleSlug);
+        problems.push(
+          item ?? {
+            id: String(problemIndex),
+            titleSlug: q.titleSlug,
+            title: slugToTitle(q.titleSlug),
+            difficulty: "Unknown",
+          }
+        );
+      }
+      if (problems.length > 0) {
+        groups.push({ category, problems });
+      }
+    }
+    return groups;
+  }
+
   /** Returns problem list for a study plan (e.g. top-interview-150), ordered by API. */
   async getStudyPlanProblemList(planSlug: string): Promise<ProblemListItem[]> {
-    const slugs = await this.getStudyPlanQuestionSlugs(planSlug);
-    if (slugs.length === 0) return [];
-    const slugToItem = await this.getSlugToProblemListItemMap();
-    return slugs.map((titleSlug, i) => {
-      const item = slugToItem.get(titleSlug);
-      return (
-        item ?? {
-          id: String(i + 1),
-          titleSlug,
-          title: slugToTitle(titleSlug),
-          difficulty: "Unknown",
-        }
-      );
-    });
+    const groups = await this.getStudyPlanProblemListGrouped(planSlug);
+    return groups.flatMap((g) => g.problems);
   }
 
   /**

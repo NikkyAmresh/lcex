@@ -175,7 +175,14 @@
           "description": "Optional internal API base URL. If set, fetches problem data from here instead of LeetCode."
         }
       }
-    }
+    },
+    "themes": [
+      {
+        "label": "LeetCode Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/leetcode-dark-color-theme.json"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

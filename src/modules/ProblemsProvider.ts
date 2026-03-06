@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import { LeetCodeProvider, type ProblemListItem } from "./LeetCode";
+import { LeetCodeProvider, type ProblemListItem, type StudyPlanGroup } from "./LeetCode";
 const STATUS_KEY = "leetcode-practice.problemStatus";
 
 export type ProblemStatus = "solved" | "attempting";
@@ -78,10 +78,38 @@ export class ProblemTreeItem extends vscode.TreeItem {
   }
 }
 
-export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTreeItem> {
+export class CategoryTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly category: string,
+    public readonly problems: ProblemListItem[]
+  ) {
+    super(category, vscode.TreeItemCollapsibleState.Expanded);
+    this.iconPath = new vscode.ThemeIcon("folder");
+    this.tooltip = `${category} (${problems.length} problems)`;
+  }
+}
+
+export type ProblemTreeElement = ProblemTreeItem | CategoryTreeItem;
+
+function isCategoryTreeItem(el: ProblemTreeElement): el is CategoryTreeItem {
+  return el instanceof CategoryTreeItem;
+}
+
+function isStudyPlanGroup(obj: unknown): obj is StudyPlanGroup {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    "category" in obj &&
+    "problems" in obj &&
+    Array.isArray((obj as StudyPlanGroup).problems)
+  );
+}
+
+export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTreeElement> {
   private _onDidChangeTreeData = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
   private list: ProblemListItem[] = [];
+  private groups: StudyPlanGroup[] = [];
   private leetcode = new LeetCodeProvider();
   private listKind: ProblemListKind;
   private memento: vscode.Memento;
@@ -107,6 +135,7 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
 
   refresh(): void {
     this.list = [];
+    this.groups = [];
     if (this.cachePath && fs.existsSync(this.cachePath)) {
       try {
         fs.unlinkSync(this.cachePath);
@@ -117,7 +146,7 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
     this._onDidChangeTreeData.fire();
   }
 
-  getTreeItem(element: ProblemTreeItem): vscode.TreeItem {
+  getTreeItem(element: ProblemTreeElement): vscode.TreeItem {
     return element;
   }
 
@@ -137,9 +166,38 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
     return result;
   }
 
-  async getChildren(): Promise<ProblemTreeItem[]> {
-    if (this.list.length === 0) {
-      if (this.cachePath && fs.existsSync(this.cachePath)) {
+  private async ensureLoaded(): Promise<void> {
+    if (this.listKind === "top-interview-150") {
+      if (this.groups.length === 0 && this.cachePath && fs.existsSync(this.cachePath)) {
+        try {
+          const raw = fs.readFileSync(this.cachePath, "utf-8");
+          const parsed = JSON.parse(raw) as unknown;
+          if (Array.isArray(parsed) && parsed.length > 0 && isStudyPlanGroup(parsed[0])) {
+            const cached = parsed as StudyPlanGroup[];
+            // Single "General" group = old migration; invalidate and fetch fresh
+            const isStaleGeneralCache =
+              cached.length === 1 && cached[0].category === "General";
+            if (!isStaleGeneralCache) {
+              this.groups = cached;
+            }
+          }
+        } catch {
+          this.groups = [];
+        }
+      }
+      if (this.groups.length === 0) {
+        this.groups = await this.leetcode.getStudyPlanProblemListGrouped("top-interview-150");
+        if (this.cachePath && this.groups.length > 0) {
+          try {
+            fs.mkdirSync(path.dirname(this.cachePath), { recursive: true });
+            fs.writeFileSync(this.cachePath, JSON.stringify(this.groups), "utf-8");
+          } catch {
+            /* ignore */
+          }
+        }
+      }
+    } else {
+      if (this.list.length === 0 && this.cachePath && fs.existsSync(this.cachePath)) {
         try {
           const raw = fs.readFileSync(this.cachePath, "utf-8");
           this.list = JSON.parse(raw) as ProblemListItem[];
@@ -148,10 +206,7 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
         }
       }
       if (this.list.length === 0) {
-        this.list =
-          this.listKind === "top-interview-150"
-            ? await this.leetcode.getStudyPlanProblemList("top-interview-150")
-            : await this.leetcode.getFullProblemsetList();
+        this.list = await this.leetcode.getFullProblemsetList();
         if (this.cachePath && this.list.length > 0) {
           try {
             fs.mkdirSync(path.dirname(this.cachePath), { recursive: true });
@@ -162,6 +217,27 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
         }
       }
     }
+  }
+
+  async getChildren(element?: ProblemTreeElement): Promise<ProblemTreeElement[]> {
+    if (element && isCategoryTreeItem(element)) {
+      const filtered = this.applyFilters(element.problems);
+      return filtered.map((item) => {
+        const status = getStoredStatus(this.memento, item.titleSlug);
+        return new ProblemTreeItem(item, status);
+      });
+    }
+    await this.ensureLoaded();
+    if (this.listKind === "top-interview-150") {
+      const result: CategoryTreeItem[] = [];
+      for (const g of this.groups) {
+        const filtered = this.applyFilters(g.problems);
+        if (filtered.length > 0) {
+          result.push(new CategoryTreeItem(g.category, filtered));
+        }
+      }
+      return result;
+    }
     const filtered = this.applyFilters(this.list);
     return filtered.map((item) => {
       const status = getStoredStatus(this.memento, item.titleSlug);
@@ -171,29 +247,10 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
 
   /** Returns the current list (loaded and filtered). Used by random picker and stats. */
   async getProblemList(): Promise<ProblemListItem[]> {
-    if (this.list.length === 0) {
-      if (this.cachePath && fs.existsSync(this.cachePath)) {
-        try {
-          const raw = fs.readFileSync(this.cachePath, "utf-8");
-          this.list = JSON.parse(raw) as ProblemListItem[];
-        } catch {
-          this.list = [];
-        }
-      }
-      if (this.list.length === 0) {
-        this.list =
-          this.listKind === "top-interview-150"
-            ? await this.leetcode.getStudyPlanProblemList("top-interview-150")
-            : await this.leetcode.getFullProblemsetList();
-        if (this.cachePath && this.list.length > 0) {
-          try {
-            fs.mkdirSync(path.dirname(this.cachePath), { recursive: true });
-            fs.writeFileSync(this.cachePath, JSON.stringify(this.list), "utf-8");
-          } catch {
-            /* ignore */
-          }
-        }
-      }
+    await this.ensureLoaded();
+    if (this.listKind === "top-interview-150") {
+      const flat = this.groups.flatMap((g) => g.problems);
+      return this.applyFilters(flat);
     }
     return this.applyFilters(this.list);
   }
