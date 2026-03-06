@@ -29,8 +29,7 @@ function getProvider(): IProblemProvider {
 
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("LeetCode Practice");
-  const profilerChannel = vscode.window.createOutputChannel("LeetCode Profiler");
-  context.subscriptions.push(outputChannel, profilerChannel);
+  context.subscriptions.push(outputChannel);
   Logger.init(outputChannel);
 
   // Register sign-in/sign-out first so they always exist
@@ -139,24 +138,13 @@ export function activate(context: vscode.ExtensionContext): void {
       }
 
       try {
-        const enableProfiler =
-          ext === ".ts" &&
-          (vscode.workspace.getConfiguration("leetcodePractice").get<boolean>("enableProfiler") ?? false);
-        const profilerOpts = enableProfiler
-          ? {
-              useProfiler: true,
-              outputChannel: profilerChannel,
-              enableCpuProfile: true,
-            }
-          : undefined;
         const results = await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: enableProfiler ? "Running examples (profiling)..." : "Running examples...",
+            title: "Running examples...",
           },
-          () => runExamplesImpl(uri, profilerOpts)
+          () => runExamplesImpl(uri)
         );
-        if (enableProfiler) profilerChannel.show();
         if (results.length === 0) {
           vscode.window.showInformationMessage(
             "No console.log example blocks found."

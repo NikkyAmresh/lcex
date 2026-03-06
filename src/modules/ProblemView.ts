@@ -239,15 +239,11 @@ const TERMINAL_CMD_BY_EXT: Record<string, string> = {
 /** Runs the solution file in the terminal (ts-node / node / python3 by extension). */
 export function runTsNodeInTerminal(filePath: string): void {
   const ext = path.extname(filePath);
-  const enableProfiler =
-    ext === ".ts" &&
-    (vscode.workspace.getConfiguration("leetcodePractice").get<boolean>("enableProfiler") ?? false);
-  const prefix = enableProfiler ? "NODE_OPTIONS='--cpu-prof' " : "";
   const cmd = TERMINAL_CMD_BY_EXT[ext] ?? "ts-node";
   const quoted = filePath.includes(" ") ? `"${filePath.replace(/"/g, '\\"')}"` : filePath;
   const terminal = vscode.window.activeTerminal ?? vscode.window.createTerminal("LeetCode");
   terminal.show();
-  terminal.sendText(`${prefix}${cmd} ${quoted}`);
+  terminal.sendText(`${cmd} ${quoted}`);
 }
 
 async function renderTestcasesHtml(
