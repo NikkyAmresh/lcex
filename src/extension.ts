@@ -16,13 +16,14 @@ import {
 } from "./modules/ProblemView";
 import { runExamples as runExamplesImpl } from "./modules/ExampleRunner";
 import * as Logger from "./modules/Logger";
+import { parseLeetcodeConfig, getEffectiveConfig } from "./modules/LeetcodeConfig";
+import { LeetcodeConfigEditorProvider } from "./modules/LeetcodeConfigEditor";
 
 function getProvider(): IProblemProvider {
-  const internalUrl = vscode.workspace
-    .getConfiguration("leetcodePractice")
-    .get<string>("internalApiUrl");
-  if (internalUrl?.trim()) {
-    return new InternalApiProvider(internalUrl.trim());
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const config = getEffectiveConfig(folders);
+  if (config.internalApiUrl?.trim()) {
+    return new InternalApiProvider(config.internalApiUrl.trim());
   }
   return new LeetCodeProvider();
 }
@@ -50,8 +51,163 @@ function shouldAutoApplyTheme(): boolean {
   return hasMarker;
 }
 
+const HAS_MARKER_CONTEXT = "leetcodePractice.hasMarker";
+const SHOW_PROBLEMSET_CONTEXT = "leetcodePractice.showProblemset";
+const SHOW_STUDY_PLANS_CONTEXT = "leetcodePractice.showStudyPlans";
+const SHOW_QOTD_CONTEXT = "leetcodePractice.showQotd";
+const IS_SOLUTION_FILE_CONTEXT = "leetcodePractice.isSolutionFile";
+
+const SOLUTION_EXTENSIONS = new Set([".ts", ".js", ".py"]);
+
+let statusBarMakeRunnable: vscode.StatusBarItem | undefined;
+let statusBarHint: vscode.StatusBarItem | undefined;
+
+function isSolutionFile(uri: vscode.Uri | undefined): boolean {
+  if (!uri) return false;
+  return SOLUTION_EXTENSIONS.has(path.extname(uri.fsPath).toLowerCase());
+}
+
+function updateSolutionFileContext(): void {
+  const editor = vscode.window.activeTextEditor;
+  const hasMarker = shouldAutoApplyTheme();
+  const isSolution = hasMarker && editor !== undefined && isSolutionFile(editor.document.uri);
+  void vscode.commands.executeCommand("setContext", IS_SOLUTION_FILE_CONTEXT, isSolution);
+}
+
+function updateAgentStatusBarVisibility(): void {
+  const editor = vscode.window.activeTextEditor;
+  const hasMarker = shouldAutoApplyTheme();
+  const visible = hasMarker && editor !== undefined && isSolutionFile(editor.document.uri);
+  if (statusBarMakeRunnable) {
+    if (visible) {
+      statusBarMakeRunnable.text = "$(play) Make Runnable";
+      statusBarMakeRunnable.tooltip = "Ask agent: Make this runnable (prompt from .leetcode)";
+      statusBarMakeRunnable.command = "leetcode-practice.agentMakeRunnable";
+      statusBarMakeRunnable.show();
+    } else {
+      statusBarMakeRunnable.hide();
+    }
+  }
+  if (statusBarHint) {
+    if (visible) {
+      statusBarHint.text = "$(lightbulb) Hint";
+      statusBarHint.tooltip = "Ask agent: Get a hint (prompt from .leetcode)";
+      statusBarHint.command = "leetcode-practice.agentHint";
+      statusBarHint.show();
+    } else {
+      statusBarHint.hide();
+    }
+  }
+}
+
+function updateHasMarkerContext(): void {
+  const hasMarker = shouldAutoApplyTheme();
+  void vscode.commands.executeCommand("setContext", HAS_MARKER_CONTEXT, hasMarker);
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const config = folders.length > 0 ? getEffectiveConfig(folders) : null;
+  void vscode.commands.executeCommand("setContext", SHOW_PROBLEMSET_CONTEXT, config?.showProblemset ?? true);
+  void vscode.commands.executeCommand("setContext", SHOW_STUDY_PLANS_CONTEXT, config?.showStudyPlans ?? true);
+  void vscode.commands.executeCommand("setContext", SHOW_QOTD_CONTEXT, config?.showQotd ?? true);
+  updateSolutionFileContext();
+  updateAgentStatusBarVisibility();
+  Logger.log(`Sidebar visibility: hasMarker=${hasMarker}`);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Opens Cursor/IDE agent, pastes the prompt into chat, and triggers submit so the agent runs. */
+async function openChatWithPrompt(prompt: string): Promise<void> {
+  const withPromptCommands: Array<{ id: string; args?: unknown[] }> = [
+    { id: "aichat.newchat", args: [prompt] },
+    { id: "cursor.chat.new", args: [prompt] },
+  ];
+  for (const { id, args } of withPromptCommands) {
+    try {
+      await vscode.commands.executeCommand(id, ...(args ?? []));
+      return;
+    } catch {
+      // Command may not exist or not accept args; try next
+    }
+  }
+
+  // No command accepts prompt: open new agent chat, paste, then submit
+  const previousClipboard = await vscode.env.clipboard.readText();
+  await vscode.env.clipboard.writeText(prompt);
+
+  const openCommands = ["composer.newAgentChat", "aichat.newchat", "aichat.focus"];
+  let opened = false;
+  for (const id of openCommands) {
+    try {
+      await vscode.commands.executeCommand(id);
+      opened = true;
+      break;
+    } catch {
+      // try next
+    }
+  }
+  if (!opened) {
+    await vscode.env.clipboard.writeText(previousClipboard);
+    vscode.window.showWarningMessage("LeetCode Practice: Could not open agent chat.");
+    return;
+  }
+
+  await delay(600);
+
+  try {
+    await vscode.commands.executeCommand("editor.action.clipboardPasteAction");
+  } catch {
+    // Paste may not work in chat input; restore clipboard and inform
+    await vscode.env.clipboard.writeText(previousClipboard);
+    vscode.window.showInformationMessage(
+      "LeetCode Practice: Chat opened. Paste (Cmd+V) and press Enter to run."
+    );
+    return;
+  }
+
+  await delay(400);
+
+  const submitCommands = [
+    "aichat.submit",
+    "cursor.chat.submit",
+    "workbench.action.chat.acceptInput",
+    "composer.submit",
+  ];
+  for (const id of submitCommands) {
+    try {
+      await vscode.commands.executeCommand(id);
+      await vscode.env.clipboard.writeText(previousClipboard);
+      return;
+    } catch {
+      // try next
+    }
+  }
+
+  await delay(100);
+  try {
+    await vscode.commands.executeCommand("type", { text: "\r" });
+  } catch {
+    try {
+      await vscode.commands.executeCommand("type", { text: "\n" });
+    } catch {
+      vscode.window.showInformationMessage(
+        "LeetCode Practice: Prompt pasted. Press Enter to run the agent."
+      );
+    }
+  }
+  await vscode.env.clipboard.writeText(previousClipboard);
+}
+
 async function applyLeetcodeThemeIfNeeded(): Promise<void> {
   Logger.log("Theme auto-apply: checking...");
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (!folders.length) return;
+  const leetcodeConfig = parseLeetcodeConfig(folders);
+  if (leetcodeConfig.theme === "none") {
+    Logger.log("Theme auto-apply: skipped (theme: none in .leetcode)");
+    return;
+  }
   if (!shouldAutoApplyTheme()) {
     Logger.log("Theme auto-apply: skipped (no .leetcode in workspace root)");
     return;
@@ -82,17 +238,51 @@ export function activate(context: vscode.ExtensionContext): void {
   Logger.init(outputChannel);
   Logger.log("Extension activated");
 
-  // Defer theme apply so the contributed theme is registered before we set it
+  // Defer theme apply and sidebar visibility so the contributed theme is registered before we set it
   setImmediate(() => {
     Logger.log("Theme auto-apply: scheduled (setImmediate)");
     void applyLeetcodeThemeIfNeeded();
+    updateHasMarkerContext();
   });
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       Logger.log("Theme auto-apply: workspace folders changed, rechecking...");
       void applyLeetcodeThemeIfNeeded();
+      updateHasMarkerContext();
     })
   );
+  const leetcodeWatcher = vscode.workspace.createFileSystemWatcher("**/.leetcode");
+  leetcodeWatcher.onDidCreate(() => {
+    updateHasMarkerContext();
+    void applyLeetcodeThemeIfNeeded();
+  });
+  leetcodeWatcher.onDidDelete(() => updateHasMarkerContext());
+  leetcodeWatcher.onDidChange(() => {
+    updateHasMarkerContext();
+    void applyLeetcodeThemeIfNeeded();
+  });
+  context.subscriptions.push(leetcodeWatcher);
+
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor(() => {
+      updateSolutionFileContext();
+      updateAgentStatusBarVisibility();
+    })
+  );
+
+  statusBarMakeRunnable = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+  statusBarHint = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
+  context.subscriptions.push(statusBarMakeRunnable, statusBarHint);
+  updateAgentStatusBarVisibility();
+
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(
+      "leetcode-practice.configEditor",
+      new LeetcodeConfigEditorProvider(context),
+      { webviewOptions: { retainContextWhenHidden: true } }
+    )
+  );
+
   // Register sign-in/sign-out first so they always exist
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.signIn", () => {
@@ -116,6 +306,31 @@ export function activate(context: vscode.ExtensionContext): void {
       } else {
         vscode.window.showWarningMessage("No .leetcode file in workspace root. Add one to auto-apply the theme.");
       }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.agentMakeRunnable", async () => {
+      if (!shouldAutoApplyTheme()) {
+        vscode.window.showWarningMessage("LeetCode workspace (.leetcode) required. Open a workspace with a .leetcode file.");
+        return;
+      }
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      const config = getEffectiveConfig(folders);
+      const prompt = config.agentPromptMakeRunnable?.trim() || "Make this Runnable, do not give solution.";
+      await openChatWithPrompt(prompt);
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.agentHint", async () => {
+      if (!shouldAutoApplyTheme()) {
+        vscode.window.showWarningMessage("LeetCode workspace (.leetcode) required. Open a workspace with a .leetcode file.");
+        return;
+      }
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      const config = getEffectiveConfig(folders);
+      const prompt = config.agentPromptHint?.trim() || "Give me a hint for this problem. Do not give the solution.";
+      await openChatWithPrompt(prompt);
     })
   );
 
@@ -262,11 +477,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const globalState = context.globalState;
   const storagePath = context.globalStorageUri.fsPath;
-  const problemsProvider = new ProblemsTreeProvider(
-    "problemset",
-    globalState,
-    path.join(storagePath, "problemset-cache.json")
-  );
+  const problemsProvider = new ProblemsTreeProvider("problemset", globalState, storagePath);
   const treeView = vscode.window.createTreeView(
     "leetcode-practice.problemsView",
     { treeDataProvider: problemsProvider }
@@ -297,14 +508,22 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   context.subscriptions.push(treeView);
 
-  const topInterview150Provider = new ProblemsTreeProvider(
-    "top-interview-150",
-    globalState,
-    path.join(storagePath, "top-interview-150-cache.json")
-  );
+  const STUDY_PLANS_KEY = "leetcode-practice.selectedStudyPlan";
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const leetcodeConfig = getEffectiveConfig(folders);
+  const studyPlansConfig = leetcodeConfig.studyPlans ?? [
+    { slug: "top-interview-150", name: "Top Interview 150" },
+  ];
+  const defaultPlan = studyPlansConfig[0];
+  const initialPlanSlug =
+    context.workspaceState.get<string>(STUDY_PLANS_KEY) ??
+    leetcodeConfig.activeStudyPlan ??
+    defaultPlan?.slug ??
+    "top-interview-150";
+  const studyPlanProvider = new ProblemsTreeProvider(initialPlanSlug, globalState, storagePath);
   const topInterview150View = vscode.window.createTreeView(
     "leetcode-practice.topInterview150View",
-    { treeDataProvider: topInterview150Provider }
+    { treeDataProvider: studyPlanProvider }
   );
   topInterview150View.onDidChangeSelection(async (e) => {
     const item = e.selection[0] as ProblemTreeItem | undefined;
@@ -450,9 +669,37 @@ export function activate(context: vscode.ExtensionContext): void {
         { location: vscode.ProgressLocation.Notification, title: "Refreshing problems..." },
         async () => {
           problemsProvider.refresh();
-          topInterview150Provider.refresh();
+          studyPlanProvider.refresh();
           await qotdProvider.refresh();
         }
+      );
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.switchStudyPlan", async () => {
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      const leetcodeConfig = getEffectiveConfig(folders);
+      const plans = leetcodeConfig.studyPlans ?? [{ slug: "top-interview-150", name: "Top Interview 150" }];
+      if (plans.length === 0) {
+        vscode.window.showInformationMessage("No study plans configured. Add plans in leetcodePractice.studyPlans.");
+        return;
+      }
+      const choice = await vscode.window.showQuickPick(
+        plans.map((p) => ({ label: p.name, slug: p.slug })),
+        { placeHolder: "Select study plan" }
+      );
+      if (!choice) return;
+      await context.workspaceState.update(STUDY_PLANS_KEY, choice.slug);
+      studyPlanProvider.setPlanSlug(choice.slug);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.refreshQotd", async () => {
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "Refreshing Question of the Day..." },
+        () => qotdProvider.refresh()
       );
     })
   );
@@ -465,7 +712,7 @@ export function activate(context: vscode.ExtensionContext): void {
       );
       if (choice === undefined) return;
       problemsProvider.setFilter(choice === "All" ? undefined : choice, undefined);
-      topInterview150Provider.setFilter(choice === "All" ? undefined : choice, undefined);
+      studyPlanProvider.setFilter(choice === "All" ? undefined : choice, undefined);
     })
   );
   context.subscriptions.push(
@@ -476,7 +723,7 @@ export function activate(context: vscode.ExtensionContext): void {
       });
       if (query === undefined) return;
       problemsProvider.setFilter(undefined, query || undefined);
-      topInterview150Provider.setFilter(undefined, query || undefined);
+      studyPlanProvider.setFilter(undefined, query || undefined);
     })
   );
 
@@ -509,7 +756,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   function refreshAllProblemViews(): void {
     problemsProvider.invalidate();
-    topInterview150Provider.invalidate();
+    studyPlanProvider.invalidate();
     qotdProvider.invalidate();
   }
 

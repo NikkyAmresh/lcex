@@ -6,7 +6,8 @@ const STATUS_KEY = "leetcode-practice.problemStatus";
 
 export type ProblemStatus = "solved" | "attempting";
 
-export type ProblemListKind = "problemset" | "top-interview-150";
+/** "problemset" for full list; string = study plan slug (e.g. "top-interview-150") */
+export type ProblemListKind = "problemset" | string;
 
 export interface StoredStatusEntry {
   status: ProblemStatus;
@@ -115,12 +116,27 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
   private memento: vscode.Memento;
   private filterDifficulty: string | undefined;
   private filterTitle: string | undefined;
-  private cachePath: string | undefined;
+  private storagePath: string;
 
-  constructor(listKind: ProblemListKind, memento: vscode.Memento, cachePath?: string) {
+  constructor(listKind: ProblemListKind, memento: vscode.Memento, storagePath: string) {
     this.listKind = listKind;
     this.memento = memento;
-    this.cachePath = cachePath;
+    this.storagePath = storagePath;
+  }
+
+  private get cachePath(): string {
+    return path.join(
+      this.storagePath,
+      this.listKind === "problemset" ? "problemset-cache.json" : `${this.listKind}-cache.json`
+    );
+  }
+
+  /** Switch study plan (only when listKind is a study plan slug). */
+  setPlanSlug(slug: string): void {
+    if (this.listKind === "problemset") return;
+    this.listKind = slug;
+    this.groups = [];
+    this.refresh();
   }
 
   setFilter(difficulty?: string, title?: string): void {
@@ -167,14 +183,15 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
   }
 
   private async ensureLoaded(): Promise<void> {
-    if (this.listKind === "top-interview-150") {
-      if (this.groups.length === 0 && this.cachePath && fs.existsSync(this.cachePath)) {
+    const isStudyPlan = this.listKind !== "problemset";
+    if (isStudyPlan) {
+      const planSlug = this.listKind;
+      if (this.groups.length === 0 && fs.existsSync(this.cachePath)) {
         try {
           const raw = fs.readFileSync(this.cachePath, "utf-8");
           const parsed = JSON.parse(raw) as unknown;
           if (Array.isArray(parsed) && parsed.length > 0 && isStudyPlanGroup(parsed[0])) {
             const cached = parsed as StudyPlanGroup[];
-            // Single "General" group = old migration; invalidate and fetch fresh
             const isStaleGeneralCache =
               cached.length === 1 && cached[0].category === "General";
             if (!isStaleGeneralCache) {
@@ -186,8 +203,8 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
         }
       }
       if (this.groups.length === 0) {
-        this.groups = await this.leetcode.getStudyPlanProblemListGrouped("top-interview-150");
-        if (this.cachePath && this.groups.length > 0) {
+        this.groups = await this.leetcode.getStudyPlanProblemListGrouped(planSlug);
+        if (this.groups.length > 0) {
           try {
             fs.mkdirSync(path.dirname(this.cachePath), { recursive: true });
             fs.writeFileSync(this.cachePath, JSON.stringify(this.groups), "utf-8");
@@ -197,7 +214,7 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
         }
       }
     } else {
-      if (this.list.length === 0 && this.cachePath && fs.existsSync(this.cachePath)) {
+      if (this.list.length === 0 && fs.existsSync(this.cachePath)) {
         try {
           const raw = fs.readFileSync(this.cachePath, "utf-8");
           this.list = JSON.parse(raw) as ProblemListItem[];
@@ -207,7 +224,7 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
       }
       if (this.list.length === 0) {
         this.list = await this.leetcode.getFullProblemsetList();
-        if (this.cachePath && this.list.length > 0) {
+        if (this.list.length > 0) {
           try {
             fs.mkdirSync(path.dirname(this.cachePath), { recursive: true });
             fs.writeFileSync(this.cachePath, JSON.stringify(this.list), "utf-8");
@@ -228,7 +245,7 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
       });
     }
     await this.ensureLoaded();
-    if (this.listKind === "top-interview-150") {
+    if (this.listKind !== "problemset") {
       const result: CategoryTreeItem[] = [];
       for (const g of this.groups) {
         const filtered = this.applyFilters(g.problems);
@@ -248,7 +265,7 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
   /** Returns the current list (loaded and filtered). Used by random picker and stats. */
   async getProblemList(): Promise<ProblemListItem[]> {
     await this.ensureLoaded();
-    if (this.listKind === "top-interview-150") {
+    if (this.listKind !== "problemset") {
       const flat = this.groups.flatMap((g) => g.problems);
       return this.applyFilters(flat);
     }

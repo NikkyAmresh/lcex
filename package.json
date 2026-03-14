@@ -6,7 +6,7 @@
   "publisher": "lcex",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other"],
-  "activationEvents": ["workspaceContains:**/.leetcode", "onStartupFinished", "onCommand:leetcode-practice.openProblem", "onCommand:leetcode-practice.openQotd", "onCommand:leetcode-practice.runExamples", "onCommand:leetcode-practice.runInTerminal", "onCommand:leetcode-practice.signIn", "onCommand:leetcode-practice.signOut", "onCommand:leetcode-practice.refreshProblems", "onCommand:leetcode-practice.markAsSolved", "onCommand:leetcode-practice.markAsAttempting", "onCommand:leetcode-practice.clearProblemStatus", "onView:leetcode-practice.problemsView", "onView:leetcode-practice.topInterview150View", "onView:leetcode-practice.qotdView"],
+  "activationEvents": ["workspaceContains:**/.leetcode", "onStartupFinished", "onCustomEditor:leetcode-practice.configEditor", "onCommand:leetcode-practice.openProblem", "onCommand:leetcode-practice.openQotd", "onCommand:leetcode-practice.runExamples", "onCommand:leetcode-practice.runInTerminal", "onCommand:leetcode-practice.signIn", "onCommand:leetcode-practice.signOut", "onCommand:leetcode-practice.refreshProblems", "onCommand:leetcode-practice.refreshQotd", "onCommand:leetcode-practice.switchStudyPlan", "onCommand:leetcode-practice.markAsSolved", "onCommand:leetcode-practice.markAsAttempting", "onCommand:leetcode-practice.clearProblemStatus", "onCommand:leetcode-practice.agentMakeRunnable", "onCommand:leetcode-practice.agentHint", "onView:leetcode-practice.problemsView", "onView:leetcode-practice.topInterview150View", "onView:leetcode-practice.qotdView"],
   "main": "./out/extension.js",
   "repository": {
     "type": "git",
@@ -50,6 +50,10 @@
         "title": "LeetCode: Refresh Problems"
       },
       {
+        "command": "leetcode-practice.refreshQotd",
+        "title": "LeetCode: Refresh Question of the Day"
+      },
+      {
         "command": "leetcode-practice.markAsSolved",
         "title": "Mark as Solved"
       },
@@ -80,9 +84,33 @@
       {
         "command": "leetcode-practice.applyTheme",
         "title": "LeetCode: Apply Theme"
+      },
+      {
+        "command": "leetcode-practice.switchStudyPlan",
+        "title": "LeetCode: Switch Study Plan"
+      },
+      {
+        "command": "leetcode-practice.agentMakeRunnable",
+        "title": "LeetCode: Ask Agent – Make Runnable"
+      },
+      {
+        "command": "leetcode-practice.agentHint",
+        "title": "LeetCode: Ask Agent – Hint"
       }
     ],
     "menus": {
+      "editor/title": [
+        {
+          "command": "leetcode-practice.agentMakeRunnable",
+          "when": "leetcodePractice.hasMarker && leetcodePractice.isSolutionFile",
+          "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.agentHint",
+          "when": "leetcodePractice.hasMarker && leetcodePractice.isSolutionFile",
+          "group": "navigation"
+        }
+      ],
       "view/item/context": [
         {
           "command": "leetcode-practice.markAsSolved",
@@ -117,22 +145,44 @@
           "command": "leetcode-practice.searchProblems",
           "when": "view == leetcode-practice.topInterview150View",
           "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.refreshQotd",
+          "when": "view == leetcode-practice.qotdView",
+          "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.switchStudyPlan",
+          "when": "view == leetcode-practice.topInterview150View",
+          "group": "navigation"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "leetcode-practice.container",
+          "title": "LeetCode",
+          "icon": "./icons/leetcode.svg"
         }
       ]
     },
     "views": {
-      "explorer": [
+      "leetcode-practice.container": [
         {
           "id": "leetcode-practice.problemsView",
-          "name": "LeetCode"
+          "name": "LeetCode",
+          "when": "leetcodePractice.hasMarker && leetcodePractice.showProblemset"
         },
         {
           "id": "leetcode-practice.topInterview150View",
-          "name": "Top Interview 150"
+          "name": "Study Plans",
+          "when": "leetcodePractice.hasMarker && leetcodePractice.showStudyPlans"
         },
         {
           "id": "leetcode-practice.qotdView",
-          "name": "Question of the Day"
+          "name": "Question of the Day",
+          "when": "leetcodePractice.hasMarker && leetcodePractice.showQotd"
         }
       ]
     },
@@ -150,7 +200,7 @@
       },
       {
         "view": "leetcode-practice.topInterview150View",
-        "contents": "Must-do list for interview prep (150 problems).\n\n[Open study plan in browser](https://leetcode.com/studyplan/top-interview-150/)"
+        "contents": "Configurable study plans for interview prep.\n\n[Switch study plan](command:leetcode-practice.switchStudyPlan)"
       }
     ],
     "languages": [
@@ -188,6 +238,24 @@
           "type": "string",
           "default": "",
           "description": "Optional internal API base URL. If set, fetches problem data from here instead of LeetCode."
+        },
+        "leetcodePractice.activeStudyPlan": {
+          "type": "string",
+          "default": "",
+          "description": "Slug of the active study plan (e.g. top-interview-150). Used as default when opening workspace. Overridable via .leetcode."
+        },
+        "leetcodePractice.studyPlans": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "slug": { "type": "string", "description": "LeetCode study plan slug (e.g. top-interview-150)" },
+              "name": { "type": "string", "description": "Display name for the study plan" }
+            },
+            "required": ["slug", "name"]
+          },
+          "default": [{ "slug": "top-interview-150", "name": "Top Interview 150" }],
+          "description": "Study plans to show in the Study Plans view. Add plans like top-interview-100, etc."
         }
       }
     },
@@ -196,6 +264,14 @@
         "label": "LeetCode Dark",
         "uiTheme": "vs-dark",
         "path": "./themes/leetcode-dark-color-theme.json"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "leetcode-practice.configEditor",
+        "displayName": "LeetCode Config",
+        "selector": [{ "filenamePattern": ".leetcode" }],
+        "priority": "default"
       }
     ]
   },

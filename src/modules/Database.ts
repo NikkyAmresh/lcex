@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import type { Session } from "./interface/Session";
+import { getEffectiveConfig } from "./LeetcodeConfig";
 
 const SESSION_KEY = "leetcodeSession";
 
@@ -22,8 +23,9 @@ export async function clearSession(context: vscode.ExtensionContext): Promise<vo
 }
 
 export function getTargetDir(uri: vscode.Uri | undefined): string {
-  const config = vscode.workspace.getConfiguration("leetcodePractice").get<string>("defaultDirectory") ?? ".";
-  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const config = getEffectiveConfig(folders).defaultDirectory ?? ".";
+  const workspaceRoot = folders[0]?.uri.fsPath;
   const base = uri ? path.dirname(uri.fsPath) : workspaceRoot ?? process.cwd();
   if (config === "." || !config) return base;
   if (path.isAbsolute(config)) return config;
@@ -37,9 +39,10 @@ const EXT_BY_LANG: Record<string, string> = {
 };
 
 export function getFileName(problemId: string, titleSlug: string): string {
-  const config = vscode.workspace.getConfiguration("leetcodePractice");
-  const pattern = config.get<string>("fileNamePattern") ?? "id";
-  const lang = config.get<string>("language") ?? "typescript";
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const config = getEffectiveConfig(folders);
+  const pattern = config.fileNamePattern ?? "id";
+  const lang = config.language ?? "typescript";
   const ext = EXT_BY_LANG[lang] ?? ".ts";
   const base = pattern === "slug" ? titleSlug : problemId;
   return base + ext;

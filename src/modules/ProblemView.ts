@@ -6,6 +6,7 @@ import type { ProblemListItem } from "./LeetCode";
 import type { ProblemStatus } from "./ProblemsProvider";
 import { getAllStatusEntries, type StoredStatusEntry } from "./ProblemsProvider";
 import * as Database from "./Database";
+import { getEffectiveConfig } from "./LeetcodeConfig";
 import { LeetCodeProvider } from "./LeetCode";
 import { generateTemplate } from "./TemplateEngine";
 import { pollRunStatus, pollSubmitStatus } from "../utils/apiPoller";
@@ -461,7 +462,9 @@ export async function openOrCreateSolution(
   try {
     await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
   } catch {
-    const lang = (vscode.workspace.getConfiguration("leetcodePractice").get<string>("language") ?? "typescript") as "typescript" | "javascript" | "python";
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const config = getEffectiveConfig(folders);
+    const lang = (config.language ?? "typescript") as "typescript" | "javascript" | "python";
     const content = generateTemplate(problem, { language: lang });
     await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), Buffer.from(content, "utf8"));
   }

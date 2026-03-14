@@ -1,0 +1,22 @@
+{
+  "studyPlans": [
+    {
+      "slug": "top-interview-150",
+      "name": "Top Interview 150"
+    },
+    {
+      "slug": "30-days-of-javascript",
+      "name": "30 Days of JavaScript"
+    }
+  ],
+  "activeStudyPlan": "top-interview-150",
+  "theme": "auto",
+  "defaultDirectory": ".",
+  "fileNamePattern": "id",
+  "language": "typescript",
+  "internalApiUrl": "",
+  "showProblemset": true,
+  "showStudyPlans": true,
+  "showQotd": true,
+  "qotdMonths": 6
+}
