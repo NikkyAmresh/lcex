@@ -13,11 +13,13 @@ import {
   runTsNodeInTerminal,
   PROBLEM_WEBVIEW_VIEWTYPE,
   restoreProblemPanel,
+  getTitleSlugForActiveSolutionFile,
 } from "./modules/ProblemView";
 import { runExamples as runExamplesImpl } from "./modules/ExampleRunner";
 import * as Logger from "./modules/Logger";
 import { parseLeetcodeConfig, getEffectiveConfig } from "./modules/LeetcodeConfig";
 import { LeetcodeConfigEditorProvider } from "./modules/LeetcodeConfigEditor";
+import { initProblemTimer, disposeProblemTimer } from "./modules/ProblemTimer";
 
 function getProvider(): IProblemProvider {
   const folders = vscode.workspace.workspaceFolders ?? [];
@@ -272,7 +274,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
   statusBarMakeRunnable = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBarHint = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
-  context.subscriptions.push(statusBarMakeRunnable, statusBarHint);
+  const statusBarTimer = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 98);
+  context.subscriptions.push(statusBarMakeRunnable, statusBarHint, statusBarTimer);
+  initProblemTimer(context, statusBarTimer, shouldAutoApplyTheme, getTitleSlugForActiveSolutionFile);
+  context.subscriptions.push({ dispose: () => disposeProblemTimer() });
   updateAgentStatusBarVisibility();
 
   context.subscriptions.push(

@@ -11,6 +11,7 @@ import { LeetCodeProvider } from "./LeetCode";
 import { generateTemplate } from "./TemplateEngine";
 import { pollRunStatus, pollSubmitStatus } from "../utils/apiPoller";
 import * as Logger from "./Logger";
+import { getProblemTimer } from "./ProblemTimer";
 
 export interface ProblemViewState {
   webviewPanel: vscode.WebviewPanel;
@@ -19,6 +20,24 @@ export interface ProblemViewState {
 }
 
 const problemViews = new Map<string, ProblemViewState>();
+
+const SOLUTION_EXTENSIONS = new Set([".ts", ".js", ".py"]);
+
+/** Returns titleSlug if the active editor is a solution file for a registered problem; otherwise null. */
+export function getTitleSlugForActiveSolutionFile(): string | null {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) return null;
+  const ext = path.extname(editor.document.uri.fsPath).toLowerCase();
+  if (!SOLUTION_EXTENSIONS.has(ext)) return null;
+  const targetDir = Database.getTargetDir(editor.document.uri);
+  const editorPath = path.resolve(editor.document.uri.fsPath);
+  for (const [, state] of problemViews) {
+    const fileName = Database.getFileName(state.problem.id, state.problem.titleSlug);
+    const expectedPath = path.resolve(path.join(targetDir, fileName));
+    if (editorPath === expectedPath) return state.problem.titleSlug;
+  }
+  return null;
+}
 
 /** In-memory cache of problem data (by titleSlug) for instant show and soft reload. */
 const problemCache = new Map<string, Problem>();
@@ -311,7 +330,16 @@ function setupPanelMessageHandler(
       const { event, titleSlug: msgSlug, customInput, note } = msg;
       const s = problemViews.get(msgSlug);
       if (!s) return;
-      if (event === "solve") {
+      const timer = getProblemTimer();
+      if (event === "timerReady" && timer) {
+        timer.sendInitialState(msgSlug);
+      } else if (event === "timerRestart" && timer) {
+        timer.handleRestart(msgSlug);
+      } else if (event === "timerPause" && timer) {
+        timer.handlePause(msgSlug);
+      } else if (event === "timerResume" && timer) {
+        timer.handleResume(msgSlug);
+      } else if (event === "solve") {
         await openOrCreateSolution(context, s.problem);
       } else if (event === "run") {
         const targetDir = Database.getTargetDir(
@@ -366,11 +394,13 @@ export async function openProblemWebview(
     );
     problemViews.set(item.titleSlug, { webviewPanel: panel, problem: cached });
     panel.onDidDispose(() => {
+      getProblemTimer()?.unregisterPanel(item.titleSlug);
       const s = problemViews.get(item.titleSlug);
       s?.testcasesPanel?.dispose();
       problemViews.delete(item.titleSlug);
     });
     setupPanelMessageHandler(context, item.titleSlug);
+    getProblemTimer()?.registerPanel(item.titleSlug, panel, cached.title);
     softReload(context, item.titleSlug, getProvider, getProblemStatus).catch(
       () => {}
     );
@@ -399,11 +429,13 @@ export async function openProblemWebview(
   );
   problemViews.set(item.titleSlug, { webviewPanel: panel, problem });
   panel.onDidDispose(() => {
+    getProblemTimer()?.unregisterPanel(item.titleSlug);
     const s = problemViews.get(item.titleSlug);
     s?.testcasesPanel?.dispose();
     problemViews.delete(item.titleSlug);
   });
   setupPanelMessageHandler(context, item.titleSlug);
+  getProblemTimer()?.registerPanel(item.titleSlug, panel, problem.title);
 }
 
 export interface ProblemPanelState {
@@ -444,11 +476,13 @@ export async function restoreProblemPanel(
   );
   problemViews.set(titleSlug, { webviewPanel: panel, problem });
   panel.onDidDispose(() => {
+    getProblemTimer()?.unregisterPanel(titleSlug);
     const s = problemViews.get(titleSlug);
     s?.testcasesPanel?.dispose();
     problemViews.delete(titleSlug);
   });
   setupPanelMessageHandler(context, titleSlug);
+  getProblemTimer()?.registerPanel(titleSlug, panel, problem.title);
 }
 
 export async function openOrCreateSolution(

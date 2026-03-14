@@ -64,6 +64,7 @@
         color: var(--text-muted);
         min-width: 4ch;
       }
+      .timer.timer-paused { opacity: 0.7; }
       .timer-btn {
         font-size: 12px;
         padding: 4px 8px;
@@ -180,10 +181,6 @@
       const vscode = acquireVsCodeApi();
       const titleSlug = "<%= titleSlug %>";
       vscode.setState({ titleSlug });
-      const state = vscode.getState() || {};
-      let elapsed = typeof state.timerElapsed === "number" ? state.timerElapsed : 0;
-      let timerPaused = state.timerPaused === true;
-      let timerId = null;
       const timerEl = document.getElementById("timer");
       const pauseBtn = document.getElementById("timerPause");
       const restartBtn = document.getElementById("timerRestart");
@@ -192,49 +189,22 @@
         const s = sec % 60;
         return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
       }
-      function saveTimerState() {
-        vscode.setState({ titleSlug, timerElapsed: elapsed, timerPaused: timerPaused });
-      }
-      function tick() {
-        elapsed++;
-        timerEl.textContent = fmt(elapsed);
-        saveTimerState();
-      }
-      function startTimer() {
-        if (timerId) return;
-        timerId = setInterval(tick, 1000);
-        pauseBtn.textContent = "Pause";
-        timerPaused = false;
-        saveTimerState();
-      }
-      function pauseTimer() {
-        if (timerId) clearInterval(timerId);
-        timerId = null;
-        pauseBtn.textContent = "Resume";
-        timerPaused = true;
-        saveTimerState();
-      }
-      function restartTimer() {
-        if (timerId) clearInterval(timerId);
-        timerId = null;
-        elapsed = 0;
-        timerEl.textContent = fmt(0);
-        pauseBtn.textContent = "Pause";
-        timerPaused = false;
-        saveTimerState();
-        timerId = setInterval(tick, 1000);
-      }
-      timerEl.textContent = fmt(elapsed);
-      if (timerPaused) {
-        pauseBtn.textContent = "Resume";
-      } else {
-        timerId = setInterval(tick, 1000);
-      }
-      pauseBtn.addEventListener("click", function () {
-        if (timerPaused) startTimer();
-        else pauseTimer();
+      window.addEventListener("message", function (ev) {
+        const msg = ev.data;
+        if (msg.event === "timerUpdate") {
+          timerEl.textContent = fmt(msg.elapsed);
+          timerEl.classList.toggle("timer-paused", msg.paused);
+          pauseBtn.textContent = msg.paused ? "Resume" : "Pause";
+        }
       });
-      restartBtn.addEventListener("click", restartTimer);
+      vscode.postMessage({ event: "timerReady", titleSlug });
+      pauseBtn.addEventListener("click", function () {
+        const isPaused = pauseBtn.textContent === "Resume";
+        vscode.postMessage({ event: isPaused ? "timerResume" : "timerPause", titleSlug });
+      });
+      restartBtn.addEventListener("click", function () {
+        vscode.postMessage({ event: "timerRestart", titleSlug });
+      });
       function solve() { vscode.postMessage({ event: "solve", titleSlug }); }
       function run() { vscode.postMessage({ event: "run", titleSlug }); }
       function runOnLeetCode() {
