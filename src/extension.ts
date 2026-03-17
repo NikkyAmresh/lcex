@@ -119,6 +119,48 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** URI path prefix for opening a problem by slug: /open/{slug} */
+const URI_OPEN_PREFIX = "/open/";
+
+/** Handles vscode://lcex.leetcode-practice/open/{slug} — opens the extension and the problem. */
+function createUriHandler(
+  context: vscode.ExtensionContext,
+  getProvider: () => IProblemProvider
+): vscode.UriHandler {
+  return {
+    handleUri(uri: vscode.Uri): void {
+      const path = uri.path ?? "";
+      if (!path.startsWith(URI_OPEN_PREFIX)) return;
+      const slug = path.slice(URI_OPEN_PREFIX.length).trim();
+      if (!slug) return;
+      const provider = getProvider();
+      const getProblemStatus = (s: string) => getStoredStatus(context.globalState, s);
+      void vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "Fetching problem...",
+        },
+        async () => {
+          const problem = await provider.getProblem(slug);
+          if (!problem) {
+            vscode.window.showErrorMessage(
+              "Could not fetch problem. Check slug or network."
+            );
+            return;
+          }
+          const item = {
+            id: problem.id,
+            titleSlug: problem.titleSlug,
+            title: problem.title,
+            difficulty: problem.difficulty,
+          };
+          await openProblemWebview(context, item, getProvider, getProblemStatus);
+        }
+      );
+    },
+  };
+}
+
 /** Opens Cursor/IDE agent, pastes the prompt into chat, and triggers submit so the agent runs. */
 async function openChatWithPrompt(prompt: string): Promise<void> {
   const withPromptCommands: Array<{ id: string; args?: unknown[] }> = [
@@ -239,6 +281,12 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(outputChannel);
   Logger.init(outputChannel);
   Logger.log("Extension activated");
+
+  context.subscriptions.push(
+    vscode.window.registerUriHandler(
+      createUriHandler(context, getProvider)
+    )
+  );
 
   // Defer theme apply and sidebar visibility so the contributed theme is registered before we set it
   setImmediate(() => {
