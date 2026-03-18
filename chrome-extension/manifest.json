@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "LeetCode → Open in Cursor",
+  "version": "1.0.0",
+  "description": "Add a button to open LeetCode problems in the LeetCode Practice extension (Cursor/VS Code)",
+  "content_scripts": [
+    {
+      "matches": ["*://leetcode.com/*", "*://www.leetcode.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
