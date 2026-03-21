@@ -3,7 +3,9 @@ import type { LeetcodeConfig } from "./LeetcodeConfig";
 
 const DEFAULTS: LeetcodeConfig = {
   studyPlans: [{ slug: "top-interview-150", name: "Top Interview 150" }],
+  problemLists: [],
   activeStudyPlan: undefined,
+  activeProblemList: undefined,
   theme: "auto",
   defaultDirectory: ".",
   fileNamePattern: "id",
@@ -11,6 +13,7 @@ const DEFAULTS: LeetcodeConfig = {
   internalApiUrl: "",
   showProblemset: true,
   showStudyPlans: true,
+  showProblemLists: true,
   showQotd: true,
   qotdMonths: 6,
 };
@@ -31,7 +34,20 @@ function parseConfig(text: string): LeetcodeConfig {
       );
       if (config.studyPlans.length === 0) config.studyPlans = DEFAULTS.studyPlans;
     }
+    if (Array.isArray(parsed.problemLists)) {
+      config.problemLists = parsed.problemLists.filter(
+        (p: unknown): p is { slug: string; name: string } =>
+          typeof p === "object" &&
+          p !== null &&
+          typeof (p as { slug?: unknown }).slug === "string" &&
+          typeof (p as { name?: unknown }).name === "string"
+      );
+    }
     if (typeof parsed.activeStudyPlan === "string") config.activeStudyPlan = parsed.activeStudyPlan;
+    if (typeof parsed.activeProblemList === "string") config.activeProblemList = parsed.activeProblemList;
+    if (parsed.activeListSource === "studyPlan" || parsed.activeListSource === "problemList") {
+      config.activeListSource = parsed.activeListSource;
+    }
     if (["auto", "leetcode-dark", "none"].includes(String(parsed.theme))) {
       config.theme = parsed.theme as LeetcodeConfig["theme"];
     }
@@ -44,6 +60,7 @@ function parseConfig(text: string): LeetcodeConfig {
     }
     if (typeof parsed.showProblemset === "boolean") config.showProblemset = parsed.showProblemset;
     if (typeof parsed.showStudyPlans === "boolean") config.showStudyPlans = parsed.showStudyPlans;
+    if (typeof parsed.showProblemLists === "boolean") config.showProblemLists = parsed.showProblemLists;
     if (typeof parsed.showQotd === "boolean") config.showQotd = parsed.showQotd;
     if (typeof parsed.qotdMonths === "number" && parsed.qotdMonths >= 1) config.qotdMonths = parsed.qotdMonths;
     if (typeof parsed.internalApiUrl === "string") config.internalApiUrl = parsed.internalApiUrl;
@@ -67,6 +84,17 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
       <div class="plan-row" data-index="${i}">
         <input type="text" class="plan-slug" value="${escapeHtml(p.slug)}" placeholder="e.g. top-interview-150" />
         <input type="text" class="plan-name" value="${escapeHtml(p.name)}" placeholder="Display name" />
+        <button class="btn-remove" data-index="${i}" title="Remove">×</button>
+      </div>`
+    )
+    .join("");
+  const problemLists = config.problemLists ?? [];
+  const problemListsHtml = problemLists
+    .map(
+      (p, i) => `
+      <div class="list-row" data-index="${i}">
+        <input type="text" class="list-slug" value="${escapeHtml(p.slug)}" placeholder="e.g. graph" />
+        <input type="text" class="list-name" value="${escapeHtml(p.name)}" placeholder="Display name" />
         <button class="btn-remove" data-index="${i}" title="Remove">×</button>
       </div>`
     )
@@ -130,14 +158,14 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
       outline: none;
       border-color: #FFA116;
     }
-    .plan-row {
+    .plan-row, .list-row {
       display: grid;
       grid-template-columns: 1fr 1fr auto;
       gap: 8px;
       margin-bottom: 8px;
       align-items: center;
     }
-    .plan-row input { margin: 0; }
+    .plan-row input, .list-row input { margin: 0; }
     .btn-remove {
       width: 32px;
       height: 32px;
@@ -184,15 +212,28 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
 <body>
   <div class="section">
     <h2>Study Plans</h2>
+    <div id="plans-container">${plansHtml}</div>
+    <button class="btn-add" id="add-plan">+ Add Study Plan</button>
     <div class="field">
-      <label>Active study plan (default when opening workspace)</label>
+      <label>Default study plan (Study Plans sidebar)</label>
       <select id="activeStudyPlan">
         <option value="">First in list</option>
         ${studyPlans.map((p) => `<option value="${escapeHtml(p.slug)}" ${config.activeStudyPlan === p.slug ? "selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}
       </select>
     </div>
-    <div id="plans-container">${plansHtml}</div>
-    <button class="btn-add" id="add-plan">+ Add Study Plan</button>
+  </div>
+  <div class="section">
+    <h2>Problem lists</h2>
+    <p style="color: var(--vscode-descriptionForeground); font-size: 12px; margin: 0 0 12px 0;">LeetCode problem-list slugs (URL <code>/problem-list/&lt;slug&gt;/</code>, e.g. <code>graph</code>). Shown in the Problem Lists sidebar.</p>
+    <div id="problem-lists-container">${problemListsHtml}</div>
+    <button class="btn-add" id="add-problem-list">+ Add Problem List</button>
+    <div class="field">
+      <label>Default problem list (Problem Lists sidebar)</label>
+      <select id="activeProblemList">
+        <option value="">First in list</option>
+        ${problemLists.map((p) => `<option value="${escapeHtml(p.slug)}" ${config.activeProblemList === p.slug ? "selected" : ""}>${escapeHtml(p.name)}</option>`).join("")}
+      </select>
+    </div>
   </div>
   <div class="section">
     <h2>Appearance</h2>
@@ -257,6 +298,10 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
       <input type="checkbox" id="showStudyPlans" ${config.showStudyPlans !== false ? "checked" : ""} />
     </div>
     <div class="toggle-row">
+      <label>Show Problem Lists sidebar</label>
+      <input type="checkbox" id="showProblemLists" ${config.showProblemLists !== false ? "checked" : ""} />
+    </div>
+    <div class="toggle-row">
       <label>Show Question of the Day</label>
       <input type="checkbox" id="showQotd" ${config.showQotd !== false ? "checked" : ""} />
     </div>
@@ -276,10 +321,17 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
         if (slug && name) plans.push({ slug, name });
       });
       if (plans.length === 0) plans.push({ slug: 'top-interview-150', name: 'Top Interview 150' });
-      const activeEl = document.getElementById('activeStudyPlan');
+      const problemLists = [];
+      document.querySelectorAll('.list-row').forEach(row => {
+        const slug = row.querySelector('.list-slug').value.trim();
+        const name = row.querySelector('.list-name').value.trim();
+        if (slug && name) problemLists.push({ slug, name });
+      });
       return {
         studyPlans: plans,
-        activeStudyPlan: activeEl?.value?.trim() || undefined,
+        problemLists,
+        activeStudyPlan: document.getElementById('activeStudyPlan')?.value?.trim() || undefined,
+        activeProblemList: document.getElementById('activeProblemList')?.value?.trim() || undefined,
         theme: document.getElementById('theme').value,
         defaultDirectory: document.getElementById('defaultDirectory').value.trim() || '.',
         fileNamePattern: document.getElementById('fileNamePattern').value,
@@ -287,6 +339,7 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
         internalApiUrl: document.getElementById('internalApiUrl').value.trim(),
         showProblemset: document.getElementById('showProblemset').checked,
         showStudyPlans: document.getElementById('showStudyPlans').checked,
+        showProblemLists: document.getElementById('showProblemLists').checked,
         showQotd: document.getElementById('showQotd').checked,
         qotdMonths: Math.max(1, parseInt(document.getElementById('qotdMonths').value, 10) || 6),
         agentPromptMakeRunnable: document.getElementById('agentPromptMakeRunnable').value.trim() || undefined,
@@ -306,6 +359,20 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
       container.appendChild(div);
       notifyChange();
     };
+    document.getElementById('add-problem-list').onclick = () => {
+      const container = document.getElementById('problem-lists-container');
+      const div = document.createElement('div');
+      div.className = 'list-row';
+      div.innerHTML = '<input type="text" class="list-slug" placeholder="e.g. graph" /><input type="text" class="list-name" placeholder="Display name" /><button class="btn-remove" title="Remove">×</button>';
+      div.querySelector('.btn-remove').onclick = () => { div.remove(); notifyChange(); };
+      div.querySelectorAll('input').forEach(i => i.oninput = notifyChange);
+      container.appendChild(div);
+      notifyChange();
+    };
+    document.querySelectorAll('.list-row').forEach(row => {
+      row.querySelector('.btn-remove').onclick = () => { row.remove(); notifyChange(); };
+      row.querySelectorAll('input').forEach(i => i.oninput = notifyChange);
+    });
     document.querySelectorAll('.plan-row').forEach(row => {
       row.querySelector('.btn-remove').onclick = () => { row.remove(); notifyChange(); };
       row.querySelectorAll('input').forEach(i => i.oninput = notifyChange);

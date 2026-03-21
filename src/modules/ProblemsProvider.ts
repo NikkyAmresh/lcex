@@ -1,13 +1,29 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import { LeetCodeProvider, type ProblemListItem, type StudyPlanGroup } from "./LeetCode";
+import {
+  LeetCodeProvider,
+  slugToTitle,
+  type ProblemListItem,
+  type StudyPlanGroup,
+} from "./LeetCode";
+import { NO_PROBLEM_LIST_SENTINEL } from "./LeetcodeConfig";
 const STATUS_KEY = "leetcode-practice.problemStatus";
 
 export type ProblemStatus = "solved" | "attempting";
 
-/** "problemset" for full list; string = study plan slug (e.g. "top-interview-150") */
+/** "problemset" for full list; string = study plan or problem-list slug */
 export type ProblemListKind = "problemset" | string;
+
+/** How a non-problemset slug is resolved on LeetCode. */
+export type NonProblemsetListSource = "studyPlan" | "problemList";
+
+export interface ProblemsTreeProviderOptions {
+  initialListSource?: NonProblemsetListSource;
+  /** Display name for problem-list single category (from config). */
+  problemListCategoryLabel?: string;
+  getCookie?: () => string | undefined;
+}
 
 export interface StoredStatusEntry {
   status: ProblemStatus;
@@ -117,11 +133,23 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
   private filterDifficulty: string | undefined;
   private filterTitle: string | undefined;
   private storagePath: string;
+  private listSource: "problemset" | NonProblemsetListSource;
+  private problemListCategoryLabel: string | undefined;
+  private getCookie?: () => string | undefined;
 
-  constructor(listKind: ProblemListKind, memento: vscode.Memento, storagePath: string) {
+  constructor(
+    listKind: ProblemListKind,
+    memento: vscode.Memento,
+    storagePath: string,
+    options?: ProblemsTreeProviderOptions
+  ) {
     this.listKind = listKind;
     this.memento = memento;
     this.storagePath = storagePath;
+    this.listSource =
+      listKind === "problemset" ? "problemset" : (options?.initialListSource ?? "studyPlan");
+    this.problemListCategoryLabel = options?.problemListCategoryLabel;
+    this.getCookie = options?.getCookie;
   }
 
   private get cachePath(): string {
@@ -131,10 +159,16 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
     );
   }
 
-  /** Switch study plan (only when listKind is a study plan slug). */
-  setPlanSlug(slug: string): void {
+  /**
+   * Switch study plan or problem-list slug (only when listKind is not problemset).
+   * For problem-list providers, pass display name for the tree category when known.
+   */
+  setPlanSlug(slug: string, problemListDisplayName?: string): void {
     if (this.listKind === "problemset") return;
     this.listKind = slug;
+    if (problemListDisplayName !== undefined) {
+      this.problemListCategoryLabel = problemListDisplayName;
+    }
     this.groups = [];
     this.refresh();
   }
@@ -203,7 +237,19 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
         }
       }
       if (this.groups.length === 0) {
-        this.groups = await this.leetcode.getStudyPlanProblemListGrouped(planSlug);
+        if (this.listSource === "problemList") {
+          if (!planSlug || planSlug === NO_PROBLEM_LIST_SENTINEL) {
+            this.groups = [];
+          } else {
+          const cookie = this.getCookie?.();
+          const problems = await this.leetcode.getFavoriteProblemList(planSlug, cookie);
+          const category =
+            this.problemListCategoryLabel?.trim() || slugToTitle(planSlug);
+          this.groups = problems.length > 0 ? [{ category, problems }] : [];
+          }
+        } else {
+          this.groups = await this.leetcode.getStudyPlanProblemListGrouped(planSlug);
+        }
         if (this.groups.length > 0) {
           try {
             fs.mkdirSync(path.dirname(this.cachePath), { recursive: true });

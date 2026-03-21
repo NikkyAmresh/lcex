@@ -7,7 +7,7 @@
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other", "Programming Languages", "Snippets"],
   "icon": "icons/logo-dark.png",
-  "activationEvents": ["onUri", "workspaceContains:**/.leetcode", "onStartupFinished", "onCustomEditor:leetcode-practice.configEditor", "onCommand:leetcode-practice.openProblem", "onCommand:leetcode-practice.openQotd", "onCommand:leetcode-practice.runExamples", "onCommand:leetcode-practice.runInTerminal", "onCommand:leetcode-practice.signIn", "onCommand:leetcode-practice.signOut", "onCommand:leetcode-practice.refreshProblems", "onCommand:leetcode-practice.refreshQotd", "onCommand:leetcode-practice.switchStudyPlan", "onCommand:leetcode-practice.markAsSolved", "onCommand:leetcode-practice.markAsAttempting", "onCommand:leetcode-practice.clearProblemStatus", "onCommand:leetcode-practice.agentMakeRunnable", "onCommand:leetcode-practice.agentHint", "onView:leetcode-practice.problemsView", "onView:leetcode-practice.topInterview150View", "onView:leetcode-practice.qotdView"],
+  "activationEvents": ["onUri", "workspaceContains:**/.leetcode", "onStartupFinished", "onCustomEditor:leetcode-practice.configEditor", "onCommand:leetcode-practice.openProblem", "onCommand:leetcode-practice.openQotd", "onCommand:leetcode-practice.runExamples", "onCommand:leetcode-practice.runInTerminal", "onCommand:leetcode-practice.signIn", "onCommand:leetcode-practice.signOut", "onCommand:leetcode-practice.refreshProblems", "onCommand:leetcode-practice.refreshQotd", "onCommand:leetcode-practice.switchStudyPlan", "onCommand:leetcode-practice.switchProblemList", "onCommand:leetcode-practice.markAsSolved", "onCommand:leetcode-practice.markAsAttempting", "onCommand:leetcode-practice.clearProblemStatus", "onCommand:leetcode-practice.agentMakeRunnable", "onCommand:leetcode-practice.agentHint", "onView:leetcode-practice.problemsView", "onView:leetcode-practice.topInterview150View", "onView:leetcode-practice.problemListsView", "onView:leetcode-practice.qotdView"],
   "main": "./out/extension.js",
   "repository": {
     "type": "git",
@@ -103,6 +103,10 @@
         "title": "LeetCode: Switch Study Plan"
       },
       {
+        "command": "leetcode-practice.switchProblemList",
+        "title": "LeetCode: Switch Problem List"
+      },
+      {
         "command": "leetcode-practice.agentMakeRunnable",
         "title": "LeetCode: Ask Agent – Make Runnable"
       },
@@ -127,15 +131,15 @@
       "view/item/context": [
         {
           "command": "leetcode-practice.markAsSolved",
-          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.qotdView"
+          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView"
         },
         {
           "command": "leetcode-practice.markAsAttempting",
-          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.qotdView"
+          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView"
         },
         {
           "command": "leetcode-practice.clearProblemStatus",
-          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.qotdView"
+          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView"
         }
       ],
       "view/title": [
@@ -168,6 +172,21 @@
           "command": "leetcode-practice.switchStudyPlan",
           "when": "view == leetcode-practice.topInterview150View",
           "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.filterByDifficulty",
+          "when": "view == leetcode-practice.problemListsView",
+          "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.searchProblems",
+          "when": "view == leetcode-practice.problemListsView",
+          "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.switchProblemList",
+          "when": "view == leetcode-practice.problemListsView",
+          "group": "navigation"
         }
       ]
     },
@@ -193,6 +212,11 @@
           "when": "leetcodePractice.hasMarker && leetcodePractice.showStudyPlans"
         },
         {
+          "id": "leetcode-practice.problemListsView",
+          "name": "Problem Lists",
+          "when": "leetcodePractice.hasMarker && leetcodePractice.showProblemLists"
+        },
+        {
           "id": "leetcode-practice.qotdView",
           "name": "Question of the Day",
           "when": "leetcodePractice.hasMarker && leetcodePractice.showQotd"
@@ -213,7 +237,11 @@
       },
       {
         "view": "leetcode-practice.topInterview150View",
-        "contents": "Configurable study plans for interview prep.\n\n[Switch study plan](command:leetcode-practice.switchStudyPlan)"
+        "contents": "Interview study plans from LeetCode.\n\n[Switch study plan](command:leetcode-practice.switchStudyPlan)"
+      },
+      {
+        "view": "leetcode-practice.problemListsView",
+        "contents": "Curated LeetCode problem lists (e.g. /problem-list/graph/). Configure `problemLists` in .leetcode.\n\n[Switch problem list](command:leetcode-practice.switchProblemList)"
       }
     ],
     "languages": [
@@ -255,7 +283,17 @@
         "leetcodePractice.activeStudyPlan": {
           "type": "string",
           "default": "",
-          "description": "Slug of the active study plan (e.g. top-interview-150). Used as default when opening workspace. Overridable via .leetcode."
+          "description": "Default study plan slug for the Study Plans sidebar when the workspace has no remembered selection. Must match an entry in studyPlans."
+        },
+        "leetcodePractice.activeProblemList": {
+          "type": "string",
+          "default": "",
+          "description": "Default problem-list slug for the Problem Lists sidebar when the workspace has no remembered selection. Must match an entry in problemLists."
+        },
+        "leetcodePractice.activeListSource": {
+          "type": "string",
+          "enum": ["studyPlan", "problemList"],
+          "description": "Deprecated. Used only to migrate old configs (activeStudyPlan + problemList) when activeProblemList is unset."
         },
         "leetcodePractice.studyPlans": {
           "type": "array",
@@ -269,6 +307,24 @@
           },
           "default": [{ "slug": "top-interview-150", "name": "Top Interview 150" }],
           "description": "Study plans to show in the Study Plans view. Add plans like top-interview-100, etc."
+        },
+        "leetcodePractice.problemLists": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "slug": { "type": "string", "description": "LeetCode problem-list slug (e.g. graph for /problem-list/graph/)" },
+              "name": { "type": "string", "description": "Display name for the problem list" }
+            },
+            "required": ["slug", "name"]
+          },
+          "default": [],
+          "description": "LeetCode problem lists (favoriteQuestionList) shown in the Problem Lists sidebar."
+        },
+        "leetcodePractice.showProblemLists": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Problem Lists sidebar view."
         }
       }
     },

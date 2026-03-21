@@ -88,7 +88,62 @@ query studyPlanPastSolved($slug: String!) {
 }
 `;
 
-function slugToTitle(slug: string): string {
+/** Matches LeetCode web client defaults for problem-list / favoriteQuestionList. */
+const FAVORITE_LIST_FILTERS_V2 = {
+  filterCombineType: "ALL",
+  statusFilter: { questionStatuses: [] as string[], operator: "IS" },
+  difficultyFilter: { difficulties: [] as string[], operator: "IS" },
+  languageFilter: { languageSlugs: [] as string[], operator: "IS" },
+  topicFilter: { topicSlugs: [] as string[], operator: "IS" },
+  acceptanceFilter: {},
+  frequencyFilter: {},
+  frontendIdFilter: {},
+  lastSubmittedFilter: {},
+  publishedFilter: {},
+  companyFilter: { companySlugs: [] as string[], operator: "IS" },
+  positionFilter: { positionSlugs: [] as string[], operator: "IS" },
+  positionLevelFilter: { positionLevelSlugs: [] as string[], operator: "IS" },
+  contestPointFilter: { contestPoints: [] as string[], operator: "IS" },
+  premiumFilter: { premiumStatus: [] as string[], operator: "IS" },
+};
+
+const FAVORITE_LIST_QUERY = `
+query favoriteQuestionList($favoriteSlug: String!, $filter: FavoriteQuestionFilterInput, $filtersV2: QuestionFilterInput, $searchKeyword: String, $sortBy: QuestionSortByInput, $limit: Int, $skip: Int, $version: String = "v2") {
+  favoriteQuestionList(
+    favoriteSlug: $favoriteSlug
+    filter: $filter
+    filtersV2: $filtersV2
+    searchKeyword: $searchKeyword
+    sortBy: $sortBy
+    limit: $limit
+    skip: $skip
+    version: $version
+  ) {
+    questions {
+      difficulty
+      questionFrontendId
+      title
+      titleSlug
+    }
+    totalLength
+    hasMore
+  }
+}
+`;
+
+async function favoriteListRequestHeaders(
+  favoriteSlug: string,
+  cookie?: string
+): Promise<Record<string, string>> {
+  const referer = `https://leetcode.com/problem-list/${favoriteSlug}/`;
+  if (cookie?.trim()) {
+    const h = await authHeaders(cookie);
+    return { ...h, Referer: referer };
+  }
+  return { ...FETCH_HEADERS, Referer: referer };
+}
+
+export function slugToTitle(slug: string): string {
   const overrides: Record<string, string> = {
     "insert-delete-getrandom-o1": "Insert Delete GetRandom O(1)",
     "search-a-2d-matrix": "Search a 2D Matrix",
@@ -414,6 +469,69 @@ export class LeetCodeProvider implements IProblemProvider {
   async getStudyPlanProblemList(planSlug: string): Promise<ProblemListItem[]> {
     const groups = await this.getStudyPlanProblemListGrouped(planSlug);
     return groups.flatMap((g) => g.problems);
+  }
+
+  /**
+   * Fetches problems from a LeetCode problem list (favoriteSlug, e.g. "graph" for /problem-list/graph/).
+   * Paginates until hasMore is false. Optional cookie improves consistency with the logged-in site.
+   */
+  async getFavoriteProblemList(favoriteSlug: string, cookie?: string): Promise<ProblemListItem[]> {
+    const all: ProblemListItem[] = [];
+    const headers = await favoriteListRequestHeaders(favoriteSlug, cookie);
+    for (let skip = 0; ; skip += PROBLEMSET_PAGE_SIZE) {
+      const res = await fetch(GRAPHQL_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          operationName: "favoriteQuestionList",
+          query: FAVORITE_LIST_QUERY,
+          variables: {
+            skip,
+            limit: PROBLEMSET_PAGE_SIZE,
+            favoriteSlug,
+            filter: null,
+            filtersV2: FAVORITE_LIST_FILTERS_V2,
+            searchKeyword: "",
+            sortBy: { sortField: "DIFFICULTY", sortOrder: "ASCENDING" },
+            version: "v2",
+          },
+        }),
+      });
+      if (!res.ok) break;
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) break;
+      let json: {
+        data?: {
+          favoriteQuestionList?: {
+            questions?: Array<{
+              questionFrontendId: string | number;
+              titleSlug: string;
+              title?: string;
+              difficulty?: string;
+            }>;
+            hasMore?: boolean;
+          };
+        };
+      };
+      try {
+        json = (await res.json()) as typeof json;
+      } catch {
+        break;
+      }
+      const block = json.data?.favoriteQuestionList;
+      const questions = block?.questions ?? [];
+      for (const q of questions) {
+        if (!q.titleSlug) continue;
+        all.push({
+          id: String(q.questionFrontendId),
+          titleSlug: q.titleSlug,
+          title: q.title ?? q.titleSlug,
+          difficulty: q.difficulty ?? "Unknown",
+        });
+      }
+      if (!block?.hasMore || questions.length < PROBLEMSET_PAGE_SIZE) break;
+    }
+    return all;
   }
 
   /**

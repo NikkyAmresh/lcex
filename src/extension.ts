@@ -5,7 +5,13 @@ import type { IProblemProvider } from "./modules/interface/Problem";
 import { LeetCodeProvider, type DailyChallengeEntry, type ProblemListItem } from "./modules/LeetCode";
 import { InternalApiProvider } from "./modules/InternalProvider";
 import * as Authentication from "./modules/Authentication";
-import { ProblemsTreeProvider, ProblemTreeItem, setProblemStatus, getStoredStatus } from "./modules/ProblemsProvider";
+import * as Database from "./modules/Database";
+import {
+  ProblemsTreeProvider,
+  ProblemTreeItem,
+  setProblemStatus,
+  getStoredStatus,
+} from "./modules/ProblemsProvider";
 import type { ProblemPanelState } from "./modules/ProblemView";
 import {
   openProblemWebview,
@@ -17,7 +23,12 @@ import {
 } from "./modules/ProblemView";
 import { runExamples as runExamplesImpl } from "./modules/ExampleRunner";
 import * as Logger from "./modules/Logger";
-import { parseLeetcodeConfig, getEffectiveConfig } from "./modules/LeetcodeConfig";
+import {
+  parseLeetcodeConfig,
+  getEffectiveConfig,
+  resolveDefaultStudyPlanSlug,
+  resolveDefaultProblemListSlug,
+} from "./modules/LeetcodeConfig";
 import { LeetcodeConfigEditorProvider } from "./modules/LeetcodeConfigEditor";
 import { initProblemTimer, disposeProblemTimer } from "./modules/ProblemTimer";
 
@@ -56,10 +67,84 @@ function shouldAutoApplyTheme(): boolean {
 const HAS_MARKER_CONTEXT = "leetcodePractice.hasMarker";
 const SHOW_PROBLEMSET_CONTEXT = "leetcodePractice.showProblemset";
 const SHOW_STUDY_PLANS_CONTEXT = "leetcodePractice.showStudyPlans";
+const SHOW_PROBLEM_LISTS_CONTEXT = "leetcodePractice.showProblemLists";
 const SHOW_QOTD_CONTEXT = "leetcodePractice.showQotd";
 const IS_SOLUTION_FILE_CONTEXT = "leetcodePractice.isSolutionFile";
 
 const SOLUTION_EXTENSIONS = new Set([".ts", ".js", ".py"]);
+
+const NUMBERED_FILE_PATTERN = /^(\d+)\.(ts|js|py)$/i;
+
+/** Shows problem name as tooltip on numbered solution files in LeetCode workspaces. */
+class LeetCodeFileDecorationProvider implements vscode.FileDecorationProvider {
+  private _onDidChangeFileDecorations = new vscode.EventEmitter<vscode.Uri | vscode.Uri[] | undefined>();
+  readonly onDidChangeFileDecorations = this._onDidChangeFileDecorations.event;
+  private idToTitle = new Map<string, string>();
+  private lastLoadTime = 0;
+  private readonly CACHE_TTL_MS = 60_000;
+
+  constructor(private storagePath: string) {}
+
+  invalidate(): void {
+    this.idToTitle.clear();
+    this.lastLoadTime = 0;
+    this._onDidChangeFileDecorations.fire(undefined);
+  }
+
+  private ensureIdToTitleMap(): void {
+    const now = Date.now();
+    if (this.idToTitle.size > 0 && now - this.lastLoadTime < this.CACHE_TTL_MS) return;
+    this.idToTitle.clear();
+    this.lastLoadTime = now;
+    const addFromList = (items: Array<{ id?: string; title?: string }>) => {
+      for (const it of items) {
+        if (it.id && it.title) this.idToTitle.set(String(it.id), it.title);
+      }
+    };
+    try {
+      const problemsetPath = path.join(this.storagePath, "problemset-cache.json");
+      if (fs.existsSync(problemsetPath)) {
+        const raw = fs.readFileSync(problemsetPath, "utf-8");
+        const arr = JSON.parse(raw) as Array<{ id?: string; title?: string }>;
+        if (Array.isArray(arr)) addFromList(arr);
+      }
+      const dir = path.dirname(path.join(this.storagePath, "x"));
+      const files = fs.readdirSync(dir, { withFileTypes: true });
+      for (const f of files) {
+        const m = f.name.match(/^(.+)-cache\.json$/);
+        if (m) {
+          const raw = fs.readFileSync(path.join(dir, f.name), "utf-8");
+          const parsed = JSON.parse(raw) as unknown;
+          if (Array.isArray(parsed)) {
+            for (const g of parsed) {
+              const probs = (g as { problems?: Array<{ id?: string; title?: string }> }).problems;
+              if (Array.isArray(probs)) addFromList(probs);
+            }
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  provideFileDecoration(uri: vscode.Uri): vscode.ProviderResult<vscode.FileDecoration> {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const folder = folders.find((f) => {
+      const rel = path.relative(f.uri.fsPath, uri.fsPath);
+      return !rel.startsWith("..") && !path.isAbsolute(rel);
+    });
+    if (!folder || !hasLeetcodeMarker(folder)) return undefined;
+    const base = path.basename(uri.fsPath);
+    const m = base.match(NUMBERED_FILE_PATTERN);
+    if (!m) return undefined;
+    const id = m[1];
+    this.ensureIdToTitleMap();
+    const title = this.idToTitle.get(id);
+    if (!title) return undefined;
+    return new vscode.FileDecoration(undefined, title);
+  }
+}
 
 let statusBarMakeRunnable: vscode.StatusBarItem | undefined;
 let statusBarHint: vscode.StatusBarItem | undefined;
@@ -109,6 +194,7 @@ function updateHasMarkerContext(): void {
   const config = folders.length > 0 ? getEffectiveConfig(folders) : null;
   void vscode.commands.executeCommand("setContext", SHOW_PROBLEMSET_CONTEXT, config?.showProblemset ?? true);
   void vscode.commands.executeCommand("setContext", SHOW_STUDY_PLANS_CONTEXT, config?.showStudyPlans ?? true);
+  void vscode.commands.executeCommand("setContext", SHOW_PROBLEM_LISTS_CONTEXT, config?.showProblemLists ?? true);
   void vscode.commands.executeCommand("setContext", SHOW_QOTD_CONTEXT, config?.showQotd ?? true);
   updateSolutionFileContext();
   updateAgentStatusBarVisibility();
@@ -533,6 +619,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const globalState = context.globalState;
   const storagePath = context.globalStorageUri.fsPath;
+  const fileDecorationProvider = new LeetCodeFileDecorationProvider(storagePath);
+  context.subscriptions.push(vscode.window.registerFileDecorationProvider(fileDecorationProvider));
   const problemsProvider = new ProblemsTreeProvider("problemset", globalState, storagePath);
   const treeView = vscode.window.createTreeView(
     "leetcode-practice.problemsView",
@@ -548,18 +636,53 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(treeView);
 
   const STUDY_PLANS_KEY = "leetcode-practice.selectedStudyPlan";
+  const PROBLEM_LIST_KEY = "leetcode-practice.selectedProblemList";
+
   const folders = vscode.workspace.workspaceFolders ?? [];
   const leetcodeConfig = getEffectiveConfig(folders);
   const studyPlansConfig = leetcodeConfig.studyPlans ?? [
     { slug: "top-interview-150", name: "Top Interview 150" },
   ];
-  const defaultPlan = studyPlansConfig[0];
-  const initialPlanSlug =
-    context.workspaceState.get<string>(STUDY_PLANS_KEY) ??
-    leetcodeConfig.activeStudyPlan ??
-    defaultPlan?.slug ??
-    "top-interview-150";
-  const studyPlanProvider = new ProblemsTreeProvider(initialPlanSlug, globalState, storagePath);
+  const problemListsConfig = leetcodeConfig.problemLists ?? [];
+
+  const workspaceStudySlug = context.workspaceState.get<string>(STUDY_PLANS_KEY)?.trim();
+  const savedStudySlug =
+    workspaceStudySlug && studyPlansConfig.some((p) => p.slug === workspaceStudySlug)
+      ? workspaceStudySlug
+      : resolveDefaultStudyPlanSlug(studyPlansConfig, leetcodeConfig.activeStudyPlan);
+
+  const workspaceProblemSlug = context.workspaceState.get<string>(PROBLEM_LIST_KEY)?.trim();
+  const savedProblemSlug =
+    workspaceProblemSlug && problemListsConfig.some((p) => p.slug === workspaceProblemSlug)
+      ? workspaceProblemSlug
+      : resolveDefaultProblemListSlug(problemListsConfig, leetcodeConfig.activeProblemList, {
+          activeStudyPlan: leetcodeConfig.activeStudyPlan,
+          activeListSource: leetcodeConfig.activeListSource,
+        });
+
+  if (workspaceStudySlug && workspaceStudySlug !== savedStudySlug) {
+    void context.workspaceState.update(STUDY_PLANS_KEY, savedStudySlug);
+  }
+  if (workspaceProblemSlug && workspaceProblemSlug !== savedProblemSlug) {
+    void context.workspaceState.update(PROBLEM_LIST_KEY, savedProblemSlug);
+  }
+
+  const problemListLabel =
+    problemListsConfig.find((p) => p.slug === savedProblemSlug)?.name ?? undefined;
+
+  const getCookie = () => Database.getSession(context)?.cookie?.trim() || undefined;
+
+  const studyPlanProvider = new ProblemsTreeProvider(savedStudySlug, globalState, storagePath, {
+    initialListSource: "studyPlan",
+    getCookie,
+  });
+
+  const problemListProvider = new ProblemsTreeProvider(savedProblemSlug, globalState, storagePath, {
+    initialListSource: "problemList",
+    problemListCategoryLabel: problemListLabel,
+    getCookie,
+  });
+
   const topInterview150View = vscode.window.createTreeView(
     "leetcode-practice.topInterview150View",
     { treeDataProvider: studyPlanProvider }
@@ -570,6 +693,16 @@ export function activate(context: vscode.ExtensionContext): void {
     await openProblemWebview(context, item.item, getProvider, getProblemStatus, getWebviewOpts());
   });
   context.subscriptions.push(topInterview150View);
+
+  const problemListsView = vscode.window.createTreeView("leetcode-practice.problemListsView", {
+    treeDataProvider: problemListProvider,
+  });
+  problemListsView.onDidChangeSelection(async (e) => {
+    const item = e.selection[0] as ProblemTreeItem | undefined;
+    if (!item?.item) return;
+    await openProblemWebview(context, item.item, getProvider, getProblemStatus, getWebviewOpts());
+  });
+  context.subscriptions.push(problemListsView);
 
   const QOTD_CACHE_PATH = path.join(context.globalStorageUri.fsPath, "qotd-cache.json");
   Logger.log(`QOTD cache path: ${QOTD_CACHE_PATH}`);
@@ -698,6 +831,7 @@ export function activate(context: vscode.ExtensionContext): void {
   function refreshAllProblemViews(): void {
     problemsProvider.invalidate();
     studyPlanProvider.invalidate();
+    problemListProvider.invalidate();
     qotdProvider.invalidate();
   }
   webviewOpts = {
@@ -737,7 +871,9 @@ export function activate(context: vscode.ExtensionContext): void {
         async () => {
           problemsProvider.refresh();
           studyPlanProvider.refresh();
+          problemListProvider.refresh();
           await qotdProvider.refresh();
+          fileDecorationProvider.invalidate();
         }
       );
     })
@@ -746,10 +882,12 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.switchStudyPlan", async () => {
       const folders = vscode.workspace.workspaceFolders ?? [];
-      const leetcodeConfig = getEffectiveConfig(folders);
-      const plans = leetcodeConfig.studyPlans ?? [{ slug: "top-interview-150", name: "Top Interview 150" }];
+      const cfg = getEffectiveConfig(folders);
+      const plans = cfg.studyPlans ?? [{ slug: "top-interview-150", name: "Top Interview 150" }];
       if (plans.length === 0) {
-        vscode.window.showInformationMessage("No study plans configured. Add plans in leetcodePractice.studyPlans.");
+        vscode.window.showInformationMessage(
+          "No study plans configured. Add them in leetcodePractice.studyPlans or .leetcode."
+        );
         return;
       }
       const choice = await vscode.window.showQuickPick(
@@ -759,6 +897,27 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!choice) return;
       await context.workspaceState.update(STUDY_PLANS_KEY, choice.slug);
       studyPlanProvider.setPlanSlug(choice.slug);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.switchProblemList", async () => {
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      const cfg = getEffectiveConfig(folders);
+      const lists = cfg.problemLists ?? [];
+      if (lists.length === 0) {
+        vscode.window.showInformationMessage(
+          "No problem lists configured. Add leetcodePractice.problemLists or problemLists in .leetcode."
+        );
+        return;
+      }
+      const choice = await vscode.window.showQuickPick(
+        lists.map((p) => ({ label: p.name, slug: p.slug })),
+        { placeHolder: "Select problem list" }
+      );
+      if (!choice) return;
+      await context.workspaceState.update(PROBLEM_LIST_KEY, choice.slug);
+      problemListProvider.setPlanSlug(choice.slug, choice.label);
     })
   );
 
@@ -780,6 +939,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (choice === undefined) return;
       problemsProvider.setFilter(choice === "All" ? undefined : choice, undefined);
       studyPlanProvider.setFilter(choice === "All" ? undefined : choice, undefined);
+      problemListProvider.setFilter(choice === "All" ? undefined : choice, undefined);
     })
   );
   context.subscriptions.push(
@@ -791,6 +951,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (query === undefined) return;
       problemsProvider.setFilter(undefined, query || undefined);
       studyPlanProvider.setFilter(undefined, query || undefined);
+      problemListProvider.setFilter(undefined, query || undefined);
     })
   );
 

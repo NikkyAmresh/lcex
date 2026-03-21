@@ -7,7 +7,8 @@ Practice LeetCode problems directly in VS Code (or Cursor). Generate TypeScript,
 ## Features
 
 - **Problem browser** — Browse the LeetCode problemset in the sidebar
-- **Study plans** — Follow study plans (e.g. Top Interview 150, 30 Days of JavaScript)
+- **Study plans** — Dedicated sidebar + **Switch Study Plan**
+- **Problem lists** — Separate sidebar + **Switch Problem List** (e.g. `/problem-list/graph/`)
 - **Question of the Day** — Access daily challenges in a dedicated view
 - **Solution file generation** — Create `167.ts`, `two-sum.ts`, or `167.py` (configurable) with LeetCode boilerplate and example test cases
 - **Example runner** — Run example blocks (`console.log` / `print`) and see pass/fail inline
@@ -108,13 +109,16 @@ Example:
     { "slug": "30-days-of-javascript", "name": "30 Days of JavaScript" }
   ],
   "activeStudyPlan": "top-interview-150",
+  "activeProblemList": "graph",
   "theme": "auto",
   "defaultDirectory": ".",
   "fileNamePattern": "id",
   "language": "typescript",
   "internalApiUrl": "",
+  "problemLists": [{ "slug": "graph", "name": "Graph" }],
   "showProblemset": true,
   "showStudyPlans": true,
+  "showProblemLists": true,
   "showQotd": true,
   "qotdMonths": 6,
   "agentPromptMakeRunnable": "Make this Runnable, do not give solution.",
@@ -125,7 +129,10 @@ Example:
 | Field | Description |
 |-------|-------------|
 | `studyPlans` | Array of `{ slug, name }` for study plans (e.g. `top-interview-150`) |
-| `activeStudyPlan` | Slug of the default study plan |
+| `problemLists` | Array of `{ slug, name }` for LeetCode problem lists (URL `/problem-list/<slug>/`) |
+| `activeStudyPlan` | Default study plan slug (Study Plans sidebar when nothing is remembered) |
+| `activeProblemList` | Default problem-list slug (Problem Lists sidebar when nothing is remembered) |
+| `activeListSource` | Deprecated; only used to migrate old configs into `activeProblemList` |
 | `theme` | `"auto"` \| `"leetcode-dark"` \| `"none"` — auto applies LeetCode Dark when workspace has `.leetcode` |
 | `defaultDirectory` | Directory for new solution files (`.` = workspace root) |
 | `fileNamePattern` | `"id"` → `167.ts` \| `"slug"` → `two-sum-ii-input-array-is-sorted.ts` |
@@ -133,6 +140,7 @@ Example:
 | `internalApiUrl` | Optional internal API base URL for problem data |
 | `showProblemset` | Show problemset view |
 | `showStudyPlans` | Show study plans view |
+| `showProblemLists` | Show the Problem Lists sidebar |
 | `showQotd` | Show Question of the Day view |
 | `qotdMonths` | Number of months of daily challenges to load |
 | `agentPromptMakeRunnable` | Prompt sent when clicking "Make Runnable" |
@@ -149,7 +157,11 @@ All `leetcodePractice.*` settings can be overridden by `.leetcode`:
 - `leetcodePractice.language` (`typescript` \| `javascript` \| `python`)
 - `leetcodePractice.internalApiUrl`
 - `leetcodePractice.activeStudyPlan`
+- `leetcodePractice.activeProblemList`
+- `leetcodePractice.activeListSource` (deprecated)
 - `leetcodePractice.studyPlans`
+- `leetcodePractice.problemLists`
+- `leetcodePractice.showProblemLists`
 
 ---
 

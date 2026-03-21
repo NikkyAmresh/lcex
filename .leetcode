@@ -9,7 +9,14 @@
       "name": "30 Days of JavaScript"
     }
   ],
+  "problemLists": [
+    {
+      "slug": "graph",
+      "name": "Graph"
+    }
+  ],
   "activeStudyPlan": "top-interview-150",
+  "activeProblemList": "graph",
   "theme": "auto",
   "defaultDirectory": ".",
   "fileNamePattern": "id",
@@ -17,6 +24,9 @@
   "internalApiUrl": "",
   "showProblemset": true,
   "showStudyPlans": true,
+  "showProblemLists": true,
   "showQotd": true,
-  "qotdMonths": 6
+  "qotdMonths": 6,
+  "agentPromptMakeRunnable": "Make this Runnable, do not give solution.",
+  "agentPromptHint": "Give me a hint for this problem. Do not give the solution."
 }
