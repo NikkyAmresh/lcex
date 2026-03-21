@@ -3,7 +3,7 @@
   "extends": "vs-seti",
   "iconDefinitions": {
     "leetcode-file": {
-      "iconPath": "./leetcode.svg"
+      "iconPath": "./logo-dark-16.png"
     }
   },
   "fileNames": {

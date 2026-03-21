@@ -29,9 +29,9 @@
       .header {
         display: flex;
         justify-content: space-between;
-        align-items: flex-start;
-        gap: 16px;
-        margin-bottom: 16px;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 12px;
         flex-wrap: wrap;
       }
       .title {
@@ -165,6 +165,7 @@
       <button class="btn solve" onclick="solve()"><%= typeof hasSolution !== 'undefined' && hasSolution ? 'Open Solution' : 'Solve' %></button>
       <button class="btn run" onclick="run()">Run</button>
       <% if (isLoggedIn) { %><button class="btn run" onclick="runOnLeetCode()">Run on LeetCode</button><button class="btn submit" onclick="submit()">Submit</button><% } %>
+      <% if (!isSolved) { %><button class="btn run" onclick="markAsSolved()" title="Mark this problem as solved">Mark as solved</button><% } %>
     </div>
     <% if (isLoggedIn) { %>
     <div class="custom-input-section" style="margin-bottom: 16px;">
@@ -212,6 +213,7 @@
         vscode.postMessage({ event: "runOnLeetCode", titleSlug, customInput: el ? el.value : "" });
       }
       function submit() { vscode.postMessage({ event: "submit", titleSlug }); }
+      function markAsSolved() { vscode.postMessage({ event: "markAsSolved", titleSlug }); }
       (function () {
         var notesEl = document.getElementById("notes");
         var debounce;

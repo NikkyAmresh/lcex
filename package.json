@@ -1,11 +1,12 @@
 {
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice",
-  "description": "Generate TS templates with example test cases and run them for LeetCode practice",
+  "description": "Practice LeetCode problems in VS Code: generate TypeScript templates with example test cases, run examples with ts-node, browse problems & study plans, and track your progress. Sign in to sync with your LeetCode account.",
   "version": "0.1.0",
   "publisher": "lcex",
   "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other"],
+  "categories": ["Other", "Programming Languages", "Snippets"],
+  "icon": "icons/logo-dark.png",
   "activationEvents": ["onUri", "workspaceContains:**/.leetcode", "onStartupFinished", "onCustomEditor:leetcode-practice.configEditor", "onCommand:leetcode-practice.openProblem", "onCommand:leetcode-practice.openQotd", "onCommand:leetcode-practice.runExamples", "onCommand:leetcode-practice.runInTerminal", "onCommand:leetcode-practice.signIn", "onCommand:leetcode-practice.signOut", "onCommand:leetcode-practice.refreshProblems", "onCommand:leetcode-practice.refreshQotd", "onCommand:leetcode-practice.switchStudyPlan", "onCommand:leetcode-practice.markAsSolved", "onCommand:leetcode-practice.markAsAttempting", "onCommand:leetcode-practice.clearProblemStatus", "onCommand:leetcode-practice.agentMakeRunnable", "onCommand:leetcode-practice.agentHint", "onView:leetcode-practice.problemsView", "onView:leetcode-practice.topInterview150View", "onView:leetcode-practice.qotdView"],
   "main": "./out/extension.js",
   "repository": {
@@ -16,6 +17,12 @@
   "keywords": [
     "leetcode",
     "practice",
+    "algorithm",
+    "coding",
+    "interview",
+    "typescript",
+    "ts-node",
+    "study-plan",
     "vscode",
     "extension"
   ],
@@ -23,27 +30,33 @@
     "commands": [
       {
         "command": "leetcode-practice.openProblem",
-        "title": "LeetCode: Open/Create Problem"
+        "title": "LeetCode: Open/Create Problem",
+        "category": "LeetCode"
       },
       {
         "command": "leetcode-practice.openQotd",
-        "title": "LeetCode: Open Question of the Day"
+        "title": "LeetCode: Open Question of the Day",
+        "category": "LeetCode"
       },
       {
         "command": "leetcode-practice.runExamples",
-        "title": "LeetCode: Run Examples"
+        "title": "LeetCode: Run Examples",
+        "category": "LeetCode"
       },
       {
         "command": "leetcode-practice.runInTerminal",
-        "title": "LeetCode: Run in Terminal (ts-node)"
+        "title": "LeetCode: Run in Terminal (ts-node)",
+        "category": "LeetCode"
       },
       {
         "command": "leetcode-practice.signIn",
-        "title": "LeetCode: Sign In"
+        "title": "LeetCode: Sign In",
+        "category": "LeetCode"
       },
       {
         "command": "leetcode-practice.signOut",
-        "title": "LeetCode: Sign Out"
+        "title": "LeetCode: Sign Out",
+        "category": "LeetCode"
       },
       {
         "command": "leetcode-practice.refreshProblems",
@@ -163,7 +176,7 @@
         {
           "id": "leetcode-practice.container",
           "title": "LeetCode",
-          "icon": "./icons/leetcode.svg"
+          "icon": "./icons/logo-dark-16.png"
         }
       ]
     },
@@ -209,8 +222,8 @@
         "aliases": ["LeetCode Config"],
         "filenames": [".leetcode"],
         "icon": {
-          "light": "./icons/leetcode.svg",
-          "dark": "./icons/leetcode.svg"
+          "light": "./icons/logo-dark-16.png",
+          "dark": "./icons/logo-dark-16.png"
         }
       }
     ],
@@ -261,13 +274,22 @@
     },
     "themes": [
       {
+        "id": "leetcode-dark",
         "label": "LeetCode Dark",
         "uiTheme": "vs-dark",
         "path": "./themes/leetcode-dark-color-theme.json"
       }
     ],
+    "iconThemes": [
+      {
+        "id": "leetcode-practice-file-icons",
+        "label": "LeetCode Practice",
+        "path": "./icons/leetcode-file-icon-theme.json"
+      }
+    ],
     "customEditors": [
       {
+        "id": "leetcode-practice.configEditor",
         "viewType": "leetcode-practice.configEditor",
         "displayName": "LeetCode Config",
         "selector": [{ "filenamePattern": ".leetcode" }],

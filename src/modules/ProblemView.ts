@@ -4,7 +4,7 @@ import * as ejs from "ejs";
 import type { IProblemProvider, Problem } from "./interface/Problem";
 import type { ProblemListItem } from "./LeetCode";
 import type { ProblemStatus } from "./ProblemsProvider";
-import { getAllStatusEntries, type StoredStatusEntry } from "./ProblemsProvider";
+import { getAllStatusEntries, setProblemStatus, type StoredStatusEntry } from "./ProblemsProvider";
 import * as Database from "./Database";
 import { getEffectiveConfig } from "./LeetcodeConfig";
 import { LeetCodeProvider } from "./LeetCode";
@@ -56,6 +56,16 @@ const WEBVIEW_OPTIONS: vscode.WebviewPanelOptions & {
   enableScripts: true,
   retainContextWhenHidden: true,
 };
+
+const LOGO_URI = (context: vscode.ExtensionContext) =>
+  vscode.Uri.joinPath(context.extensionUri, "icons", "logo-dark-16.png");
+
+function getProblemWebviewOptions(
+  context: vscode.ExtensionContext
+): vscode.WebviewPanelOptions & { enableScripts?: boolean } {
+  const iconPath = { light: LOGO_URI(context), dark: LOGO_URI(context) };
+  return { ...WEBVIEW_OPTIONS, iconPath } as vscode.WebviewPanelOptions & { enableScripts?: boolean };
+}
 
 function getCacheUri(context: vscode.ExtensionContext): vscode.Uri {
   return vscode.Uri.joinPath(context.globalStorageUri, CACHE_FILENAME);
@@ -138,8 +148,9 @@ async function solutionFileExists(problem: Problem): Promise<boolean> {
 async function renderChallengeHtml(
   context: vscode.ExtensionContext,
   problem: Problem,
-  status?: ProblemStatus,
-  isLoggedIn?: boolean
+  status: ProblemStatus | undefined,
+  isLoggedIn: boolean | undefined,
+  _webview: vscode.Webview
 ): Promise<string> {
   const templatesDir = getTemplatesDir(context);
   const content = problem.content || "<p>No description.</p>";
@@ -189,7 +200,8 @@ function computeStreak(entries: Record<string, StoredStatusEntry>): number {
 
 async function renderStatsHtml(
   context: vscode.ExtensionContext,
-  globalState: vscode.Memento
+  globalState: vscode.Memento,
+  webview: vscode.Webview
 ): Promise<string> {
   await ensureProblemCacheLoaded(context);
   const entries = getAllStatusEntries(globalState);
@@ -223,6 +235,9 @@ async function renderStatsHtml(
   }
 
   const templatesDir = getTemplatesDir(context);
+  const logoUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(context.extensionUri, "icons", "logo-dark.png")
+  ).toString();
   return ejs.renderFile(path.join(templatesDir, "stats.ejs"), {
     totalSolved,
     easySolved,
@@ -231,6 +246,7 @@ async function renderStatsHtml(
     attempting,
     streak,
     leetcodeProfile,
+    logoUri,
   });
 }
 
@@ -238,15 +254,16 @@ export async function openStatsWebview(
   context: vscode.ExtensionContext,
   globalState: vscode.Memento
 ): Promise<void> {
+  const iconPath = { light: LOGO_URI(context), dark: LOGO_URI(context) };
   const panel = vscode.window.createWebviewPanel(
     "leetcodeStats",
     "LeetCode Practice Stats",
     vscode.ViewColumn.One,
-    { enableScripts: false }
+    { enableScripts: false, iconPath } as vscode.WebviewPanelOptions
   );
   panel.webview.html = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: "Loading stats..." },
-    () => renderStatsHtml(context, globalState)
+    () => renderStatsHtml(context, globalState, panel.webview)
   );
 }
 
@@ -315,13 +332,21 @@ async function softReload(
     context,
     problem,
     status,
-    isLoggedIn
+    isLoggedIn,
+    state.webviewPanel.webview
   );
+}
+
+interface SetupPanelMessageHandlerOpts {
+  getProvider?: () => IProblemProvider;
+  getProblemStatus?: (titleSlug: string) => ProblemStatus | undefined;
+  onMarkSolved?: (titleSlug: string) => void;
 }
 
 function setupPanelMessageHandler(
   context: vscode.ExtensionContext,
-  titleSlug: string
+  titleSlug: string,
+  opts?: SetupPanelMessageHandlerOpts
 ): void {
   const state = problemViews.get(titleSlug);
   if (!state) return;
@@ -352,6 +377,15 @@ function setupPanelMessageHandler(
         await executeCode(context, s.problem, "run", customInput);
       } else if (event === "submit") {
         await executeCode(context, s.problem, "submit");
+      } else if (event === "markAsSolved") {
+        if (opts?.onMarkSolved) {
+          opts.onMarkSolved(msgSlug);
+        } else {
+          setProblemStatus(context.globalState, msgSlug, "solved");
+        }
+        if (opts?.getProvider && opts?.getProblemStatus) {
+          await softReload(context, msgSlug, opts.getProvider, opts.getProblemStatus);
+        }
       } else if (event === "saveNote" && msgSlug && note !== undefined) {
         const notesMap = context.globalState.get<Record<string, string>>("leetcode-practice.problemNotes") ?? {};
         await context.globalState.update("leetcode-practice.problemNotes", { ...notesMap, [msgSlug]: note });
@@ -360,11 +394,16 @@ function setupPanelMessageHandler(
   );
 }
 
+export interface OpenProblemWebviewOpts {
+  onMarkSolved?: (titleSlug: string) => void;
+}
+
 export async function openProblemWebview(
   context: vscode.ExtensionContext,
   item: ProblemListItem,
   getProvider: () => IProblemProvider,
-  getProblemStatus?: (titleSlug: string) => ProblemStatus | undefined
+  getProblemStatus?: (titleSlug: string) => ProblemStatus | undefined,
+  opts?: OpenProblemWebviewOpts
 ): Promise<void> {
   const existing = problemViews.get(item.titleSlug);
   if (existing) {
@@ -384,13 +423,15 @@ export async function openProblemWebview(
       PROBLEM_WEBVIEW_VIEWTYPE,
       item.title,
       vscode.ViewColumn.One,
-      WEBVIEW_OPTIONS
+      getProblemWebviewOptions(context)
     );
+    panel.iconPath = { light: LOGO_URI(context), dark: LOGO_URI(context) };
     panel.webview.html = await renderChallengeHtml(
       context,
       cached,
       status,
-      isLoggedIn
+      isLoggedIn,
+      panel.webview
     );
     problemViews.set(item.titleSlug, { webviewPanel: panel, problem: cached });
     panel.onDidDispose(() => {
@@ -399,7 +440,11 @@ export async function openProblemWebview(
       s?.testcasesPanel?.dispose();
       problemViews.delete(item.titleSlug);
     });
-    setupPanelMessageHandler(context, item.titleSlug);
+    setupPanelMessageHandler(context, item.titleSlug, {
+      getProvider,
+      getProblemStatus,
+      onMarkSolved: opts?.onMarkSolved,
+    });
     getProblemTimer()?.registerPanel(item.titleSlug, panel, cached.title);
     softReload(context, item.titleSlug, getProvider, getProblemStatus).catch(
       () => {}
@@ -419,13 +464,15 @@ export async function openProblemWebview(
     PROBLEM_WEBVIEW_VIEWTYPE,
     item.title,
     vscode.ViewColumn.One,
-    WEBVIEW_OPTIONS
+    getProblemWebviewOptions(context)
   );
+  panel.iconPath = { light: LOGO_URI(context), dark: LOGO_URI(context) };
   panel.webview.html = await renderChallengeHtml(
     context,
     problem,
     status,
-    isLoggedIn
+    isLoggedIn,
+    panel.webview
   );
   problemViews.set(item.titleSlug, { webviewPanel: panel, problem });
   panel.onDidDispose(() => {
@@ -434,7 +481,11 @@ export async function openProblemWebview(
     s?.testcasesPanel?.dispose();
     problemViews.delete(item.titleSlug);
   });
-  setupPanelMessageHandler(context, item.titleSlug);
+  setupPanelMessageHandler(context, item.titleSlug, {
+    getProvider,
+    getProblemStatus,
+    onMarkSolved: opts?.onMarkSolved,
+  });
   getProblemTimer()?.registerPanel(item.titleSlug, panel, problem.title);
 }
 
@@ -448,7 +499,8 @@ export async function restoreProblemPanel(
   panel: vscode.WebviewPanel,
   state: ProblemPanelState | undefined,
   getProvider: () => IProblemProvider,
-  getProblemStatus?: (titleSlug: string) => ProblemStatus | undefined
+  getProblemStatus?: (titleSlug: string) => ProblemStatus | undefined,
+  opts?: OpenProblemWebviewOpts
 ): Promise<void> {
   const titleSlug = state?.titleSlug;
   if (!titleSlug) {
@@ -465,6 +517,7 @@ export async function restoreProblemPanel(
     panel.webview.html = "<p>Could not load problem. Try opening from the list again.</p>";
     return;
   }
+  panel.iconPath = { light: LOGO_URI(context), dark: LOGO_URI(context) };
   panel.title = problem.title;
   const status = getProblemStatus?.(titleSlug);
   const isLoggedIn = Database.isLoggedIn(context);
@@ -472,7 +525,8 @@ export async function restoreProblemPanel(
     context,
     problem,
     status,
-    isLoggedIn
+    isLoggedIn,
+    panel.webview
   );
   problemViews.set(titleSlug, { webviewPanel: panel, problem });
   panel.onDidDispose(() => {
@@ -481,7 +535,11 @@ export async function restoreProblemPanel(
     s?.testcasesPanel?.dispose();
     problemViews.delete(titleSlug);
   });
-  setupPanelMessageHandler(context, titleSlug);
+  setupPanelMessageHandler(context, titleSlug, {
+    getProvider,
+    getProblemStatus,
+    onMarkSolved: opts?.onMarkSolved,
+  });
   getProblemTimer()?.registerPanel(titleSlug, panel, problem.title);
 }
 

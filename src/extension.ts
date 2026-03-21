@@ -125,7 +125,8 @@ const URI_OPEN_PREFIX = "/open/";
 /** Handles vscode://lcex.leetcode-practice/open/{slug} — opens the extension and the problem. */
 function createUriHandler(
   context: vscode.ExtensionContext,
-  getProvider: () => IProblemProvider
+  getProvider: () => IProblemProvider,
+  getWebviewOpts?: () => { onMarkSolved: (titleSlug: string) => void } | undefined
 ): vscode.UriHandler {
   return {
     handleUri(uri: vscode.Uri): void {
@@ -154,7 +155,7 @@ function createUriHandler(
             title: problem.title,
             difficulty: problem.difficulty,
           };
-          await openProblemWebview(context, item, getProvider, getProblemStatus);
+          await openProblemWebview(context, item, getProvider, getProblemStatus, getWebviewOpts?.());
         }
       );
     },
@@ -282,9 +283,11 @@ export function activate(context: vscode.ExtensionContext): void {
   Logger.init(outputChannel);
   Logger.log("Extension activated");
 
+  let webviewOpts: { onMarkSolved: (titleSlug: string) => void } | undefined;
+  const getWebviewOpts = () => webviewOpts;
   context.subscriptions.push(
     vscode.window.registerUriHandler(
-      createUriHandler(context, getProvider)
+      createUriHandler(context, getProvider, getWebviewOpts)
     )
   );
 
@@ -420,7 +423,7 @@ export function activate(context: vscode.ExtensionContext): void {
             title: problem.title,
             difficulty: problem.difficulty,
           };
-          await openProblemWebview(context, item, getProvider, getProblemStatus);
+          await openProblemWebview(context, item, getProvider, getProblemStatus, getWebviewOpts());
         }
       );
     })
@@ -458,7 +461,7 @@ export function activate(context: vscode.ExtensionContext): void {
             title: problem.title,
             difficulty: problem.difficulty,
           };
-          await openProblemWebview(context, item, getProvider, getProblemStatus);
+          await openProblemWebview(context, item, getProvider, getProblemStatus, getWebviewOpts());
         }
       );
     })
@@ -537,27 +540,10 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   const getProblemStatus = (slug: string) => getStoredStatus(globalState, slug);
 
-  context.subscriptions.push(
-    vscode.window.registerWebviewPanelSerializer(
-      PROBLEM_WEBVIEW_VIEWTYPE,
-      {
-        deserializeWebviewPanel(panel, state) {
-          return restoreProblemPanel(
-            context,
-            panel,
-            state as ProblemPanelState | undefined,
-            getProvider,
-            getProblemStatus
-          );
-        },
-      }
-    )
-  );
-
   treeView.onDidChangeSelection(async (e) => {
     const item = e.selection[0] as ProblemTreeItem | undefined;
     if (!item?.item) return;
-    await openProblemWebview(context, item.item, getProvider, getProblemStatus);
+    await openProblemWebview(context, item.item, getProvider, getProblemStatus, getWebviewOpts());
   });
   context.subscriptions.push(treeView);
 
@@ -581,7 +567,7 @@ export function activate(context: vscode.ExtensionContext): void {
   topInterview150View.onDidChangeSelection(async (e) => {
     const item = e.selection[0] as ProblemTreeItem | undefined;
     if (!item?.item) return;
-    await openProblemWebview(context, item.item, getProvider, getProblemStatus);
+    await openProblemWebview(context, item.item, getProvider, getProblemStatus, getWebviewOpts());
   });
   context.subscriptions.push(topInterview150View);
 
@@ -709,10 +695,38 @@ export function activate(context: vscode.ExtensionContext): void {
   const qotdView = vscode.window.createTreeView("leetcode-practice.qotdView", {
     treeDataProvider: qotdProvider,
   });
+  function refreshAllProblemViews(): void {
+    problemsProvider.invalidate();
+    studyPlanProvider.invalidate();
+    qotdProvider.invalidate();
+  }
+  webviewOpts = {
+    onMarkSolved: (titleSlug) => {
+      setProblemStatus(globalState, titleSlug, "solved");
+      refreshAllProblemViews();
+    },
+  };
+  context.subscriptions.push(
+    vscode.window.registerWebviewPanelSerializer(
+      PROBLEM_WEBVIEW_VIEWTYPE,
+      {
+        deserializeWebviewPanel(panel, state) {
+          return restoreProblemPanel(
+            context,
+            panel,
+            state as ProblemPanelState | undefined,
+            getProvider,
+            getProblemStatus,
+            getWebviewOpts()
+          );
+        },
+      }
+    )
+  );
   qotdView.onDidChangeSelection(async (e) => {
     const item = e.selection[0] as QotdTreeItem | undefined;
     if (!item?.item) return;
-    await openProblemWebview(context, item.item, getProvider, getProblemStatus);
+    await openProblemWebview(context, item.item, getProvider, getProblemStatus, getWebviewOpts());
   });
   context.subscriptions.push(qotdView);
 
@@ -803,15 +817,9 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
       const item = pool[Math.floor(Math.random() * pool.length)];
-      await openProblemWebview(context, item, getProvider, getProblemStatus);
+      await openProblemWebview(context, item, getProvider, getProblemStatus, getWebviewOpts());
     })
   );
-
-  function refreshAllProblemViews(): void {
-    problemsProvider.invalidate();
-    studyPlanProvider.invalidate();
-    qotdProvider.invalidate();
-  }
 
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.markAsSolved", (node: ProblemTreeItem) => {
