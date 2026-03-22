@@ -29,12 +29,16 @@ export function getTitleSlugForActiveSolutionFile(): string | null {
   if (!editor) return null;
   const ext = path.extname(editor.document.uri.fsPath).toLowerCase();
   if (!SOLUTION_EXTENSIONS.has(ext)) return null;
-  const targetDir = Database.getTargetDir(editor.document.uri);
   const editorPath = path.resolve(editor.document.uri.fsPath);
   for (const [, state] of problemViews) {
-    const fileName = Database.getFileName(state.problem.id, state.problem.titleSlug);
-    const expectedPath = path.resolve(path.join(targetDir, fileName));
-    if (editorPath === expectedPath) return state.problem.titleSlug;
+    const { idPath, slugPath } = Database.getSolutionPathSet(
+      editor.document.uri,
+      state.problem.id,
+      state.problem.titleSlug
+    );
+    if (editorPath === path.resolve(idPath) || editorPath === path.resolve(slugPath)) {
+      return state.problem.titleSlug;
+    }
   }
   return null;
 }
@@ -134,15 +138,12 @@ function getTemplatesDir(context: vscode.ExtensionContext): string {
 
 async function solutionFileExists(problem: Problem): Promise<boolean> {
   const uri = vscode.window.activeTextEditor?.document.uri;
-  const targetDir = Database.getTargetDir(uri);
-  const fileName = Database.getFileName(problem.id, problem.titleSlug);
-  const filePath = path.join(targetDir, fileName);
-  try {
-    await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
-    return true;
-  } catch {
-    return false;
-  }
+  const { exists } = await Database.resolveSolutionFilePathForOpen(
+    uri,
+    problem.id,
+    problem.titleSlug
+  );
+  return exists;
 }
 
 async function renderChallengeHtml(
@@ -367,11 +368,12 @@ function setupPanelMessageHandler(
       } else if (event === "solve") {
         await openOrCreateSolution(context, s.problem);
       } else if (event === "run") {
-        const targetDir = Database.getTargetDir(
-          vscode.window.activeTextEditor?.document.uri
+        const uri = vscode.window.activeTextEditor?.document.uri;
+        const { path: filePath } = await Database.resolveSolutionFilePathForOpen(
+          uri,
+          s.problem.id,
+          s.problem.titleSlug
         );
-        const fileName = Database.getFileName(s.problem.id, s.problem.titleSlug);
-        const filePath = path.join(targetDir, fileName);
         runTsNodeInTerminal(filePath);
       } else if (event === "runOnLeetCode" && customInput !== undefined) {
         await executeCode(context, s.problem, "run", customInput);
@@ -548,12 +550,12 @@ export async function openOrCreateSolution(
   problem: Problem
 ): Promise<void> {
   const uri = vscode.window.activeTextEditor?.document.uri;
-  const targetDir = Database.getTargetDir(uri);
-  const fileName = Database.getFileName(problem.id, problem.titleSlug);
-  const filePath = path.join(targetDir, fileName);
-  try {
-    await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
-  } catch {
+  const { path: filePath, exists } = await Database.resolveSolutionFilePathForOpen(
+    uri,
+    problem.id,
+    problem.titleSlug
+  );
+  if (!exists) {
     const folders = vscode.workspace.workspaceFolders ?? [];
     const config = getEffectiveConfig(folders);
     const lang = (config.language ?? "typescript") as "typescript" | "javascript" | "python";

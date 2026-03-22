@@ -19,7 +19,7 @@
   "activeProblemList": "graph",
   "theme": "auto",
   "defaultDirectory": ".",
-  "fileNamePattern": "id",
+  "fileNamePattern": "slug",
   "language": "typescript",
   "internalApiUrl": "",
   "showProblemset": true,
