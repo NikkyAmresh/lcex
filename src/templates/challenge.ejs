@@ -138,6 +138,28 @@
       .content pre code { padding: 0; background: none; }
       .content strong { color: var(--text); }
       .content h3, .content h4 { margin: 20px 0 10px; color: var(--text); }
+      .solution-code-wrap pre.shiki {
+        margin: 0;
+        padding: 12px 16px;
+        font-family: var(--vscode-editor-font-family, monospace);
+        font-size: 13px;
+        overflow-x: auto;
+      }
+      .solution-code-wrap pre.shiki code {
+        background-color: transparent !important;
+        padding: 0 !important;
+      }
+      .solution-code-wrap .line,
+      .solution-code-wrap pre.shiki code span[style*="background"] {
+        background: transparent !important;
+      }
+      .solution-code-wrap {
+        cursor: pointer;
+      }
+      .solution-code-wrap:hover {
+        outline: 1px solid var(--accent);
+        outline-offset: -1px;
+      }
     </style>
   </head>
   <body>
@@ -168,10 +190,21 @@
       <% if (!isSolved) { %><button class="btn run" onclick="markAsSolved()" title="Mark this problem as solved">Mark as solved</button><% } %>
     </div>
     <% if (isLoggedIn) { %>
+      <% if (isSolved && (typeof solutionHtml !== 'undefined' && solutionHtml || typeof solutionContent !== 'undefined' && solutionContent)) { %>
+    <div class="solution-editor-section" style="margin-bottom: 16px;">
+      <label class="stat-label" style="display:block; margin-bottom: 6px;">Solution</label>
+      <% if (typeof solutionHtml !== 'undefined' && solutionHtml) { %>
+      <div class="solution-code-wrap" style="border: 1px solid var(--border); border-radius: 6px; overflow: hidden; font-size: 13px; line-height: 1.5; max-height: 420px; overflow-y: auto;" ondblclick="solve()" title="Double-click to open solution"><%- solutionHtml %></div>
+      <% } else { %>
+      <textarea id="solutionEditor" readonly rows="16" style="width: 100%; box-sizing: border-box; background: var(--code-bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-family: var(--vscode-editor-font-family, monospace); font-size: 13px; line-height: 1.5; resize: vertical; tab-size: 4; cursor: pointer;" ondblclick="solve()" title="Double-click to open solution"><%- (solutionContent || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') %></textarea>
+      <% } %>
+    </div>
+      <% } else { %>
     <div class="custom-input-section" style="margin-bottom: 16px;">
       <label class="stat-label" for="customInput" style="display:block; margin-bottom: 6px;">Custom test input (for Run on LeetCode)</label>
       <textarea id="customInput" rows="3" style="width: 100%; box-sizing: border-box; background: var(--code-bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-family: var(--vscode-editor-font-family, monospace); font-size: 13px;"><%= typeof sampleTestCase !== 'undefined' ? (sampleTestCase || '') : '' %></textarea>
     </div>
+      <% } %>
     <% } %>
     <div class="content"><%- content %></div>
     <details style="margin-top: 24px;">

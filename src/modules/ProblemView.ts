@@ -11,7 +11,7 @@ import { LeetCodeProvider } from "./LeetCode";
 import { generateTemplate } from "./TemplateEngine";
 import { pollRunStatus, pollSubmitStatus } from "../utils/apiPoller";
 import * as Logger from "./Logger";
-import { getProblemTimer } from "./ProblemTimer";
+import { getProblemTimer, TIMER_BY_DAY_KEY, TIMER_ELAPSED_KEY, type TimerByDay } from "./ProblemTimer";
 
 export interface ProblemViewState {
   webviewPanel: vscode.WebviewPanel;
@@ -20,6 +20,14 @@ export interface ProblemViewState {
 }
 
 const problemViews = new Map<string, ProblemViewState>();
+
+/** Single stats webview (reused + refresh command target). */
+let statsWebviewPanel: vscode.WebviewPanel | null = null;
+
+/** Days until on-disk problemset difficulty cache is ignored and refetched for stats. */
+export const PROBLEMSET_DIFFICULTY_CACHE_TTL_DAYS = 7;
+const PROBLEMSET_DIFFICULTY_CACHE_TTL_MS =
+  PROBLEMSET_DIFFICULTY_CACHE_TTL_DAYS * 24 * 60 * 60 * 1000;
 
 const SOLUTION_EXTENSIONS = new Set([".ts", ".js", ".py"]);
 
@@ -79,6 +87,214 @@ function getCachedProblem(titleSlug: string): Problem | undefined {
   return problemCache.get(titleSlug);
 }
 
+/** Normalize LeetCode difficulty strings (e.g. EASY / Easy) for stats bucketing. */
+function difficultyBucketFromRaw(raw: string | undefined): "Easy" | "Medium" | "Hard" | null {
+  if (raw === undefined || raw === "") return null;
+  const u = raw.trim().toUpperCase();
+  if (u === "EASY") return "Easy";
+  if (u === "MEDIUM") return "Medium";
+  if (u === "HARD") return "Hard";
+  return null;
+}
+
+/** Human-readable duration for stats UI (hours + minutes). */
+function formatDurationMinutes(totalMinutes: number): string {
+  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) return "0 min";
+  const m = Math.round(totalMinutes);
+  const h = Math.floor(m / 60);
+  const min = m % 60;
+  if (h === 0) return `${min} min`;
+  if (min === 0) return `${h} h`;
+  return `${h} h ${min} min`;
+}
+
+interface StatsDayRow {
+  date: string;
+  totalMinutes: number;
+  solvedCount: number;
+  breakdown: Array<{
+    slug: string;
+    title: string;
+    minutes: number;
+    durationLabel: string;
+    timeNote?: string;
+  }>;
+}
+
+interface StatsChartBar {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  date: string;
+  value: number;
+}
+
+/** Shared with stats.ejs SVG baseline / polyline scale. */
+interface StatsChartAxis {
+  x1: number;
+  x2: number;
+  yBottom: number;
+  labelY: number;
+}
+
+interface StatsTimeAnalysis {
+  /** Sum of all per-day timer ticks (no cumulative fallback); best “real” tracked time. */
+  totalMinutesTimerOnly: number;
+  totalTimerLabel: string;
+  /** Sum of each row’s minutes as shown in the list (can over-count if cumulative time appears on multiple days). */
+  totalMinutesDailyRowsSum: number;
+  totalDailyRowsLabel: string;
+  mostActiveDate: string | null;
+  mostActiveMinutes: number;
+  mostActiveLabel: string;
+  daysWithPracticeTime: number;
+  avgMinutesOnPracticeDays: number;
+  avgPracticeDaysLabel: string;
+  peakSolvedDate: string | null;
+  peakSolvedCount: number;
+  /** Max minutes in range (chart scale). */
+  chartTimeMaxMinutes: number;
+  chartTimeMaxLabel: string;
+  /** Max solved count in range (chart scale). */
+  chartSolvedMax: number;
+}
+
+function buildStatsChartsAndAnalysis(
+  rows: StatsDayRow[],
+  totalSecTimerOnly: number
+): {
+  chrono: StatsDayRow[];
+  timeAnalysis: StatsTimeAnalysis | null;
+  timeChartBars: StatsChartBar[];
+  solvedChartBars: StatsChartBar[];
+  chartViewBox: string;
+  chartAxis: StatsChartAxis;
+  xLabelIndices: number[];
+  timeLinePoints: string;
+  solvedLinePoints: string;
+} {
+  if (rows.length === 0) {
+    return {
+      chrono: [],
+      timeAnalysis: null,
+      timeChartBars: [],
+      solvedChartBars: [],
+      chartViewBox: "0 0 1000 200",
+      chartAxis: { x1: 52, x2: 980, yBottom: 164, labelY: 194 },
+      xLabelIndices: [],
+      timeLinePoints: "",
+      solvedLinePoints: "",
+    };
+  }
+
+  const chrono = [...rows].sort((a, b) => a.date.localeCompare(b.date));
+
+  const totalMinutesTimerOnly = Math.round(totalSecTimerOnly / 60);
+  const totalMinutesDailyRows = rows.reduce((s, d) => s + d.totalMinutes, 0);
+
+  let mostActive = chrono[0];
+  for (const d of chrono) {
+    if (d.totalMinutes > mostActive.totalMinutes) mostActive = d;
+  }
+
+  let peakSolved = chrono[0];
+  for (const d of chrono) {
+    if (d.solvedCount > peakSolved.solvedCount) peakSolved = d;
+  }
+
+  const daysWithTime = chrono.filter((d) => d.totalMinutes > 0);
+  const avgMinutesOnPracticeDays =
+    daysWithTime.length > 0
+      ? Math.round(
+          daysWithTime.reduce((s, d) => s + d.totalMinutes, 0) / daysWithTime.length
+        )
+      : 0;
+
+  const chartW = 1000;
+  const chartH = 200;
+  const padL = 52;
+  const padR = 20;
+  const padT = 16;
+  const padB = 36;
+  const innerW = chartW - padL - padR;
+  const innerH = chartH - padT - padB;
+  const chartAxis: StatsChartAxis = {
+    x1: padL,
+    x2: padL + innerW,
+    yBottom: padT + innerH,
+    labelY: chartH - 6,
+  };
+  const n = chrono.length;
+  const maxM = Math.max(...chrono.map((d) => d.totalMinutes), 1);
+  const maxS = Math.max(...chrono.map((d) => d.solvedCount), 1);
+  const slot = innerW / n;
+  const barW = Math.max(2, Math.min(28, slot * 0.72));
+
+  const timeChartBars: StatsChartBar[] = chrono.map((d, i) => {
+    const h = maxM > 0 ? (d.totalMinutes / maxM) * innerH : 0;
+    const x = padL + i * slot + (slot - barW) / 2;
+    const y = padT + innerH - h;
+    return { x, y, w: barW, h, date: d.date, value: d.totalMinutes };
+  });
+
+  const solvedChartBars: StatsChartBar[] = chrono.map((d, i) => {
+    const h = maxS > 0 ? (d.solvedCount / maxS) * innerH : 0;
+    const x = padL + i * slot + (slot - barW) / 2;
+    const y = padT + innerH - h;
+    return { x, y, w: barW, h, date: d.date, value: d.solvedCount };
+  });
+
+  const labelStep = n <= 12 ? 1 : n <= 24 ? 2 : n <= 48 ? 4 : Math.ceil(n / 12);
+  const xLabelIndices: number[] = [];
+  for (let i = 0; i < n; i += labelStep) xLabelIndices.push(i);
+  if (xLabelIndices.length === 0 || xLabelIndices[xLabelIndices.length - 1] !== n - 1) {
+    if (!xLabelIndices.includes(n - 1)) xLabelIndices.push(n - 1);
+  }
+
+  const timeAnalysis: StatsTimeAnalysis = {
+    totalMinutesTimerOnly,
+    totalTimerLabel: formatDurationMinutes(totalMinutesTimerOnly),
+    totalMinutesDailyRowsSum: totalMinutesDailyRows,
+    totalDailyRowsLabel: formatDurationMinutes(totalMinutesDailyRows),
+    mostActiveDate: mostActive.totalMinutes > 0 ? mostActive.date : null,
+    mostActiveMinutes: mostActive.totalMinutes,
+    mostActiveLabel:
+      mostActive.totalMinutes > 0
+        ? `${mostActive.date} · ${formatDurationMinutes(mostActive.totalMinutes)}`
+        : "—",
+    daysWithPracticeTime: daysWithTime.length,
+    avgMinutesOnPracticeDays,
+    avgPracticeDaysLabel: formatDurationMinutes(avgMinutesOnPracticeDays),
+    peakSolvedDate: peakSolved.solvedCount > 0 ? peakSolved.date : null,
+    peakSolvedCount: peakSolved.solvedCount,
+    chartTimeMaxMinutes: maxM,
+    chartTimeMaxLabel: formatDurationMinutes(maxM),
+    chartSolvedMax: maxS,
+  };
+
+  const timeLinePoints =
+    timeChartBars.length > 1
+      ? timeChartBars.map((b) => `${(b.x + b.w / 2).toFixed(2)},${b.y.toFixed(2)}`).join(" ")
+      : "";
+  const solvedLinePoints =
+    solvedChartBars.length > 1
+      ? solvedChartBars.map((b) => `${(b.x + b.w / 2).toFixed(2)},${b.y.toFixed(2)}`).join(" ")
+      : "";
+
+  return {
+    chrono,
+    timeAnalysis,
+    timeChartBars,
+    solvedChartBars,
+    chartViewBox: `0 0 ${chartW} ${chartH}`,
+    chartAxis,
+    xLabelIndices,
+    timeLinePoints,
+    solvedLinePoints,
+  };
+}
+
 /** Loads cache from JSON file into memory. Only reads disk once per session. */
 async function ensureProblemCacheLoaded(
   context: vscode.ExtensionContext
@@ -132,6 +348,162 @@ function setCachedProblem(
   }
 }
 
+const PROBLEMSET_DIFFICULTY_CACHE_FILENAME = "problemset-difficulty-cache.json";
+/** Beyond this many unknown slugs, one full problemset pagination is fewer HTTP round-trips. */
+const PROBLEMSET_FULL_LIST_MISSING_THRESHOLD = 200;
+const PARALLEL_DIFFICULTY_CONCURRENCY = 12;
+
+interface ProblemsetDifficultyDiskCache {
+  updatedAt: number;
+  difficulties: Record<string, string>;
+}
+
+async function loadProblemsetDifficultyDiskMap(
+  context: vscode.ExtensionContext
+): Promise<Map<string, string>> {
+  try {
+    const uri = vscode.Uri.joinPath(
+      context.globalStorageUri,
+      PROBLEMSET_DIFFICULTY_CACHE_FILENAME
+    );
+    const buf = await vscode.workspace.fs.readFile(uri);
+    const j = JSON.parse(Buffer.from(buf).toString("utf8")) as ProblemsetDifficultyDiskCache;
+    if (typeof j.updatedAt !== "number" || Date.now() - j.updatedAt > PROBLEMSET_DIFFICULTY_CACHE_TTL_MS) {
+      return new Map();
+    }
+    if (j.difficulties && typeof j.difficulties === "object" && !Array.isArray(j.difficulties)) {
+      return new Map(Object.entries(j.difficulties));
+    }
+  } catch {
+    // missing or invalid file
+  }
+  return new Map();
+}
+
+/** Deletes on-disk difficulty cache so stats refetches from LeetCode (manual refresh or after TTL). */
+export async function clearProblemsetDifficultyCacheFile(
+  context: vscode.ExtensionContext
+): Promise<void> {
+  try {
+    const uri = vscode.Uri.joinPath(
+      context.globalStorageUri,
+      PROBLEMSET_DIFFICULTY_CACHE_FILENAME
+    );
+    await vscode.workspace.fs.delete(uri, { useTrash: false });
+  } catch {
+    // ENOENT / not found
+  }
+}
+
+/** Clears cached difficulty data and reloads the stats webview if it is open. */
+export async function refreshStatsData(
+  context: vscode.ExtensionContext,
+  globalState: vscode.Memento
+): Promise<void> {
+  await clearProblemsetDifficultyCacheFile(context);
+  const panel = statsWebviewPanel;
+  if (panel) {
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "Refreshing stats…",
+      },
+      async () => {
+        try {
+          panel.webview.html = await renderStatsHtml(context, globalState, panel.webview);
+        } catch {
+          // Webview was disposed while loading
+        }
+      }
+    );
+    try {
+      panel.reveal(panel.viewColumn ?? vscode.ViewColumn.One);
+    } catch {
+      // Panel closed during refresh
+    }
+    void vscode.window.showInformationMessage(
+      "LeetCode stats refreshed (difficulty cache cleared and reloaded)."
+    );
+  } else {
+    void vscode.window.showInformationMessage(
+      "LeetCode stats difficulty cache cleared. Open “LeetCode: View Stats” to load fresh data."
+    );
+  }
+}
+
+async function saveProblemsetDifficultyDiskMap(
+  context: vscode.ExtensionContext,
+  map: Map<string, string>
+): Promise<void> {
+  try {
+    await vscode.workspace.fs.createDirectory(context.globalStorageUri);
+    const uri = vscode.Uri.joinPath(
+      context.globalStorageUri,
+      PROBLEMSET_DIFFICULTY_CACHE_FILENAME
+    );
+    const payload: ProblemsetDifficultyDiskCache = {
+      updatedAt: Date.now(),
+      difficulties: Object.fromEntries(map),
+    };
+    await vscode.workspace.fs.writeFile(uri, Buffer.from(JSON.stringify(payload), "utf8"));
+  } catch {
+    // ignore
+  }
+}
+
+async function mergeQuestionDifficultiesParallel(
+  slugs: string[],
+  lc: LeetCodeProvider,
+  into: Map<string, string>,
+  concurrency: number
+): Promise<void> {
+  if (slugs.length === 0) return;
+  let index = 0;
+  const nWorkers = Math.max(1, Math.min(concurrency, slugs.length));
+  const worker = async () => {
+    while (true) {
+      const i = index++;
+      if (i >= slugs.length) break;
+      const slug = slugs[i]!;
+      const d = await lc.getQuestionDifficultyOnly(slug);
+      if (d) into.set(slug, d);
+    }
+  };
+  await Promise.all(Array.from({ length: nWorkers }, () => worker()));
+}
+
+/**
+ * Disk-backed slug → difficulty for stats. Parallel lightweight GraphQL when few gaps;
+ * full problemset only when many slugs are unknown at once (first huge backlog).
+ */
+async function resolveProblemsetDifficultyMap(
+  context: vscode.ExtensionContext,
+  solvedSlugs: string[]
+): Promise<Map<string, string>> {
+  const diskMap = await loadProblemsetDifficultyDiskMap(context);
+  const missing: string[] = [];
+  for (const slug of solvedSlugs) {
+    if (difficultyBucketFromRaw(getCachedProblem(slug)?.difficulty)) continue;
+    if (difficultyBucketFromRaw(diskMap.get(slug))) continue;
+    missing.push(slug);
+  }
+  if (missing.length === 0) return diskMap;
+
+  const lc = new LeetCodeProvider();
+  if (missing.length > PROBLEMSET_FULL_LIST_MISSING_THRESHOLD) {
+    const list = await lc.getFullProblemsetList();
+    for (const q of list) {
+      diskMap.set(q.titleSlug, q.difficulty);
+    }
+    await saveProblemsetDifficultyDiskMap(context, diskMap);
+    return diskMap;
+  }
+
+  await mergeQuestionDifficultiesParallel(missing, lc, diskMap, PARALLEL_DIFFICULTY_CONCURRENCY);
+  await saveProblemsetDifficultyDiskMap(context, diskMap);
+  return diskMap;
+}
+
 function getTemplatesDir(context: vscode.ExtensionContext): string {
   return path.join(context.extensionPath, "out", "templates");
 }
@@ -157,6 +529,37 @@ async function renderChallengeHtml(
   const content = problem.content || "<p>No description.</p>";
   const difficulty = problem.difficulty || "Unknown";
   const hasSolution = await solutionFileExists(problem);
+  const isSolved = status === "solved";
+
+  let solutionContent: string | undefined;
+  let solutionHtml: string | undefined;
+  let solutionLang: string | undefined;
+  if (isSolved) {
+    const { path: solutionPath, exists } = await Database.resolveSolutionFilePathForOpen(
+      undefined,
+      problem.id,
+      problem.titleSlug
+    );
+    if (exists) {
+      try {
+        const buf = await vscode.workspace.fs.readFile(vscode.Uri.file(solutionPath));
+        const raw = Buffer.from(buf).toString("utf8");
+        solutionContent = raw;
+        const ext = path.extname(solutionPath).toLowerCase();
+        const lang = ext === ".ts" ? "typescript" : ext === ".js" ? "javascript" : ext === ".py" ? "python" : "typescript";
+        const theme =
+          vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Light ||
+          vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrastLight
+            ? "light-plus"
+            : "dark-plus";
+        const { codeToHtml } = await import("shiki");
+        solutionHtml = await codeToHtml(raw, { lang, theme });
+      } catch {
+        solutionHtml = undefined;
+      }
+    }
+  }
+
   const notesMap = context.globalState.get<Record<string, string>>("leetcode-practice.problemNotes") ?? {};
   const note = notesMap[problem.titleSlug] ?? "";
   return ejs.renderFile(path.join(templatesDir, "challenge.ejs"), {
@@ -164,12 +567,14 @@ async function renderChallengeHtml(
     title: problem.title,
     titleSlug: problem.titleSlug,
     difficulty,
-    isSolved: status === "solved",
+    isSolved,
     isLoggedIn: isLoggedIn ?? false,
     content,
     hasSolution,
     sampleTestCase: problem.sampleTestCase ?? "",
     note,
+    solutionContent,
+    solutionHtml,
   });
 }
 
@@ -206,34 +611,128 @@ async function renderStatsHtml(
 ): Promise<string> {
   await ensureProblemCacheLoaded(context);
   const entries = getAllStatusEntries(globalState);
+  const session = Database.getSession(context);
+  const leetcodeProfilePromise =
+    session?.cookie?.trim()
+      ? new LeetCodeProvider()
+          .getUserProfileAndStats(session.cookie)
+          .catch(() => null)
+      : Promise.resolve(null);
+
   const solved = Object.entries(entries).filter(([, e]) => e.status === "solved");
   const attempting = Object.values(entries).filter((e) => e.status === "attempting").length;
+
+  /** Problems only appear in disk cache after being opened; backfilled solves use disk + LeetCode. */
+  const needsProblemsetDifficulty = solved.some(
+    ([slug]) => difficultyBucketFromRaw(getCachedProblem(slug)?.difficulty) === null
+  );
+  let problemsetDifficultyBySlug: Map<string, string> | undefined;
+  if (needsProblemsetDifficulty) {
+    problemsetDifficultyBySlug = await resolveProblemsetDifficultyMap(
+      context,
+      solved.map(([s]) => s)
+    );
+  }
+
   let easySolved = 0;
   let mediumSolved = 0;
   let hardSolved = 0;
   for (const [slug] of solved) {
-    const difficulty = getCachedProblem(slug)?.difficulty ?? "Unknown";
-    if (difficulty === "Easy") easySolved++;
-    else if (difficulty === "Medium") mediumSolved++;
-    else if (difficulty === "Hard") hardSolved++;
+    let bucket = difficultyBucketFromRaw(getCachedProblem(slug)?.difficulty);
+    if (bucket === null && problemsetDifficultyBySlug) {
+      bucket = difficultyBucketFromRaw(problemsetDifficultyBySlug.get(slug));
+    }
+    if (bucket === "Easy") easySolved++;
+    else if (bucket === "Medium") mediumSolved++;
+    else if (bucket === "Hard") hardSolved++;
   }
   const totalSolved = solved.length;
   const streak = computeStreak(entries);
 
-  let leetcodeProfile: {
-    username: string;
-    realName: string | null;
-    userAvatar: string | null;
-    easySolved: number;
-    mediumSolved: number;
-    hardSolved: number;
-    totalSolved: number;
-  } | null = null;
-  const session = Database.getSession(context);
-  if (session?.cookie?.trim()) {
-    const leetcode = new LeetCodeProvider();
-    leetcodeProfile = await leetcode.getUserProfileAndStats(session.cookie);
+  const timerByDay = globalState.get<TimerByDay>(TIMER_BY_DAY_KEY) ?? {};
+  const timerElapsed =
+    globalState.get<Record<string, { elapsed: number }>>(TIMER_ELAPSED_KEY) ?? {};
+
+  const solvedByDate: Record<string, number> = {};
+  /** titleSlugs solved on each calendar day (from backfill / mark-as-solved) */
+  const solvedSlugsByDate: Record<string, string[]> = {};
+  for (const [slug, e] of Object.entries(entries)) {
+    if (e.status === "solved" && e.solvedAt) {
+      solvedByDate[e.solvedAt] = (solvedByDate[e.solvedAt] ?? 0) + 1;
+      if (!solvedSlugsByDate[e.solvedAt]) solvedSlugsByDate[e.solvedAt] = [];
+      solvedSlugsByDate[e.solvedAt].push(slug);
+    }
   }
+  const allDates = new Set<string>([
+    ...Object.keys(timerByDay),
+    ...Object.keys(solvedByDate),
+  ]);
+  const statsByDaySorted = Array.from(allDates)
+    .map((date) => {
+      const bySlug = timerByDay[date] ?? {};
+      const solvedOnDay = solvedSlugsByDate[date] ?? [];
+      const slugSet = new Set<string>([...Object.keys(bySlug), ...solvedOnDay]);
+
+      const breakdown = Array.from(slugSet)
+        .map((slug) => {
+          const daySec = bySlug[slug] ?? 0;
+          const cumulativeSec = timerElapsed[slug]?.elapsed ?? 0;
+          const sec = daySec > 0 ? daySec : cumulativeSec;
+          const minutes = Math.round(sec / 60);
+          return {
+            slug,
+            title: getCachedProblem(slug)?.title ?? slug,
+            minutes,
+            durationLabel: formatDurationMinutes(minutes),
+            /** Shown when minutes come from per-problem cumulative timer (no per-day ticks) */
+            timeNote:
+              daySec > 0
+                ? undefined
+                : cumulativeSec > 0
+                  ? "total tracked"
+                  : undefined,
+          };
+        })
+        .sort((a, b) => b.minutes - a.minutes || a.title.localeCompare(b.title));
+
+      const totalSec = Array.from(slugSet).reduce((sum, slug) => {
+        const daySec = bySlug[slug] ?? 0;
+        const cumulativeSec = timerElapsed[slug]?.elapsed ?? 0;
+        return sum + (daySec > 0 ? daySec : cumulativeSec);
+      }, 0);
+
+      const totalMinutes = Math.round(totalSec / 60);
+      return {
+        date,
+        totalMinutes,
+        totalDurationLabel: formatDurationMinutes(totalMinutes),
+        solvedCount: solvedByDate[date] ?? 0,
+        breakdown,
+      };
+    })
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const timeChartMaxMinutes =
+    statsByDaySorted.length > 0 ? Math.max(...statsByDaySorted.map((d) => d.totalMinutes), 1) : 1;
+
+  let totalSecTimerOnly = 0;
+  for (const dayMap of Object.values(timerByDay)) {
+    for (const sec of Object.values(dayMap)) {
+      totalSecTimerOnly += sec;
+    }
+  }
+  const {
+    chrono: statsChrono,
+    timeAnalysis,
+    timeChartBars,
+    solvedChartBars,
+    chartViewBox,
+    chartAxis,
+    xLabelIndices,
+    timeLinePoints,
+    solvedLinePoints,
+  } = buildStatsChartsAndAnalysis(statsByDaySorted as StatsDayRow[], totalSecTimerOnly);
+
+  const leetcodeProfile = await leetcodeProfilePromise;
 
   const templatesDir = getTemplatesDir(context);
   const logoUri = webview.asWebviewUri(
@@ -248,6 +747,19 @@ async function renderStatsHtml(
     streak,
     leetcodeProfile,
     logoUri,
+    statsByDaySorted,
+    timeChartMaxMinutes,
+    formatDuration: formatDurationMinutes,
+    timeAnalysis,
+    statsChrono,
+    timeChartBars,
+    solvedChartBars,
+    chartViewBox,
+    chartAxis,
+    xLabelIndices,
+    timeLinePoints,
+    solvedLinePoints,
+    statsCacheHint: `LeetCode difficulty cache expires after ${PROBLEMSET_DIFFICULTY_CACHE_TTL_DAYS} days. Command Palette: “LeetCode: Refresh Stats Data” to clear cache and reload now.`,
   });
 }
 
@@ -256,16 +768,35 @@ export async function openStatsWebview(
   globalState: vscode.Memento
 ): Promise<void> {
   const iconPath = { light: LOGO_URI(context), dark: LOGO_URI(context) };
+  const load = (w: vscode.Webview) =>
+    vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: "Loading stats…" },
+      () => renderStatsHtml(context, globalState, w)
+    );
+
+  if (statsWebviewPanel) {
+    try {
+      statsWebviewPanel.reveal(statsWebviewPanel.viewColumn ?? vscode.ViewColumn.One);
+      statsWebviewPanel.webview.html = await load(statsWebviewPanel.webview);
+      return;
+    } catch {
+      statsWebviewPanel = null;
+    }
+  }
+
   const panel = vscode.window.createWebviewPanel(
     "leetcodeStats",
     "LeetCode Practice Stats",
     vscode.ViewColumn.One,
     { enableScripts: false, iconPath } as vscode.WebviewPanelOptions
   );
-  panel.webview.html = await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: "Loading stats..." },
-    () => renderStatsHtml(context, globalState, panel.webview)
-  );
+  statsWebviewPanel = panel;
+  panel.onDidDispose(() => {
+    if (statsWebviewPanel === panel) {
+      statsWebviewPanel = null;
+    }
+  });
+  panel.webview.html = await load(panel.webview);
 }
 
 const TERMINAL_CMD_BY_EXT: Record<string, string> = {
@@ -380,6 +911,7 @@ function setupPanelMessageHandler(
       } else if (event === "submit") {
         await executeCode(context, s.problem, "submit");
       } else if (event === "markAsSolved") {
+        getProblemTimer()?.handlePause(msgSlug);
         if (opts?.onMarkSolved) {
           opts.onMarkSolved(msgSlug);
         } else {
@@ -447,7 +979,7 @@ export async function openProblemWebview(
       getProblemStatus,
       onMarkSolved: opts?.onMarkSolved,
     });
-    getProblemTimer()?.registerPanel(item.titleSlug, panel, cached.title);
+    getProblemTimer()?.registerPanel(item.titleSlug, panel, cached.title, status === "solved");
     softReload(context, item.titleSlug, getProvider, getProblemStatus).catch(
       () => {}
     );
@@ -488,7 +1020,7 @@ export async function openProblemWebview(
     getProblemStatus,
     onMarkSolved: opts?.onMarkSolved,
   });
-  getProblemTimer()?.registerPanel(item.titleSlug, panel, problem.title);
+  getProblemTimer()?.registerPanel(item.titleSlug, panel, problem.title, status === "solved");
 }
 
 export interface ProblemPanelState {
@@ -542,7 +1074,7 @@ export async function restoreProblemPanel(
     getProblemStatus,
     onMarkSolved: opts?.onMarkSolved,
   });
-  getProblemTimer()?.registerPanel(titleSlug, panel, problem.title);
+  getProblemTimer()?.registerPanel(titleSlug, panel, problem.title, status === "solved");
 }
 
 export async function openOrCreateSolution(

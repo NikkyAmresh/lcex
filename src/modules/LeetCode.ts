@@ -35,6 +35,16 @@ query questionData($titleSlug: String!) {
 }
 `;
 
+/** Minimal query for stats (avoids loading full statement/snippets). */
+const QUESTION_DIFFICULTY_QUERY = `
+query questionDifficulty($titleSlug: String!) {
+  question(titleSlug: $titleSlug) {
+    titleSlug
+    difficulty
+  }
+}
+`;
+
 interface LeetCodeQuestion {
   questionId: string;
   title: string;
@@ -672,6 +682,32 @@ export class LeetCodeProvider implements IProblemProvider {
         byDiff.All ??
         (byDiff.Easy ?? 0) + (byDiff.Medium ?? 0) + (byDiff.Hard ?? 0),
     };
+  }
+
+  /** Difficulty only — small payload for stats / caching. */
+  async getQuestionDifficultyOnly(idOrSlug: string): Promise<string | null> {
+    const slug = await this.toTitleSlug(idOrSlug);
+    if (!slug) return null;
+    const res = await fetch(GRAPHQL_URL, {
+      method: "POST",
+      headers: FETCH_HEADERS,
+      body: JSON.stringify({
+        operationName: "questionDifficulty",
+        variables: { titleSlug: slug },
+        query: QUESTION_DIFFICULTY_QUERY,
+      }),
+    });
+    if (!res.ok) return null;
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) return null;
+    let json: { data?: { question?: { difficulty?: string } } };
+    try {
+      json = (await res.json()) as typeof json;
+    } catch {
+      return null;
+    }
+    const d = json.data?.question?.difficulty;
+    return d && typeof d === "string" ? d : null;
   }
 
   async getProblem(idOrSlug: string): Promise<Problem | null> {

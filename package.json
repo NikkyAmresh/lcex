@@ -4,10 +4,41 @@
   "description": "Practice LeetCode problems in VS Code: generate TypeScript templates with example test cases, run examples with ts-node, browse problems & study plans, and track your progress. Sign in to sync with your LeetCode account.",
   "version": "0.1.0",
   "publisher": "lcex",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other", "Programming Languages", "Snippets"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages",
+    "Snippets"
+  ],
   "icon": "icons/logo-dark.png",
-  "activationEvents": ["onUri", "workspaceContains:**/.leetcode", "onStartupFinished", "onCustomEditor:leetcode-practice.configEditor", "onCommand:leetcode-practice.openProblem", "onCommand:leetcode-practice.openQotd", "onCommand:leetcode-practice.runExamples", "onCommand:leetcode-practice.runInTerminal", "onCommand:leetcode-practice.signIn", "onCommand:leetcode-practice.signOut", "onCommand:leetcode-practice.refreshProblems", "onCommand:leetcode-practice.refreshQotd", "onCommand:leetcode-practice.switchStudyPlan", "onCommand:leetcode-practice.switchProblemList", "onCommand:leetcode-practice.markAsSolved", "onCommand:leetcode-practice.markAsAttempting", "onCommand:leetcode-practice.clearProblemStatus", "onCommand:leetcode-practice.agentMakeRunnable", "onCommand:leetcode-practice.agentHint", "onView:leetcode-practice.problemsView", "onView:leetcode-practice.topInterview150View", "onView:leetcode-practice.problemListsView", "onView:leetcode-practice.qotdView"],
+  "activationEvents": [
+    "onUri",
+    "workspaceContains:**/.leetcode",
+    "onStartupFinished",
+    "onCustomEditor:leetcode-practice.configEditor",
+    "onCommand:leetcode-practice.openProblem",
+    "onCommand:leetcode-practice.openQotd",
+    "onCommand:leetcode-practice.runExamples",
+    "onCommand:leetcode-practice.runInTerminal",
+    "onCommand:leetcode-practice.signIn",
+    "onCommand:leetcode-practice.signOut",
+    "onCommand:leetcode-practice.refreshProblems",
+    "onCommand:leetcode-practice.refreshQotd",
+    "onCommand:leetcode-practice.refreshStatsData",
+    "onCommand:leetcode-practice.switchStudyPlan",
+    "onCommand:leetcode-practice.switchProblemList",
+    "onCommand:leetcode-practice.markAsSolved",
+    "onCommand:leetcode-practice.markAsAttempting",
+    "onCommand:leetcode-practice.clearProblemStatus",
+    "onCommand:leetcode-practice.agentMakeRunnable",
+    "onCommand:leetcode-practice.agentHint",
+    "onView:leetcode-practice.problemsView",
+    "onView:leetcode-practice.topInterview150View",
+    "onView:leetcode-practice.problemListsView",
+    "onView:leetcode-practice.qotdView"
+  ],
   "main": "./out/extension.js",
   "repository": {
     "type": "git",
@@ -93,6 +124,11 @@
       {
         "command": "leetcode-practice.viewStats",
         "title": "LeetCode: View Stats"
+      },
+      {
+        "command": "leetcode-practice.refreshStatsData",
+        "title": "LeetCode: Refresh Stats Data",
+        "category": "LeetCode"
       },
       {
         "command": "leetcode-practice.applyTheme",
@@ -247,8 +283,12 @@
     "languages": [
       {
         "id": "leetcode-config",
-        "aliases": ["LeetCode Config"],
-        "filenames": [".leetcode"],
+        "aliases": [
+          "LeetCode Config"
+        ],
+        "filenames": [
+          ".leetcode"
+        ],
         "icon": {
           "light": "./icons/logo-dark-16.png",
           "dark": "./icons/logo-dark-16.png"
@@ -265,13 +305,20 @@
         },
         "leetcodePractice.fileNamePattern": {
           "type": "string",
-          "enum": ["id", "slug"],
+          "enum": [
+            "id",
+            "slug"
+          ],
           "default": "id",
           "description": "New file name: 'id' → 167.ts, 'slug' → two-sum-ii-input-array-is-sorted.ts"
         },
         "leetcodePractice.language": {
           "type": "string",
-          "enum": ["typescript", "javascript", "python"],
+          "enum": [
+            "typescript",
+            "javascript",
+            "python"
+          ],
           "default": "typescript",
           "description": "Language for generated solution files and run/submit."
         },
@@ -292,7 +339,10 @@
         },
         "leetcodePractice.activeListSource": {
           "type": "string",
-          "enum": ["studyPlan", "problemList"],
+          "enum": [
+            "studyPlan",
+            "problemList"
+          ],
           "description": "Deprecated. Used only to migrate old configs (activeStudyPlan + problemList) when activeProblemList is unset."
         },
         "leetcodePractice.studyPlans": {
@@ -300,12 +350,26 @@
           "items": {
             "type": "object",
             "properties": {
-              "slug": { "type": "string", "description": "LeetCode study plan slug (e.g. top-interview-150)" },
-              "name": { "type": "string", "description": "Display name for the study plan" }
+              "slug": {
+                "type": "string",
+                "description": "LeetCode study plan slug (e.g. top-interview-150)"
+              },
+              "name": {
+                "type": "string",
+                "description": "Display name for the study plan"
+              }
             },
-            "required": ["slug", "name"]
+            "required": [
+              "slug",
+              "name"
+            ]
           },
-          "default": [{ "slug": "top-interview-150", "name": "Top Interview 150" }],
+          "default": [
+            {
+              "slug": "top-interview-150",
+              "name": "Top Interview 150"
+            }
+          ],
           "description": "Study plans to show in the Study Plans view. Add plans like top-interview-100, etc."
         },
         "leetcodePractice.problemLists": {
@@ -313,10 +377,19 @@
           "items": {
             "type": "object",
             "properties": {
-              "slug": { "type": "string", "description": "LeetCode problem-list slug (e.g. graph for /problem-list/graph/)" },
-              "name": { "type": "string", "description": "Display name for the problem list" }
+              "slug": {
+                "type": "string",
+                "description": "LeetCode problem-list slug (e.g. graph for /problem-list/graph/)"
+              },
+              "name": {
+                "type": "string",
+                "description": "Display name for the problem list"
+              }
             },
-            "required": ["slug", "name"]
+            "required": [
+              "slug",
+              "name"
+            ]
           },
           "default": [],
           "description": "LeetCode problem lists (favoriteQuestionList) shown in the Problem Lists sidebar."
@@ -348,7 +421,11 @@
         "id": "leetcode-practice.configEditor",
         "viewType": "leetcode-practice.configEditor",
         "displayName": "LeetCode Config",
-        "selector": [{ "filenamePattern": ".leetcode" }],
+        "selector": [
+          {
+            "filenamePattern": ".leetcode"
+          }
+        ],
         "priority": "default"
       }
     ]
@@ -363,8 +440,8 @@
     "install-extension": "npm run package && code --install-extension leetcode-practice-0.1.0.vsix --force"
   },
   "devDependencies": {
-    "@types/node": "^20.10.0",
     "@types/ejs": "^3.1.3",
+    "@types/node": "^20.10.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.2.1",
     "copyfiles": "^2.4.1",
@@ -372,6 +449,7 @@
     "typescript": "^5.3.0"
   },
   "dependencies": {
-    "ejs": "^3.1.9"
+    "ejs": "^3.1.9",
+    "shiki": "^4.0.2"
   }
 }

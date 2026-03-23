@@ -1,7 +1,12 @@
 import * as vscode from "vscode";
 
-const TIMER_STATE_KEY = "leetcode-practice.timerElapsed";
+/** Per-problem cumulative timer state (seconds), keyed by titleSlug */
+export const TIMER_ELAPSED_KEY = "leetcode-practice.timerElapsed";
+export const TIMER_BY_DAY_KEY = "leetcode-practice.timerByDay";
 const TICK_INTERVAL_MS = 1000;
+
+/** Per-day breakdown: { "YYYY-MM-DD": { titleSlug: seconds } } */
+export type TimerByDay = Record<string, Record<string, number>>;
 
 // Gradient: green (0-10min) -> amber (10-30min) -> red (30-45min) -> black (45min+)
 const GREEN = 0x26a641;
@@ -72,8 +77,11 @@ export class ProblemTimer {
   private activeTitleSlug: string | null = null;
   private lastActiveTitleSlug: string | null = null;
   private tickInterval: ReturnType<typeof setInterval> | null = null;
+  private focusCheckInterval: ReturnType<typeof setInterval> | null = null;
   private manualPause = new Map<string, boolean>();
+  private windowFocused = true;
   private readonly subscriptions: vscode.Disposable[] = [];
+  private readonly FOCUS_CHECK_MS = 500;
 
   constructor(
     context: vscode.ExtensionContext,
@@ -85,8 +93,29 @@ export class ProblemTimer {
     this.statusBarItem = statusBarItem;
     this.shouldShow = shouldShow;
     this.getTitleSlugForActiveSolutionFile = getTitleSlugForActiveSolutionFile;
-    const sub = vscode.window.onDidChangeActiveTextEditor(() => this.recomputeActive());
-    this.subscriptions.push(sub);
+    this.windowFocused = vscode.window.state?.focused ?? true;
+    this.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => this.recomputeActive()));
+    this.subscriptions.push(
+      vscode.window.onDidChangeWindowState((e) => this.onWindowStateChange(e.focused))
+    );
+    this.focusCheckInterval = setInterval(() => this.checkWindowFocus(), this.FOCUS_CHECK_MS);
+  }
+
+  private onWindowStateChange(focused: boolean): void {
+    if (this.windowFocused === focused) return;
+    this.windowFocused = focused;
+    if (!focused) {
+      this.stopTick();
+    } else if (this.activeTitleSlug && !this.isPaused(this.activeTitleSlug)) {
+      this.startTick();
+    }
+  }
+
+  private checkWindowFocus(): void {
+    const focused = vscode.window.state?.focused ?? true;
+    if (this.windowFocused !== focused) {
+      this.onWindowStateChange(focused);
+    }
   }
 
   /** Recompute which problem is "active" (panel focused OR its solution file focused). */
@@ -106,11 +135,11 @@ export class ProblemTimer {
   }
 
   private getState(): Record<string, TimerEntry> {
-    return this.context.globalState.get<Record<string, TimerEntry>>(TIMER_STATE_KEY) ?? {};
+    return this.context.globalState.get<Record<string, TimerEntry>>(TIMER_ELAPSED_KEY) ?? {};
   }
 
   private async saveState(state: Record<string, TimerEntry>): Promise<void> {
-    await this.context.globalState.update(TIMER_STATE_KEY, state);
+    await this.context.globalState.update(TIMER_ELAPSED_KEY, state);
   }
 
   private getElapsed(titleSlug: string): number {
@@ -198,8 +227,18 @@ export class ProblemTimer {
     if (!slug || this.isPaused(slug)) return;
     const elapsed = this.getElapsed(slug) + 1;
     void this.setElapsed(slug, elapsed);
+    void this.addTickToToday(slug);
     this.updateStatusBar(slug, elapsed, true);
     this.postToWebview(slug, elapsed, false, true);
+  }
+
+  private async addTickToToday(titleSlug: string): Promise<void> {
+    const today = new Date().toISOString().slice(0, 10);
+    const byDay = this.context.globalState.get<TimerByDay>(TIMER_BY_DAY_KEY) ?? {};
+    const day = byDay[today] ?? {};
+    day[titleSlug] = (day[titleSlug] ?? 0) + 1;
+    byDay[today] = day;
+    await this.context.globalState.update(TIMER_BY_DAY_KEY, byDay);
   }
 
   private setActive(titleSlug: string | null): void {
@@ -211,7 +250,7 @@ export class ProblemTimer {
       this.stopTick();
       this.broadcastToAllPanels(null);
     }
-    if (titleSlug && !this.isPaused(titleSlug)) {
+    if (titleSlug && !this.isPaused(titleSlug) && this.windowFocused) {
       this.startTick();
       this.updateStatusBar(titleSlug, this.getElapsed(titleSlug), true);
       this.broadcastToAllPanels(titleSlug);
@@ -235,8 +274,11 @@ export class ProblemTimer {
     }
   }
 
-  registerPanel(titleSlug: string, panel: vscode.WebviewPanel, problemTitle: string): void {
+  registerPanel(titleSlug: string, panel: vscode.WebviewPanel, problemTitle: string, solved?: boolean): void {
     this.panels.set(titleSlug, { panel, problemTitle });
+    if (solved) {
+      void this.setPaused(titleSlug, true);
+    }
     const sub = panel.onDidChangeViewState(() => this.onViewStateChange(titleSlug));
     this.subscriptions.push(sub);
     const elapsed = this.getElapsed(titleSlug);
@@ -297,6 +339,10 @@ export class ProblemTimer {
 
   dispose(): void {
     this.stopTick();
+    if (this.focusCheckInterval) {
+      clearInterval(this.focusCheckInterval);
+      this.focusCheckInterval = null;
+    }
     for (const sub of this.subscriptions) sub.dispose();
     this.subscriptions.length = 0;
     this.panels.clear();

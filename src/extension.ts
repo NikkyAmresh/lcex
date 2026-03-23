@@ -16,6 +16,7 @@ import type { ProblemPanelState } from "./modules/ProblemView";
 import {
   openProblemWebview,
   openStatsWebview,
+  refreshStatsData,
   runTsNodeInTerminal,
   PROBLEM_WEBVIEW_VIEWTYPE,
   restoreProblemPanel,
@@ -958,6 +959,14 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.viewStats", () => {
       openStatsWebview(context, globalState).catch((e) =>
+        vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))
+      );
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.refreshStatsData", () => {
+      refreshStatsData(context, globalState).catch((e) =>
         vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))
       );
     })

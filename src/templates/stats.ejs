@@ -39,6 +39,53 @@
       .profile-realname { color: var(--text-muted); font-size: 13px; }
       .subsection { font-size: 16px; margin: 16px 0 12px; color: var(--text-muted); font-weight: 500; }
       .local-section { border-top: 1px solid var(--border); padding-top: 20px; }
+      .time-by-day { margin-top: 24px; }
+      .time-day-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+      .time-day-date { min-width: 100px; color: var(--text-muted); font-size: 13px; }
+      .time-day-bar-wrap { flex: 1; min-width: 0; height: 20px; background: var(--border); border-radius: 4px; overflow: hidden; }
+      .time-day-bar { height: 100%; background: var(--easy); border-radius: 4px; transition: width 0.2s; }
+      .time-day-mins { min-width: 100px; text-align: right; font-size: 13px; color: var(--text-muted); white-space: nowrap; }
+      .time-day-solved { min-width: 64px; text-align: right; font-size: 13px; color: var(--easy); }
+      .time-day-breakdown { margin-left: 180px; margin-bottom: 12px; padding: 8px 12px; background: rgba(255,255,255,0.04); border-radius: 6px; font-size: 12px; }
+      .time-day-breakdown summary { cursor: pointer; color: var(--text-muted); }
+      .time-day-breakdown ul { margin: 6px 0 0; padding-left: 16px; }
+      .time-day-breakdown li { margin: 2px 0; }
+      .time-note { color: var(--text-muted); font-size: 11px; }
+      .insights { margin-top: 8px; }
+      .insight-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .insight-card {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px 14px;
+      }
+      .insight-label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+      .insight-value { font-size: 20px; font-weight: 600; color: var(--text); }
+      .insight-hint { color: var(--text-muted); font-size: 11px; margin: 8px 0 0; line-height: 1.4; }
+      .chart-panel { margin-top: 20px; overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; padding: 12px 12px 8px; background: rgba(0,0,0,0.15); }
+      .chart-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+      .chart-title { font-size: 13px; font-weight: 600; color: var(--text); }
+      .chart-scale { font-size: 11px; color: var(--text-muted); }
+      .chart-svg { display: block; width: 100%; height: auto; min-height: 160px; max-height: 220px; }
+      .chart-bar { fill: var(--easy); opacity: 0.85; }
+      .chart-bar-solved { fill: var(--medium); opacity: 0.85; }
+      .chart-line-time { fill: none; stroke: #59c1ff; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+      .chart-line-solved { fill: none; stroke: #d39b00; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+      .chart-axis-text { fill: var(--text-muted); font-size: 10px; }
+      .chart-0 { stroke: var(--border); stroke-width: 1; }
+      .stats-cache-hint {
+        margin: 20px 0 0;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+        color: var(--text-muted);
+        font-size: 11px;
+        line-height: 1.45;
+      }
     </style>
   </head>
   <body>
@@ -111,5 +158,119 @@
       </div>
     </section>
     <% } %>
+    <% if (typeof timeAnalysis !== 'undefined' && timeAnalysis && typeof timeChartBars !== 'undefined' && timeChartBars.length > 0) { %>
+    <section class="insights local-section">
+      <h2 class="subsection">Time insights</h2>
+      <div class="insight-grid">
+        <div class="insight-card">
+          <div class="insight-label">Total (timer ticks)</div>
+          <div class="insight-value"><%= timeAnalysis.totalTimerLabel %></div>
+          <p class="insight-hint">Sum of seconds recorded per day by the practice timer. Most accurate total.</p>
+        </div>
+        <div class="insight-card">
+          <div class="insight-label">Total (sum of daily rows)</div>
+          <div class="insight-value"><%= timeAnalysis.totalDailyRowsLabel %></div>
+          <p class="insight-hint">Matches the list below; can exceed timer total when “total tracked” minutes appear on multiple days.</p>
+        </div>
+        <div class="insight-card">
+          <div class="insight-label">Most active day (time)</div>
+          <div class="insight-value" style="font-size: 15px;"><%= timeAnalysis.mostActiveLabel %></div>
+          <p class="insight-hint">Day with the highest minutes in the daily breakdown.</p>
+        </div>
+        <div class="insight-card">
+          <div class="insight-label">Avg on days with time</div>
+          <div class="insight-value"><%= timeAnalysis.avgPracticeDaysLabel %></div>
+          <p class="insight-hint"><%= timeAnalysis.daysWithPracticeTime %> day<%= timeAnalysis.daysWithPracticeTime === 1 ? '' : 's' %> with &gt; 0 min.</p>
+        </div>
+        <div class="insight-card">
+          <div class="insight-label">Busiest day (solved)</div>
+          <div class="insight-value" style="font-size: 15px;">
+            <% if (timeAnalysis.peakSolvedDate) { %><%= timeAnalysis.peakSolvedDate %> · <%= timeAnalysis.peakSolvedCount %> solved<% } else { %>—<% } %>
+          </div>
+          <p class="insight-hint">Most problems marked solved on one calendar day.</p>
+        </div>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-head">
+          <span class="chart-title">Minutes per day</span>
+          <span class="chart-scale">Scale max <%= timeAnalysis.chartTimeMaxLabel %></span>
+        </div>
+        <svg class="chart-svg" viewBox="<%= chartViewBox %>" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Bar and line chart of practice minutes per day">
+          <title>Minutes per day</title>
+          <line class="chart-0" x1="<%= chartAxis.x1 %>" y1="<%= chartAxis.yBottom %>" x2="<%= chartAxis.x2 %>" y2="<%= chartAxis.yBottom %>" />
+          <% timeChartBars.forEach(function(b) { %>
+          <rect class="chart-bar" x="<%= b.x %>" y="<%= b.y %>" width="<%= b.w %>" height="<%= Math.max(b.h, 0) %>" rx="2">
+            <title><%= b.date %>: <%= formatDuration(b.value) %></title>
+          </rect>
+          <% }); %>
+          <% if (typeof timeLinePoints !== 'undefined' && timeLinePoints) { %>
+          <polyline class="chart-line-time" points="<%= timeLinePoints %>" />
+          <% } %>
+          <% xLabelIndices.forEach(function(i) { 
+               var b = timeChartBars[i];
+               if (!b || !statsChrono[i]) return;
+               var cx = b.x + b.w / 2;
+          %>
+          <text class="chart-axis-text" x="<%= cx %>" y="<%= chartAxis.labelY %>" text-anchor="middle"><%= statsChrono[i].date.slice(5) %></text>
+          <% }); %>
+        </svg>
+      </div>
+      <div class="chart-panel">
+        <div class="chart-head">
+          <span class="chart-title">Solved count per day</span>
+          <span class="chart-scale">Scale max <%= timeAnalysis.chartSolvedMax %> solved</span>
+        </div>
+        <svg class="chart-svg" viewBox="<%= chartViewBox %>" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Bar and line chart of problems solved per day">
+          <title>Solved per day</title>
+          <line class="chart-0" x1="<%= chartAxis.x1 %>" y1="<%= chartAxis.yBottom %>" x2="<%= chartAxis.x2 %>" y2="<%= chartAxis.yBottom %>" />
+          <% solvedChartBars.forEach(function(b) { %>
+          <rect class="chart-bar-solved" x="<%= b.x %>" y="<%= b.y %>" width="<%= b.w %>" height="<%= Math.max(b.h, 0) %>" rx="2">
+            <title><%= b.date %>: <%= b.value %> solved</title>
+          </rect>
+          <% }); %>
+          <% if (typeof solvedLinePoints !== 'undefined' && solvedLinePoints) { %>
+          <polyline class="chart-line-solved" points="<%= solvedLinePoints %>" />
+          <% } %>
+          <% xLabelIndices.forEach(function(i) { 
+               var b = solvedChartBars[i];
+               if (!b || !statsChrono[i]) return;
+               var cx = b.x + b.w / 2;
+          %>
+          <text class="chart-axis-text" x="<%= cx %>" y="<%= chartAxis.labelY %>" text-anchor="middle"><%= statsChrono[i].date.slice(5) %></text>
+          <% }); %>
+        </svg>
+      </div>
+    </section>
+    <% } %>
+    <section class="time-by-day local-section">
+      <h2 class="subsection">Time & solved by day</h2>
+      <% if (typeof statsByDaySorted !== 'undefined' && statsByDaySorted.length > 0) { %>
+      <% statsByDaySorted.forEach(function(day) { %>
+      <div class="time-day-row">
+        <span class="time-day-date"><%= day.date %></span>
+        <div class="time-day-bar-wrap">
+          <div class="time-day-bar" style="width: <%= Math.round((day.totalMinutes / timeChartMaxMinutes) * 100) %>%"></div>
+        </div>
+        <span class="time-day-mins"><%= day.totalDurationLabel %></span>
+        <span class="time-day-solved"><%= day.solvedCount %> solved</span>
+      </div>
+      <% if (day.breakdown.length > 0) { %>
+      <details class="time-day-breakdown">
+        <summary>Problems &amp; time</summary>
+        <ul>
+          <% day.breakdown.forEach(function(b) { %>
+          <li><%= b.title %> — <%= b.durationLabel %><% if (typeof b.timeNote !== 'undefined' && b.timeNote) { %> <span class="time-note">(<%= b.timeNote %>)</span><% } %></li>
+          <% }); %>
+        </ul>
+      </details>
+      <% } %>
+      <% }); %>
+      <% } else { %>
+      <p style="color: var(--text-muted); font-size: 13px; margin: 0;">No data yet. Mark problems as solved and let the timer run to track time per day.</p>
+      <% } %>
+      <% if (typeof statsCacheHint !== 'undefined' && statsCacheHint) { %>
+      <p class="stats-cache-hint"><%= statsCacheHint %></p>
+      <% } %>
+    </section>
   </body>
 </html>
