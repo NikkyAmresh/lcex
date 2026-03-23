@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "Meta SDE 3",
+  "durationMinutes": 60,
+  "problems": [
+    {
+      "titleSlug": "lowest-common-ancestor-of-a-binary-tree",
+      "difficulty": "MEDIUM"
+    },
+    {
+      "titleSlug": "course-schedule",
+      "difficulty": "MEDIUM"
+    },
+    {
+      "titleSlug": "word-break",
+      "difficulty": "MEDIUM"
+    },
+    {
+      "titleSlug": "trapping-rain-water",
+      "difficulty": "HARD"
+    }
+  ],
+  "attempts": [
+    {
+      "id": "e3c",
+      "time": "2026-03-23T12:56:02.989Z"
+    }
+  ]
+}

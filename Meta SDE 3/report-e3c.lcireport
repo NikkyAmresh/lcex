@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "interviewName": "Meta SDE 3",
+  "sourceLcInterviewPath": "/Users/nikky.amresh/files/lcex/Meta-SDE3.lcInterview",
+  "writtenAt": 1774270575833,
+  "entry": {
+    "startedAt": 1774270563038,
+    "endedAt": 1774270573072,
+    "durationMinutes": 60,
+    "plannedCount": 4,
+    "solvedCount": 1,
+    "bonusXp": 20,
+    "plannedSlugs": [
+      "lowest-common-ancestor-of-a-binary-tree",
+      "course-schedule",
+      "word-break",
+      "trapping-rain-water"
+    ],
+    "solvedSlugs": [
+      "course-schedule"
+    ],
+    "plannedProblems": [
+      {
+        "titleSlug": "lowest-common-ancestor-of-a-binary-tree",
+        "difficulty": "MEDIUM"
+      },
+      {
+        "titleSlug": "course-schedule",
+        "difficulty": "MEDIUM"
+      },
+      {
+        "titleSlug": "word-break",
+        "difficulty": "MEDIUM"
+      },
+      {
+        "titleSlug": "trapping-rain-water",
+        "difficulty": "HARD"
+      }
+    ],
+    "xpBreakdown": {
+      "easyXp": 0,
+      "mediumXp": 20,
+      "hardXp": 0,
+      "unknownXp": 0,
+      "perfectBonusXp": 0
+    },
+    "perProblem": [
+      {
+        "titleSlug": "lowest-common-ancestor-of-a-binary-tree",
+        "title": "lowest-common-ancestor-of-a-binary-tree",
+        "secondsSpent": 3,
+        "solvedInInterview": false,
+        "interviewXpEarned": 0
+      },
+      {
+        "titleSlug": "course-schedule",
+        "title": "course-schedule",
+        "secondsSpent": 6,
+        "solvedInInterview": true,
+        "interviewXpEarned": 20
+      },
+      {
+        "titleSlug": "word-break",
+        "title": "word-break",
+        "secondsSpent": 0,
+        "solvedInInterview": false,
+        "interviewXpEarned": 0
+      },
+      {
+        "titleSlug": "trapping-rain-water",
+        "title": "trapping-rain-water",
+        "secondsSpent": 0,
+        "solvedInInterview": false,
+        "interviewXpEarned": 0
+      }
+    ]
+  },
+  "attemptId": "e3c",
+  "solutionFolderPath": "/Users/nikky.amresh/files/lcex/Meta SDE 3",
+  "hubRows": [
+    {
+      "titleSlug": "lowest-common-ancestor-of-a-binary-tree",
+      "title": "Lowest Common Ancestor of a Binary Tree",
+      "practiceLabel": "Attempting",
+      "interviewSolved": false,
+      "secondsSpent": 3,
+      "interviewXpEarned": 0
+    },
+    {
+      "titleSlug": "course-schedule",
+      "title": "Course Schedule",
+      "practiceLabel": "Not tracked",
+      "interviewSolved": true,
+      "secondsSpent": 6,
+      "interviewXpEarned": 20
+    },
+    {
+      "titleSlug": "word-break",
+      "title": "Word Break",
+      "practiceLabel": "Not tracked",
+      "interviewSolved": false,
+      "secondsSpent": 0,
+      "interviewXpEarned": 0
+    },
+    {
+      "titleSlug": "trapping-rain-water",
+      "title": "Trapping Rain Water",
+      "practiceLabel": "Attempting",
+      "interviewSolved": false,
+      "secondsSpent": 0,
+      "interviewXpEarned": 0
+    }
+  ]
+}
