@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "interviewName": "Interview plan: Meta",
+  "sourceLcInterviewPath": "/Users/nikky.amresh/files/lcex/Interview plan- 2026-03-23/Meta.lcInterview",
+  "writtenAt": 1774269683027,
+  "entry": {
+    "startedAt": 1774269630878,
+    "endedAt": 1774269680481,
+    "durationMinutes": 60,
+    "plannedCount": 3,
+    "solvedCount": 2,
+    "bonusXp": 60,
+    "plannedSlugs": [
+      "valid-palindrome",
+      "number-of-islands",
+      "binary-tree-maximum-path-sum"
+    ],
+    "solvedSlugs": [
+      "binary-tree-maximum-path-sum",
+      "number-of-islands"
+    ],
+    "plannedProblems": [
+      {
+        "titleSlug": "valid-palindrome",
+        "difficulty": "EASY"
+      },
+      {
+        "titleSlug": "number-of-islands",
+        "difficulty": "MEDIUM"
+      },
+      {
+        "titleSlug": "binary-tree-maximum-path-sum",
+        "difficulty": "HARD"
+      }
+    ],
+    "xpBreakdown": {
+      "easyXp": 0,
+      "mediumXp": 20,
+      "hardXp": 40,
+      "unknownXp": 0,
+      "perfectBonusXp": 0
+    },
+    "perProblem": [
+      {
+        "titleSlug": "valid-palindrome",
+        "title": "valid-palindrome",
+        "secondsSpent": 9,
+        "solvedInInterview": false,
+        "interviewXpEarned": 0
+      },
+      {
+        "titleSlug": "number-of-islands",
+        "title": "number-of-islands",
+        "secondsSpent": 14,
+        "solvedInInterview": true,
+        "interviewXpEarned": 20
+      },
+      {
+        "titleSlug": "binary-tree-maximum-path-sum",
+        "title": "binary-tree-maximum-path-sum",
+        "secondsSpent": 25,
+        "solvedInInterview": true,
+        "interviewXpEarned": 40
+      }
+    ]
+  },
+  "attemptId": "7b9",
+  "solutionFolderPath": "/Users/nikky.amresh/files/lcex/Interview plan- 2026-03-23/Interview plan- Meta",
+  "hubRows": [
+    {
+      "titleSlug": "valid-palindrome",
+      "title": "Valid Palindrome",
+      "practiceLabel": "Solved",
+      "interviewSolved": false,
+      "secondsSpent": 9,
+      "interviewXpEarned": 0
+    },
+    {
+      "titleSlug": "number-of-islands",
+      "title": "Number of Islands",
+      "practiceLabel": "Solved",
+      "interviewSolved": true,
+      "secondsSpent": 14,
+      "interviewXpEarned": 20
+    },
+    {
+      "titleSlug": "binary-tree-maximum-path-sum",
+      "title": "Binary Tree Maximum Path Sum",
+      "practiceLabel": "Solved",
+      "interviewSolved": true,
+      "secondsSpent": 25,
+      "interviewXpEarned": 40
+    }
+  ]
+}

@@ -48,19 +48,30 @@ export function getFileName(problemId: string, titleSlug: string): string {
   return base + ext;
 }
 
+const ATTEMPT_HEX = /^[0-9a-f]{3}$/i;
+
 /** Absolute paths for id- vs slug-based solution filenames (same extension from workspace language). */
 export function getSolutionPathSet(
   baseUri: vscode.Uri | undefined,
   problemId: string,
-  titleSlug: string
+  titleSlug: string,
+  solutionBaseDir?: string,
+  attemptHex?: string
 ): { idPath: string; slugPath: string; preferredNewPath: string } {
-  const targetDir = getTargetDir(baseUri);
+  const targetDir =
+    typeof solutionBaseDir === "string" && solutionBaseDir.trim()
+      ? path.resolve(solutionBaseDir.trim())
+      : getTargetDir(baseUri);
   const folders = vscode.workspace.workspaceFolders ?? [];
   const config = getEffectiveConfig(folders);
   const ext = EXT_BY_LANG[config.language ?? "typescript"] ?? ".ts";
   const pattern = config.fileNamePattern ?? "id";
-  const idPath = path.join(targetDir, problemId + ext);
-  const slugPath = path.join(targetDir, titleSlug + ext);
+  const suffix =
+    typeof attemptHex === "string" && ATTEMPT_HEX.test(attemptHex.trim())
+      ? `-${attemptHex.trim().toLowerCase()}`
+      : "";
+  const idPath = path.join(targetDir, `${problemId}${suffix}${ext}`);
+  const slugPath = path.join(targetDir, `${titleSlug}${suffix}${ext}`);
   const preferredNewPath = pattern === "slug" ? slugPath : idPath;
   return { idPath, slugPath, preferredNewPath };
 }
@@ -72,12 +83,16 @@ export function getSolutionPathSet(
 export async function resolveSolutionFilePathForOpen(
   baseUri: vscode.Uri | undefined,
   problemId: string,
-  titleSlug: string
+  titleSlug: string,
+  solutionBaseDir?: string,
+  attemptHex?: string
 ): Promise<{ path: string; exists: boolean }> {
   const { idPath, slugPath, preferredNewPath } = getSolutionPathSet(
     baseUri,
     problemId,
-    titleSlug
+    titleSlug,
+    solutionBaseDir,
+    attemptHex
   );
   const folders = vscode.workspace.workspaceFolders ?? [];
   const pattern = getEffectiveConfig(folders).fileNamePattern ?? "id";

@@ -4,7 +4,12 @@ import * as ejs from "ejs";
 import type { IProblemProvider, Problem } from "./interface/Problem";
 import type { ProblemListItem } from "./LeetCode";
 import type { ProblemStatus } from "./ProblemsProvider";
-import { getAllStatusEntries, setProblemStatus, type StoredStatusEntry } from "./ProblemsProvider";
+import {
+  getAllStatusEntries,
+  getStoredStatus,
+  setProblemStatus,
+  type StoredStatusEntry,
+} from "./ProblemsProvider";
 import * as Database from "./Database";
 import { getEffectiveConfig } from "./LeetcodeConfig";
 import { LeetCodeProvider } from "./LeetCode";
@@ -22,7 +27,14 @@ import {
   todayIso,
   xpLevelProgress,
 } from "./Gamification";
-import { getInterviewHistory, getInterviewSession } from "./InterviewMode";
+import {
+  getInterviewHistory,
+  getInterviewSession,
+  setInterviewFocusProblem,
+  type InterviewHistoryEntry,
+  type InterviewSessionState,
+} from "./InterviewMode";
+import type { LcInterviewReportFileV1 } from "./LcexInterviewReportStore";
 
 export interface ProblemViewState {
   webviewPanel: vscode.WebviewPanel;
@@ -35,6 +47,180 @@ const problemViews = new Map<string, ProblemViewState>();
 /** Single stats webview (reused + refresh command target). */
 let statsWebviewPanel: vscode.WebviewPanel | null = null;
 
+export type InterviewSetupStartMessage = {
+  type: "start";
+  durationMinutes: 45 | 60 | 180;
+  problemCount: number;
+  customSlugsRaw: string;
+};
+
+export type InterviewSetupOpenProblemMessage = {
+  type: "openProblem";
+  titleSlug: string;
+};
+
+export type InterviewSetupHandlers = {
+  onStart: (msg: InterviewSetupStartMessage) => Promise<{ ok: true } | { ok: false; message: string }>;
+  onOpenProblem: (titleSlug: string) => Promise<void>;
+};
+
+export interface InterviewHubRow {
+  titleSlug: string;
+  title: string;
+  difficulty: string;
+  practiceLabel: string;
+  interviewSolved: boolean;
+}
+
+export interface InterviewReportDetailRow {
+  title: string;
+  titleSlug: string;
+  practiceLabel: string;
+  interviewSolved: boolean;
+  secondsSpent: number;
+  interviewXpEarned: number;
+}
+
+export interface InterviewReportViewModel {
+  interviewName: string;
+  entry: InterviewHistoryEntry;
+  hubRows: InterviewHubRow[];
+  reportRows: InterviewReportDetailRow[];
+  plannedMinutes: number;
+  actualMinutes: number;
+  actualRemainderSeconds: number;
+  attemptId?: string;
+  solutionFolderPath?: string;
+}
+
+function mergeInterviewReportDetailRows(
+  hubRows: InterviewHubRow[],
+  entry: InterviewHistoryEntry
+): InterviewReportDetailRow[] {
+  const per = entry.perProblem ?? [];
+  return hubRows.map((h) => {
+    const st = per.find((p) => p.titleSlug === h.titleSlug);
+    return {
+      title: h.title,
+      titleSlug: h.titleSlug,
+      practiceLabel: h.practiceLabel,
+      interviewSolved: h.interviewSolved,
+      secondsSpent: st?.secondsSpent ?? 0,
+      interviewXpEarned: st?.interviewXpEarned ?? 0,
+    };
+  });
+}
+
+export function computeActualSessionDuration(entry: InterviewHistoryEntry): {
+  actualMinutes: number;
+  actualRemainderSeconds: number;
+} {
+  const ms = Math.max(0, entry.endedAt - entry.startedAt);
+  return {
+    actualMinutes: Math.floor(ms / 60_000),
+    actualRemainderSeconds: Math.floor((ms % 60_000) / 1000),
+  };
+}
+
+export async function buildInterviewReportHubRowsForEntry(
+  context: vscode.ExtensionContext,
+  getProvider: () => IProblemProvider,
+  entry: InterviewHistoryEntry
+): Promise<InterviewHubRow[]> {
+  const gs = context.globalState;
+  const solved = new Set(entry.solvedSlugs);
+  const planned = entry.plannedProblems?.length
+    ? entry.plannedProblems
+    : entry.plannedSlugs.map((slug) => ({ titleSlug: slug, difficulty: "MEDIUM" }));
+  const rows: InterviewHubRow[] = [];
+  for (const p of planned) {
+    const prob = await getProvider().getProblem(p.titleSlug);
+    const title = prob?.title ?? p.titleSlug;
+    const difficulty = prob?.difficulty ?? p.difficulty ?? "MEDIUM";
+    const st = getStoredStatus(gs, p.titleSlug);
+    const practiceLabel =
+      st === "solved" ? "Solved" : st === "attempting" ? "Attempting" : "Not tracked";
+    rows.push({
+      titleSlug: p.titleSlug,
+      title,
+      difficulty,
+      practiceLabel,
+      interviewSolved: solved.has(p.titleSlug),
+    });
+  }
+  return rows;
+}
+
+export async function buildInterviewReportViewModel(
+  context: vscode.ExtensionContext,
+  getProvider: () => IProblemProvider,
+  entry: InterviewHistoryEntry,
+  interviewName: string,
+  meta?: { attemptId?: string; solutionFolderPath?: string }
+): Promise<InterviewReportViewModel> {
+  const { actualMinutes, actualRemainderSeconds } = computeActualSessionDuration(entry);
+  const hubRows = await buildInterviewReportHubRowsForEntry(context, getProvider, entry);
+  const reportRows = mergeInterviewReportDetailRows(hubRows, entry);
+  return {
+    interviewName,
+    entry,
+    hubRows,
+    reportRows,
+    plannedMinutes: entry.durationMinutes,
+    actualMinutes,
+    actualRemainderSeconds,
+    ...(meta?.attemptId ? { attemptId: meta.attemptId } : {}),
+    ...(meta?.solutionFolderPath ? { solutionFolderPath: meta.solutionFolderPath } : {}),
+  };
+}
+
+export function interviewReportViewModelFromSnapshotFile(
+  f: LcInterviewReportFileV1
+): InterviewReportViewModel {
+  const e = f.entry;
+  const { actualMinutes, actualRemainderSeconds } = computeActualSessionDuration(e);
+  const hubRows: InterviewHubRow[] = f.hubRows.map((r) => ({
+    titleSlug: r.titleSlug,
+    title: r.title,
+    difficulty: "",
+    practiceLabel: r.practiceLabel,
+    interviewSolved: r.interviewSolved,
+  }));
+  const reportRows: InterviewReportDetailRow[] = f.hubRows.map((r) => ({
+    title: r.title,
+    titleSlug: r.titleSlug,
+    practiceLabel: r.practiceLabel,
+    interviewSolved: r.interviewSolved,
+    secondsSpent: typeof r.secondsSpent === "number" ? r.secondsSpent : 0,
+    interviewXpEarned: typeof r.interviewXpEarned === "number" ? r.interviewXpEarned : 0,
+  }));
+  return {
+    interviewName: f.interviewName,
+    entry: e,
+    hubRows,
+    reportRows,
+    plannedMinutes: e.durationMinutes,
+    actualMinutes,
+    actualRemainderSeconds,
+    ...(typeof f.attemptId === "string" && f.attemptId.trim() ? { attemptId: f.attemptId.trim().toLowerCase() } : {}),
+    ...(typeof f.solutionFolderPath === "string" && f.solutionFolderPath.trim()
+      ? { solutionFolderPath: f.solutionFolderPath.trim() }
+      : {}),
+  };
+}
+
+let interviewSetupPanel: vscode.WebviewPanel | null = null;
+let interviewReportPanel: vscode.WebviewPanel | null = null;
+let interviewReportLastModel: InterviewReportViewModel | null = null;
+let interviewReportGetProvider: (() => IProblemProvider) | null = null;
+
+let interviewSetupOnStart:
+  | ((msg: InterviewSetupStartMessage) => Promise<{ ok: true } | { ok: false; message: string }>)
+  | null = null;
+let interviewSetupOnOpenProblem: ((titleSlug: string) => Promise<void>) | null = null;
+let interviewSetupGetProvider: (() => IProblemProvider) | null = null;
+let interviewHubExtensionContext: vscode.ExtensionContext | null = null;
+
 /** Days until on-disk problemset difficulty cache is ignored and refetched for stats. */
 export const PROBLEMSET_DIFFICULTY_CACHE_TTL_DAYS = 7;
 const PROBLEMSET_DIFFICULTY_CACHE_TTL_MS =
@@ -42,18 +228,36 @@ const PROBLEMSET_DIFFICULTY_CACHE_TTL_MS =
 
 const SOLUTION_EXTENSIONS = new Set([".ts", ".js", ".py"]);
 
+function interviewSolutionBaseDir(globalState: vscode.Memento): string | undefined {
+  const s = getInterviewSession(globalState);
+  if (s?.active && s.solutionFolderPath?.trim()) {
+    return s.solutionFolderPath.trim();
+  }
+  return undefined;
+}
+
+function interviewSolutionAttemptHex(globalState: vscode.Memento): string | undefined {
+  const s = getInterviewSession(globalState);
+  if (!s?.active) return undefined;
+  const h = typeof s.attemptHex === "string" ? s.attemptHex.trim().toLowerCase() : "";
+  return /^[0-9a-f]{3}$/.test(h) ? h : undefined;
+}
+
 /** Returns titleSlug if the active editor is a solution file for a registered problem; otherwise null. */
-export function getTitleSlugForActiveSolutionFile(): string | null {
+export function getTitleSlugForActiveSolutionFile(context: vscode.ExtensionContext): string | null {
   const editor = vscode.window.activeTextEditor;
   if (!editor) return null;
   const ext = path.extname(editor.document.uri.fsPath).toLowerCase();
   if (!SOLUTION_EXTENSIONS.has(ext)) return null;
   const editorPath = path.resolve(editor.document.uri.fsPath);
+  const solutionBase = interviewSolutionBaseDir(context.globalState);
   for (const [, state] of problemViews) {
     const { idPath, slugPath } = Database.getSolutionPathSet(
       editor.document.uri,
       state.problem.id,
-      state.problem.titleSlug
+      state.problem.titleSlug,
+      solutionBase,
+      interviewSolutionAttemptHex(context.globalState)
     );
     if (editorPath === path.resolve(idPath) || editorPath === path.resolve(slugPath)) {
       return state.problem.titleSlug;
@@ -105,7 +309,7 @@ export function getCachedProblemDifficulty(titleSlug: string): string | undefine
 
 export function notifyAllProblemPanelsUiMode(context: vscode.ExtensionContext): void {
   const focusCompact = context.globalState.get<boolean>(FOCUS_COMPACT_WEBVIEW_KEY) ?? false;
-  const interviewMode = Boolean(getInterviewSession(context.globalState));
+  const interviewMode = Boolean(getInterviewSession(context.globalState)?.active);
   for (const [, state] of problemViews) {
     state.webviewPanel.webview.postMessage({
       event: "uiMode",
@@ -536,12 +740,17 @@ function getTemplatesDir(context: vscode.ExtensionContext): string {
   return path.join(context.extensionPath, "out", "templates");
 }
 
-async function solutionFileExists(problem: Problem): Promise<boolean> {
+async function solutionFileExists(
+  context: vscode.ExtensionContext,
+  problem: Problem
+): Promise<boolean> {
   const uri = vscode.window.activeTextEditor?.document.uri;
   const { exists } = await Database.resolveSolutionFilePathForOpen(
     uri,
     problem.id,
-    problem.titleSlug
+    problem.titleSlug,
+    interviewSolutionBaseDir(context.globalState),
+    interviewSolutionAttemptHex(context.globalState)
   );
   return exists;
 }
@@ -556,7 +765,7 @@ async function renderChallengeHtml(
   const templatesDir = getTemplatesDir(context);
   const content = problem.content || "<p>No description.</p>";
   const difficulty = problem.difficulty || "Unknown";
-  const hasSolution = await solutionFileExists(problem);
+  const hasSolution = await solutionFileExists(context, problem);
   const isSolved = status === "solved";
 
   let solutionContent: string | undefined;
@@ -566,7 +775,9 @@ async function renderChallengeHtml(
     const { path: solutionPath, exists } = await Database.resolveSolutionFilePathForOpen(
       undefined,
       problem.id,
-      problem.titleSlug
+      problem.titleSlug,
+      interviewSolutionBaseDir(context.globalState),
+      interviewSolutionAttemptHex(context.globalState)
     );
     if (exists) {
       try {
@@ -591,7 +802,12 @@ async function renderChallengeHtml(
   const notesMap = context.globalState.get<Record<string, string>>("leetcode-practice.problemNotes") ?? {};
   const note = notesMap[problem.titleSlug] ?? "";
   const focusCompact = context.globalState.get<boolean>(FOCUS_COMPACT_WEBVIEW_KEY) ?? false;
-  const interviewMode = Boolean(getInterviewSession(context.globalState));
+  const interviewSession = getInterviewSession(context.globalState);
+  const interviewMode = Boolean(interviewSession?.active);
+  const interviewSolvedInSession =
+    interviewMode &&
+    Array.isArray(interviewSession?.solvedDuringSession) &&
+    interviewSession.solvedDuringSession.includes(problem.titleSlug);
   return ejs.renderFile(path.join(templatesDir, "challenge.ejs"), {
     id: problem.id,
     title: problem.title,
@@ -607,6 +823,7 @@ async function renderChallengeHtml(
     solutionHtml,
     focusCompact,
     interviewMode,
+    interviewSolvedInSession,
   });
 }
 
@@ -865,6 +1082,243 @@ export async function openStatsWebview(
   panel.webview.html = await load(panel.webview);
 }
 
+async function buildInterviewHubRows(
+  context: vscode.ExtensionContext,
+  getProvider: () => IProblemProvider,
+  session: InterviewSessionState
+): Promise<InterviewHubRow[]> {
+  const gs = context.globalState;
+  const solvedInInterview = new Set(session.solvedDuringSession);
+  const rows: InterviewHubRow[] = [];
+  for (const p of session.plannedProblems) {
+    const prob = await getProvider().getProblem(p.titleSlug);
+    const title = prob?.title ?? p.titleSlug;
+    const difficulty = prob?.difficulty ?? p.difficulty ?? "MEDIUM";
+    const st = getStoredStatus(gs, p.titleSlug);
+    const practiceLabel =
+      st === "solved" ? "Solved" : st === "attempting" ? "Attempting" : "Not tracked";
+    rows.push({
+      titleSlug: p.titleSlug,
+      title,
+      difficulty,
+      practiceLabel,
+      interviewSolved: solvedInInterview.has(p.titleSlug),
+    });
+  }
+  return rows;
+}
+
+async function renderInterviewSetupHtml(
+  context: vscode.ExtensionContext,
+  getProvider: () => IProblemProvider
+): Promise<string> {
+  const templatesDir = getTemplatesDir(context);
+  const session = getInterviewSession(context.globalState);
+  if (!session?.active) {
+    return String(
+      await ejs.renderFile(path.join(templatesDir, "interview-setup.ejs"), { sessionMode: false })
+    );
+  }
+  const hubRows = await buildInterviewHubRows(context, getProvider, session);
+  return String(
+    await ejs.renderFile(path.join(templatesDir, "interview-setup.ejs"), {
+      sessionMode: true,
+      session,
+      hubRows,
+      endsAt: session.endsAt,
+    })
+  );
+}
+
+export async function renderInterviewReportHtml(
+  context: vscode.ExtensionContext,
+  model: InterviewReportViewModel
+): Promise<string> {
+  const templatesDir = getTemplatesDir(context);
+  const entry = model.entry;
+  const aid = model.attemptId?.trim().toLowerCase() ?? "";
+  const folder = model.solutionFolderPath?.trim() ?? "";
+  const canOpenAttemptSolutions = Boolean(aid && /^[0-9a-f]{3}$/.test(aid) && folder);
+  return String(
+    await ejs.renderFile(path.join(templatesDir, "interview-report.ejs"), {
+      interviewName: model.interviewName,
+      reportRows: model.reportRows,
+      plannedMinutes: model.plannedMinutes,
+      actualMinutes: model.actualMinutes,
+      actualRemainderSeconds: model.actualRemainderSeconds,
+      plannedCount: entry.plannedCount,
+      solvedCount: entry.solvedCount,
+      bonusXp: entry.bonusXp,
+      xpBreakdown: entry.xpBreakdown,
+      canOpenAttemptSolutions,
+    })
+  );
+}
+
+export async function openInterviewAttemptSolutionFile(
+  context: vscode.ExtensionContext,
+  getProvider: () => IProblemProvider,
+  model: InterviewReportViewModel,
+  titleSlug: string
+): Promise<void> {
+  const slug = titleSlug.trim();
+  const aid = model.attemptId?.trim().toLowerCase();
+  const folder = model.solutionFolderPath?.trim();
+  if (!slug || !aid || !folder || !/^[0-9a-f]{3}$/.test(aid)) {
+    return;
+  }
+  let prob = getCachedProblem(slug);
+  if (!prob) {
+    const p = await getProvider().getProblem(slug);
+    if (p) {
+      setCachedProblem(slug, p, context);
+      prob = p;
+    }
+  }
+  if (!prob) {
+    void vscode.window.showWarningMessage("Could not resolve problem.");
+    return;
+  }
+  const { path: fp, exists } = await Database.resolveSolutionFilePathForOpen(
+    undefined,
+    prob.id,
+    prob.titleSlug,
+    path.resolve(folder),
+    aid
+  );
+  if (!exists) {
+    void vscode.window.showInformationMessage("No solution file for this attempt.");
+    return;
+  }
+  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fp));
+  await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.Two });
+}
+
+function ensureInterviewSetupPanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
+  if (interviewSetupPanel) {
+    return interviewSetupPanel;
+  }
+  const iconPath = { light: LOGO_URI(context), dark: LOGO_URI(context) };
+  const panel = vscode.window.createWebviewPanel(
+    "leetcodeInterviewSetup",
+    "LeetCode — Interview setup",
+    vscode.ViewColumn.One,
+    { enableScripts: true, retainContextWhenHidden: true, iconPath } as vscode.WebviewPanelOptions
+  );
+  interviewSetupPanel = panel;
+  panel.webview.onDidReceiveMessage(async (raw: unknown) => {
+    const m = raw as InterviewSetupStartMessage | InterviewSetupOpenProblemMessage;
+    if (!m || typeof m !== "object") return;
+    if (m.type === "start") {
+      const fn = interviewSetupOnStart;
+      if (!fn) return;
+      const result = await fn(m);
+      if (!result.ok) {
+        panel.webview.postMessage({ type: "resetStart", message: result.message });
+      }
+      return;
+    }
+    if (m.type === "openProblem" && m.titleSlug) {
+      const openFn = interviewSetupOnOpenProblem;
+      if (openFn) {
+        await openFn(m.titleSlug.trim());
+      }
+    }
+  });
+  panel.onDidDispose(() => {
+    if (interviewSetupPanel === panel) {
+      interviewSetupPanel = null;
+    }
+    const ctx = interviewHubExtensionContext;
+    const gp = interviewSetupGetProvider;
+    if (ctx && gp && getInterviewSession(ctx.globalState)) {
+      void vscode.window.showWarningMessage(
+        "Interview is still running — reopening the interview hub."
+      );
+      setImmediate(() => {
+        if (!interviewSetupOnStart || !interviewSetupOnOpenProblem) return;
+        openInterviewSetupWebview(
+          ctx,
+          { onStart: interviewSetupOnStart, onOpenProblem: interviewSetupOnOpenProblem },
+          gp
+        );
+      });
+    }
+  });
+  return panel;
+}
+
+export async function refreshInterviewHubIfOpen(
+  context: vscode.ExtensionContext,
+  getProvider: () => IProblemProvider
+): Promise<void> {
+  const panel = interviewSetupPanel;
+  if (!panel) return;
+  const session = getInterviewSession(context.globalState);
+  panel.title = session?.active ? "LeetCode — Interview" : "LeetCode — Interview setup";
+  panel.webview.html = await renderInterviewSetupHtml(context, getProvider);
+}
+
+export function openInterviewSetupWebview(
+  context: vscode.ExtensionContext,
+  handlers: InterviewSetupHandlers,
+  getProvider: () => IProblemProvider
+): void {
+  interviewSetupOnStart = handlers.onStart;
+  interviewSetupOnOpenProblem = handlers.onOpenProblem;
+  interviewSetupGetProvider = getProvider;
+  interviewHubExtensionContext = context;
+  const panel = ensureInterviewSetupPanel(context);
+  const session = getInterviewSession(context.globalState);
+  panel.title = session?.active ? "LeetCode — Interview" : "LeetCode — Interview setup";
+  panel.reveal(panel.viewColumn ?? vscode.ViewColumn.One);
+  void renderInterviewSetupHtml(context, getProvider).then((html) => {
+    panel.webview.html = html;
+  });
+}
+
+export async function openInterviewReportWebview(
+  context: vscode.ExtensionContext,
+  model: InterviewReportViewModel,
+  getProvider?: () => IProblemProvider
+): Promise<void> {
+  interviewReportLastModel = model;
+  interviewReportGetProvider = getProvider ?? null;
+  const iconPath = { light: LOGO_URI(context), dark: LOGO_URI(context) };
+  const html = await renderInterviewReportHtml(context, model);
+  const title = `LeetCode — ${model.interviewName}`;
+  if (interviewReportPanel) {
+    try {
+      interviewReportPanel.title = title;
+      interviewReportPanel.reveal(interviewReportPanel.viewColumn ?? vscode.ViewColumn.One);
+      interviewReportPanel.webview.html = html;
+      return;
+    } catch {
+      interviewReportPanel = null;
+    }
+  }
+  const panel = vscode.window.createWebviewPanel(
+    "leetcodeInterviewReport",
+    title,
+    vscode.ViewColumn.One,
+    { enableScripts: true, retainContextWhenHidden: true, iconPath } as vscode.WebviewPanelOptions
+  );
+  interviewReportPanel = panel;
+  panel.webview.onDidReceiveMessage((msg: { type?: string; titleSlug?: string }) => {
+    if (msg?.type !== "openAttemptSolution" || typeof msg.titleSlug !== "string") return;
+    const gp = interviewReportGetProvider;
+    const m = interviewReportLastModel;
+    if (!gp || !m) return;
+    void openInterviewAttemptSolutionFile(context, gp, m, msg.titleSlug);
+  });
+  panel.onDidDispose(() => {
+    if (interviewReportPanel === panel) {
+      interviewReportPanel = null;
+    }
+  });
+  panel.webview.html = html;
+}
+
 const TERMINAL_CMD_BY_EXT: Record<string, string> = {
   ".ts": "ts-node",
   ".js": "node",
@@ -939,6 +1393,7 @@ interface SetupPanelMessageHandlerOpts {
   getProvider?: () => IProblemProvider;
   getProblemStatus?: (titleSlug: string) => ProblemStatus | undefined;
   onMarkSolved?: (titleSlug: string) => void;
+  onMarkInterviewSolved?: (titleSlug: string) => void | Promise<void>;
 }
 
 function setupPanelMessageHandler(
@@ -969,7 +1424,9 @@ function setupPanelMessageHandler(
         const { path: filePath } = await Database.resolveSolutionFilePathForOpen(
           uri,
           s.problem.id,
-          s.problem.titleSlug
+          s.problem.titleSlug,
+          interviewSolutionBaseDir(context.globalState),
+          interviewSolutionAttemptHex(context.globalState)
         );
         runTsNodeInTerminal(filePath);
       } else if (event === "runOnLeetCode" && customInput !== undefined) {
@@ -982,6 +1439,13 @@ function setupPanelMessageHandler(
           opts.onMarkSolved(msgSlug);
         } else {
           setProblemStatus(context.globalState, msgSlug, "solved");
+        }
+        if (opts?.getProvider && opts?.getProblemStatus) {
+          await softReload(context, msgSlug, opts.getProvider, opts.getProblemStatus);
+        }
+      } else if (event === "markInterviewSolved") {
+        if (opts?.onMarkInterviewSolved) {
+          await Promise.resolve(opts.onMarkInterviewSolved(msgSlug));
         }
         if (opts?.getProvider && opts?.getProblemStatus) {
           await softReload(context, msgSlug, opts.getProvider, opts.getProblemStatus);
@@ -1000,6 +1464,11 @@ function setupPanelMessageHandler(
 
 export interface OpenProblemWebviewOpts {
   onMarkSolved?: (titleSlug: string) => void;
+  onMarkInterviewSolved?: (titleSlug: string) => void | Promise<void>;
+}
+
+function interviewProblemViewColumn(context: vscode.ExtensionContext): vscode.ViewColumn {
+  return getInterviewSession(context.globalState)?.active ? vscode.ViewColumn.Two : vscode.ViewColumn.One;
 }
 
 export async function openProblemWebview(
@@ -1009,9 +1478,11 @@ export async function openProblemWebview(
   getProblemStatus?: (titleSlug: string) => ProblemStatus | undefined,
   opts?: OpenProblemWebviewOpts
 ): Promise<void> {
+  const col = interviewProblemViewColumn(context);
   const existing = problemViews.get(item.titleSlug);
   if (existing) {
-    existing.webviewPanel.reveal();
+    existing.webviewPanel.reveal(col);
+    void setInterviewFocusProblem(context.globalState, item.titleSlug);
     softReload(context, item.titleSlug, getProvider, getProblemStatus).catch(
       () => {}
     );
@@ -1026,7 +1497,7 @@ export async function openProblemWebview(
     const panel = vscode.window.createWebviewPanel(
       PROBLEM_WEBVIEW_VIEWTYPE,
       item.title,
-      vscode.ViewColumn.One,
+      col,
       getProblemWebviewOptions(context)
     );
     panel.iconPath = { light: LOGO_URI(context), dark: LOGO_URI(context) };
@@ -1048,8 +1519,10 @@ export async function openProblemWebview(
       getProvider,
       getProblemStatus,
       onMarkSolved: opts?.onMarkSolved,
+      onMarkInterviewSolved: opts?.onMarkInterviewSolved,
     });
     getProblemTimer()?.registerPanel(item.titleSlug, panel, cached.title, status === "solved");
+    void setInterviewFocusProblem(context.globalState, item.titleSlug);
     softReload(context, item.titleSlug, getProvider, getProblemStatus).catch(
       () => {}
     );
@@ -1067,7 +1540,7 @@ export async function openProblemWebview(
   const panel = vscode.window.createWebviewPanel(
     PROBLEM_WEBVIEW_VIEWTYPE,
     item.title,
-    vscode.ViewColumn.One,
+    col,
     getProblemWebviewOptions(context)
   );
   panel.iconPath = { light: LOGO_URI(context), dark: LOGO_URI(context) };
@@ -1089,8 +1562,10 @@ export async function openProblemWebview(
     getProvider,
     getProblemStatus,
     onMarkSolved: opts?.onMarkSolved,
+    onMarkInterviewSolved: opts?.onMarkInterviewSolved,
   });
   getProblemTimer()?.registerPanel(item.titleSlug, panel, problem.title, status === "solved");
+  void setInterviewFocusProblem(context.globalState, item.titleSlug);
 }
 
 export interface ProblemPanelState {
@@ -1143,8 +1618,10 @@ export async function restoreProblemPanel(
     getProvider,
     getProblemStatus,
     onMarkSolved: opts?.onMarkSolved,
+    onMarkInterviewSolved: opts?.onMarkInterviewSolved,
   });
   getProblemTimer()?.registerPanel(titleSlug, panel, problem.title, status === "solved");
+  void setInterviewFocusProblem(context.globalState, titleSlug);
 }
 
 export async function openOrCreateSolution(
@@ -1155,7 +1632,9 @@ export async function openOrCreateSolution(
   const { path: filePath, exists } = await Database.resolveSolutionFilePathForOpen(
     uri,
     problem.id,
-    problem.titleSlug
+    problem.titleSlug,
+    interviewSolutionBaseDir(context.globalState),
+    interviewSolutionAttemptHex(context.globalState)
   );
   if (!exists) {
     const folders = vscode.workspace.workspaceFolders ?? [];

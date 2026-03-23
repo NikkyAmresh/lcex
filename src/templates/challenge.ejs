@@ -113,6 +113,11 @@
       .btn.solve { background: var(--accent); color: #000; }
       .btn.run { background: var(--bg-secondary); color: var(--text); border: 1px solid var(--border); }
       .btn.submit { background: var(--accent); color: #000; }
+      .btn.interview-solve {
+        background: rgba(255, 161, 22, 0.2);
+        color: var(--accent);
+        border: 1px solid var(--accent);
+      }
       .btn:hover { opacity: 0.9; }
       .content {
         line-height: 1.7;
@@ -163,10 +168,18 @@
       body.focus-compact .focus-chrome {
         display: none !important;
       }
+      /* Solve / Run stay visible; mark-solved actions must remain usable in interview focus mode */
+      body.focus-compact .buttons .btn.interview-solve,
+      body.focus-compact .buttons .btn.mark-practice-solved {
+        display: inline-block !important;
+      }
       .interview-mode .tag.extra {
         display: none !important;
       }
       .interview-mode .interview-leetc {
+        display: none !important;
+      }
+      .interview-mode .tags .tag[class*="difficulty-"] {
         display: none !important;
       }
     </style>
@@ -197,7 +210,10 @@
       <button class="btn solve" onclick="solve()"><%= typeof hasSolution !== 'undefined' && hasSolution ? 'Open Solution' : 'Solve' %></button>
       <button class="btn run" onclick="run()">Run</button>
       <% if (isLoggedIn) { %><button class="btn run focus-chrome interview-leetc" onclick="runOnLeetCode()">Run on LeetCode</button><button class="btn submit focus-chrome interview-leetc" onclick="submit()">Submit</button><% } %>
-      <% if (!isSolved) { %><button class="btn run focus-chrome" onclick="markAsSolved()" title="Mark this problem as solved">Mark as solved</button><% } %>
+      <% if (!isSolved) { %><button class="btn run mark-practice-solved" onclick="markAsSolved()" title="Mark this problem as solved">Mark as solved</button><% } %>
+      <% if (typeof interviewMode !== "undefined" && interviewMode && typeof interviewSolvedInSession !== "undefined" && !interviewSolvedInSession) { %>
+      <button class="btn interview-solve" type="button" onclick="markInterviewSolved()" title="Counts only for this interview session">Mark solved (this interview)</button>
+      <% } %>
     </div>
     <% if (isLoggedIn) { %>
       <% if (isSolved && (typeof solutionHtml !== 'undefined' && solutionHtml || typeof solutionContent !== 'undefined' && solutionContent)) { %>
@@ -267,6 +283,7 @@
       }
       function submit() { vscode.postMessage({ event: "submit", titleSlug }); }
       function markAsSolved() { vscode.postMessage({ event: "markAsSolved", titleSlug }); }
+      function markInterviewSolved() { vscode.postMessage({ event: "markInterviewSolved", titleSlug }); }
       (function () {
         var notesEl = document.getElementById("notes");
         if (!notesEl) return;

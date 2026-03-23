@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interview report</title>
+    <style>
+      :root {
+        --bg: #1e1e1e;
+        --text: #e5e5e5;
+        --text-muted: #9d9d9d;
+        --border: #3c3c3c;
+        --accent: #ffa116;
+        --field: #252526;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        max-width: 720px;
+        font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+        font-size: 14px;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 8px;
+        font-weight: 600;
+      }
+      .lead {
+        color: var(--text-muted);
+        margin: 0 0 20px;
+        font-size: 13px;
+      }
+      .time-block {
+        margin: 0 0 24px;
+        padding: 14px 16px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--field);
+      }
+      .time-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+      .time-row:last-child {
+        margin-bottom: 0;
+      }
+      .time-label {
+        font-size: 12px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .time-value {
+        font-size: 20px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        color: var(--accent);
+      }
+      .time-value.muted {
+        color: var(--text-muted);
+        font-size: 15px;
+        font-weight: 500;
+      }
+      .stat-label {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+      .stat-big {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--accent);
+        margin: 4px 0 16px;
+      }
+      .stat-big.zero {
+        color: var(--text-muted);
+      }
+      .section-title {
+        font-size: 12px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin: 28px 0 10px;
+      }
+      .detail-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .detail-table th,
+      .detail-table td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        vertical-align: top;
+      }
+      .detail-table tr:last-child td {
+        border-bottom: none;
+      }
+      .detail-table th {
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text-muted);
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .prob-title {
+        font-weight: 500;
+        max-width: 220px;
+      }
+      button.prob-link {
+        display: block;
+        background: none;
+        border: none;
+        padding: 0;
+        margin: 0;
+        font: inherit;
+        color: var(--accent);
+        cursor: pointer;
+        text-align: left;
+        font-weight: 500;
+        max-width: 220px;
+      }
+      button.prob-link:hover {
+        text-decoration: underline;
+      }
+      .mono {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-family: var(--vscode-editor-font-family, monospace);
+      }
+      .num {
+        font-variant-numeric: tabular-nums;
+      }
+      .pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .pill.practice {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text-muted);
+      }
+      .pill.int-done {
+        background: rgba(38, 166, 65, 0.25);
+        color: #7fd896;
+      }
+      .pill.int-open {
+        background: rgba(240, 173, 78, 0.2);
+        color: #f0ad4e;
+      }
+      table.xp-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0 0;
+        font-size: 13px;
+      }
+      table.xp-table th,
+      table.xp-table td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+      }
+      table.xp-table th {
+        color: var(--text-muted);
+        font-weight: 500;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .foot-note {
+        color: var(--text-muted);
+        font-size: 13px;
+        margin-top: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <% var canOpen = typeof canOpenAttemptSolutions !== "undefined" && canOpenAttemptSolutions; %>
+    <h1><%= interviewName %></h1>
+    <p class="lead"><%= plannedCount %> planned · <%= solvedCount %> solved</p>
+
+    <div class="time-block">
+      <div class="time-row">
+        <span class="time-label">Time spent</span>
+        <span class="time-value"><%= actualMinutes %> min <%= actualRemainderSeconds %> sec</span>
+      </div>
+      <div class="time-row">
+        <span class="time-label">Planned session length</span>
+        <span class="time-value muted"><%= plannedMinutes %> min</span>
+      </div>
+    </div>
+
+    <p class="stat-label">Total interview bonus XP</p>
+    <div class="stat-big <%= bonusXp === 0 ? 'zero' : '' %>">+<%= bonusXp %> XP</div>
+
+    <% if (typeof xpBreakdown !== "undefined" && xpBreakdown && solvedCount > 0) { %>
+    <p class="stat-label" style="margin-top: 8px;">Session reward breakdown</p>
+    <table class="xp-table">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>XP</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (xpBreakdown.easyXp > 0) { %>
+        <tr>
+          <td>Tier A solve rewards</td>
+          <td class="num">+<%= xpBreakdown.easyXp %></td>
+        </tr>
+        <% } %>
+        <% if (xpBreakdown.mediumXp > 0) { %>
+        <tr>
+          <td>Tier B solve rewards</td>
+          <td class="num">+<%= xpBreakdown.mediumXp %></td>
+        </tr>
+        <% } %>
+        <% if (xpBreakdown.hardXp > 0) { %>
+        <tr>
+          <td>Tier C solve rewards</td>
+          <td class="num">+<%= xpBreakdown.hardXp %></td>
+        </tr>
+        <% } %>
+        <% if (xpBreakdown.unknownXp > 0) { %>
+        <tr>
+          <td>Other solve rewards</td>
+          <td class="num">+<%= xpBreakdown.unknownXp %></td>
+        </tr>
+        <% } %>
+        <% if (xpBreakdown.perfectBonusXp > 0) { %>
+        <tr>
+          <td>All planned solved</td>
+          <td class="num">+<%= xpBreakdown.perfectBonusXp %></td>
+        </tr>
+        <% } %>
+      </tbody>
+    </table>
+    <% } else if (solvedCount === 0) { %>
+    <p class="foot-note">No problems solved in this session — no interview bonus XP.</p>
+    <% } %>
+
+    <% if (reportRows && reportRows.length) { %>
+    <p class="section-title">Problems</p>
+    <table class="detail-table">
+      <thead>
+        <tr>
+          <th>Problem</th>
+          <th>Practice</th>
+          <th>This interview</th>
+          <th class="num">Time</th>
+          <th class="num">XP</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% reportRows.forEach(function (row) { %>
+        <tr>
+          <td>
+            <% if (canOpen) { %>
+            <button type="button" class="prob-link" data-slug="<%= row.titleSlug %>"><%= row.title %></button>
+            <% } else { %>
+            <div class="prob-title"><%= row.title %></div>
+            <% } %>
+            <div class="mono"><%= row.titleSlug %></div>
+          </td>
+          <td><span class="pill practice"><%= row.practiceLabel %></span></td>
+          <td>
+            <% if (row.interviewSolved) { %>
+            <span class="pill int-done">Solved</span>
+            <% } else { %>
+            <span class="pill int-open">Not yet</span>
+            <% } %>
+          </td>
+          <td class="num"><%= Math.floor(row.secondsSpent / 60) %>m <%= row.secondsSpent - 60 * Math.floor(row.secondsSpent / 60) %>s</td>
+          <td class="num"><%= row.interviewSolved ? "+" + row.interviewXpEarned : "—" %></td>
+        </tr>
+        <% }); %>
+      </tbody>
+    </table>
+    <% } %>
+    <% if (canOpen) { %>
+    <script>
+      const vscode = acquireVsCodeApi();
+      document.querySelectorAll("button.prob-link").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var slug = btn.getAttribute("data-slug");
+          if (slug) vscode.postMessage({ type: "openAttemptSolution", titleSlug: slug });
+        });
+      });
+    </script>
+    <% } %>
+  </body>
+</html>

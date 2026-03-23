@@ -17,13 +17,23 @@ export const DAILY_GOAL_KEY = "leetcode-practice.dailyGoal";
 /** Webview compact chrome (problem panel). */
 export const FOCUS_COMPACT_WEBVIEW_KEY = "leetcode-practice.focusCompactWebview";
 
-function difficultyXp(difficultyRaw: string | undefined): number {
+/** Participation XP when exiting focus mode (at most once per cooldown). */
+export const FOCUS_SESSION_PARTICIPATION_XP = 10;
+export const FOCUS_SESSION_XP_COOLDOWN_MS = 60 * 60 * 1000;
+export const FOCUS_LAST_PARTICIPATION_XP_AT_KEY = "leetcode-practice.focusLastParticipationXpAt";
+
+/** XP for interview bonus / first-solve (same curve). */
+export function xpForDifficultyLabel(difficultyRaw: string | undefined): number {
   if (!difficultyRaw) return 15;
   const u = difficultyRaw.trim().toUpperCase();
   if (u === "EASY") return 10;
   if (u === "MEDIUM") return 20;
   if (u === "HARD") return 40;
   return 15;
+}
+
+function difficultyXp(difficultyRaw: string | undefined): number {
+  return xpForDifficultyLabel(difficultyRaw);
 }
 
 /** Level 1 at 0 XP. Reaching level L+1 costs 100 * L XP (100 to reach 2, +200 to reach 3, …). */

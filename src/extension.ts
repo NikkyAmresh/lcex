@@ -1,3 +1,4 @@
+import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -13,10 +14,15 @@ import {
   getStoredStatus,
   getAllStatusEntries,
 } from "./modules/ProblemsProvider";
-import type { ProblemPanelState } from "./modules/ProblemView";
+import type { OpenProblemWebviewOpts, ProblemPanelState } from "./modules/ProblemView";
 import {
   openProblemWebview,
   openStatsWebview,
+  openInterviewSetupWebview,
+  refreshInterviewHubIfOpen,
+  openInterviewReportWebview,
+  buildInterviewReportViewModel,
+  interviewReportViewModelFromSnapshotFile,
   refreshStatsData,
   runTsNodeInTerminal,
   PROBLEM_WEBVIEW_VIEWTYPE,
@@ -36,6 +42,7 @@ import {
 import { LeetcodeConfigEditorProvider } from "./modules/LeetcodeConfigEditor";
 import { initProblemTimer, disposeProblemTimer, TIMER_BY_DAY_KEY } from "./modules/ProblemTimer";
 import {
+  addBonusXp,
   awardXpForFirstSolve,
   countSolvedToday,
   getDailyGoal as readDailyGoal,
@@ -45,15 +52,36 @@ import {
   todayIso,
   xpLevelProgress,
   FOCUS_COMPACT_WEBVIEW_KEY,
+  FOCUS_LAST_PARTICIPATION_XP_AT_KEY,
+  FOCUS_SESSION_PARTICIPATION_XP,
+  FOCUS_SESSION_XP_COOLDOWN_MS,
 } from "./modules/Gamification";
 import {
   endInterviewSession,
   getInterviewSession,
+  incrementInterviewTimeForFocusedProblem,
+  pickPlannedInterviewProblems,
   recordInterviewSolve,
   remainingMs,
   startInterviewSession,
   setInterviewContext,
+  type EndInterviewSessionResult,
+  type PlannedInterviewProblem,
 } from "./modules/InterviewMode";
+import type { InterviewSetupStartMessage } from "./modules/ProblemView";
+import {
+  normalizeInterviewFilePath,
+  readInterviewReportFile,
+  writeInterviewReportFile,
+  writeInterviewReportAtPath,
+  getReportPathForInterviewFile,
+  getReportPathForAttempt,
+} from "./modules/LcexInterviewReportStore";
+import type { LcInterviewFileV1 } from "./modules/LcInterviewFile";
+import { defaultInterviewNameFromDate, parseLcInterviewFile, serializeLcInterviewFile } from "./modules/LcInterviewFile";
+import { LeetcodeInterviewEditorProvider } from "./modules/LcInterviewEditorProvider";
+import { LcInterviewReportEditorProvider } from "./modules/LcInterviewReportEditorProvider";
+import { ensureCursorLcexPluginInstalled } from "./modules/CursorLcexPluginInstall";
 
 function getProvider(): IProblemProvider {
   const folders = vscode.workspace.workspaceFolders ?? [];
@@ -234,11 +262,14 @@ function delay(ms: number): Promise<void> {
 /** URI path prefix for opening a problem by slug: /open/{slug} */
 const URI_OPEN_PREFIX = "/open/";
 
+/** Saved `zenMode.hideStatusBar` while focus / interview layout is active (restored on exit). */
+const FOCUS_ZEN_HIDE_STATUSBAR_SAVED_KEY = "leetcode-practice.focusZenHideStatusBarPrev";
+
 /** Handles vscode://lcex.leetcode-practice/open/{slug} — opens the extension and the problem. */
 function createUriHandler(
   context: vscode.ExtensionContext,
   getProvider: () => IProblemProvider,
-  getWebviewOpts?: () => { onMarkSolved: (titleSlug: string) => void } | undefined
+  getWebviewOpts?: () => OpenProblemWebviewOpts | undefined
 ): vscode.UriHandler {
   return {
     handleUri(uri: vscode.Uri): void {
@@ -356,6 +387,260 @@ async function openChatWithPrompt(prompt: string): Promise<void> {
   await vscode.env.clipboard.writeText(previousClipboard);
 }
 
+async function enterFocusWorkbenchLayout(): Promise<void> {
+  for (const id of [
+    "workbench.action.closeSidebar",
+    "workbench.action.closePanel",
+    "workbench.action.toggleZenMode",
+    "workbench.action.toggleMaximizeEditorGroup",
+  ]) {
+    try {
+      await vscode.commands.executeCommand(id);
+    } catch {
+      /* command may be unavailable */
+    }
+  }
+}
+
+async function enterFocusModeUi(context: vscode.ExtensionContext): Promise<void> {
+  await context.globalState.update(FOCUS_COMPACT_WEBVIEW_KEY, true);
+  notifyAllProblemPanelsUiMode(context);
+  await enterFocusWorkbenchLayout();
+  const cfg = vscode.workspace.getConfiguration();
+  if (context.workspaceState.get(FOCUS_ZEN_HIDE_STATUSBAR_SAVED_KEY) === undefined) {
+    const prev = cfg.get<boolean>("zenMode.hideStatusBar");
+    await context.workspaceState.update(FOCUS_ZEN_HIDE_STATUSBAR_SAVED_KEY, prev ?? true);
+  }
+  await cfg.update("zenMode.hideStatusBar", false, vscode.ConfigurationTarget.Workspace);
+}
+
+async function exitFocusModeUi(context: vscode.ExtensionContext): Promise<void> {
+  await context.globalState.update(FOCUS_COMPACT_WEBVIEW_KEY, false);
+  notifyAllProblemPanelsUiMode(context);
+  const prev = context.workspaceState.get<boolean | undefined>(FOCUS_ZEN_HIDE_STATUSBAR_SAVED_KEY);
+  if (prev !== undefined) {
+    await vscode.workspace
+      .getConfiguration()
+      .update("zenMode.hideStatusBar", prev, vscode.ConfigurationTarget.Workspace);
+    await context.workspaceState.update(FOCUS_ZEN_HIDE_STATUSBAR_SAVED_KEY, undefined);
+  }
+  for (const id of [
+    "workbench.action.toggleMaximizeEditorGroup",
+    "workbench.action.toggleZenMode",
+    "workbench.action.togglePanel",
+    "workbench.action.toggleSidebarVisibility",
+  ]) {
+    try {
+      await vscode.commands.executeCommand(id);
+    } catch {
+      /* */
+    }
+  }
+  await grantFocusParticipationXpIfEligible(context);
+  updateGamificationStatusBars(context);
+}
+
+async function grantFocusParticipationXpIfEligible(context: vscode.ExtensionContext): Promise<void> {
+  const gs = context.globalState;
+  const last = gs.get<number>(FOCUS_LAST_PARTICIPATION_XP_AT_KEY);
+  const now = Date.now();
+  if (typeof last === "number" && now - last < FOCUS_SESSION_XP_COOLDOWN_MS) {
+    return;
+  }
+  await addBonusXp(gs, FOCUS_SESSION_PARTICIPATION_XP);
+  await gs.update(FOCUS_LAST_PARTICIPATION_XP_AT_KEY, now);
+}
+
+async function showInterviewSessionEnded(
+  context: vscode.ExtensionContext,
+  result: EndInterviewSessionResult | null
+): Promise<void> {
+  if (!result) {
+    return;
+  }
+  const { entry, sourceLcInterviewPath, interviewName, attemptHex, solutionFolderPath } = result;
+  const model = await buildInterviewReportViewModel(context, getProvider, entry, interviewName, {
+    attemptId: attemptHex,
+    solutionFolderPath,
+  });
+  await openInterviewReportWebview(context, model, getProvider);
+  const hubRowsPayload = model.hubRows.map((r) => {
+    const stat = entry.perProblem?.find((p) => p.titleSlug === r.titleSlug);
+    return {
+      titleSlug: r.titleSlug,
+      title: r.title,
+      practiceLabel: r.practiceLabel,
+      interviewSolved: r.interviewSolved,
+      secondsSpent: stat?.secondsSpent ?? 0,
+      interviewXpEarned: stat?.interviewXpEarned ?? 0,
+    };
+  });
+  if (attemptHex && solutionFolderPath && sourceLcInterviewPath) {
+    const abs = normalizeInterviewFilePath(sourceLcInterviewPath);
+    const reportFile = getReportPathForAttempt(solutionFolderPath, attemptHex);
+    writeInterviewReportAtPath(reportFile, {
+      version: 1,
+      interviewName,
+      sourceLcInterviewPath: abs,
+      writtenAt: Date.now(),
+      entry,
+      attemptId: attemptHex,
+      solutionFolderPath,
+      hubRows: hubRowsPayload,
+    });
+  } else if (sourceLcInterviewPath) {
+    const abs = normalizeInterviewFilePath(sourceLcInterviewPath);
+    writeInterviewReportFile({
+      version: 1,
+      interviewName,
+      sourceLcInterviewPath: abs,
+      writtenAt: Date.now(),
+      entry,
+      hubRows: hubRowsPayload,
+    });
+  }
+  const msg =
+    entry.bonusXp > 0 ? `Interview ended · +${entry.bonusXp} bonus XP` : `Interview ended`;
+  void vscode.window.showInformationMessage(msg);
+}
+
+async function plannedProblemsFromSetup(
+  context: vscode.ExtensionContext,
+  msg: { problemCount: number; customSlugsRaw: string }
+): Promise<{ ok: true; planned: PlannedInterviewProblem[] } | { ok: false; message: string }> {
+  const custom = msg.customSlugsRaw.trim();
+  const gs = context.globalState;
+
+  if (custom) {
+    const slugs = [...new Set(custom.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean))];
+    if (slugs.length === 0) {
+      return { ok: false, message: "Enter at least one valid slug." };
+    }
+    const planned: PlannedInterviewProblem[] = [];
+    const provider = getProvider();
+    for (const slug of slugs) {
+      const prob = await provider.getProblem(slug);
+      if (prob) {
+        planned.push({
+          titleSlug: prob.titleSlug,
+          difficulty: (prob.difficulty || "MEDIUM").toUpperCase(),
+        });
+      }
+    }
+    if (planned.length === 0) {
+      return { ok: false, message: "Could not resolve any of those slugs." };
+    }
+    return { ok: true, planned };
+  }
+
+  const lc = getProvider();
+  if (!(lc instanceof LeetCodeProvider)) {
+    return {
+      ok: false,
+      message: "Random interview mix needs the default LeetCode source (leave internalApiUrl empty).",
+    };
+  }
+
+  const list = await lc.getFullProblemsetList();
+  if (!list.length) {
+    return { ok: false, message: "Could not load the problem list. Check your network." };
+  }
+  const n = Math.min(50, Math.max(1, Math.floor(msg.problemCount)));
+  const picks = pickPlannedInterviewProblems(
+    list.map((q) => ({ titleSlug: q.titleSlug, difficulty: q.difficulty })),
+    n,
+    (slug) => getStoredStatus(gs, slug) === "solved"
+  );
+  if (picks.length === 0) {
+    return { ok: false, message: "Could not pick any problems." };
+  }
+  return { ok: true, planned: picks };
+}
+
+type InterviewPanelOpts = OpenProblemWebviewOpts | undefined;
+
+function sanitizeInterviewDirectoryName(name: string): string {
+  const t = name.trim() || "interview";
+  const safe = t.replace(/[/\\:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 120);
+  return safe.length > 0 ? safe : "interview";
+}
+
+function generateUniqueAttemptHex(existing: { id: string }[], solutionFolderPath: string): string {
+  const used = new Set(
+    existing
+      .map((e) => String(e.id || "").trim().toLowerCase())
+      .filter((id) => /^[0-9a-f]{3}$/.test(id))
+  );
+  for (let n = 0; n < 512; n++) {
+    const v = crypto.randomBytes(2).readUInt16BE(0) % 4096;
+    const id = v.toString(16).padStart(3, "0");
+    if (used.has(id)) continue;
+    const reportPath = path.join(solutionFolderPath, `report-${id}.lcireport`);
+    if (fs.existsSync(reportPath)) continue;
+    return id;
+  }
+  throw new Error("Could not allocate a unique attempt id");
+}
+
+async function runInterviewSessionAfterPlan(
+  context: vscode.ExtensionContext,
+  getWebviewOpts: () => InterviewPanelOpts,
+  opts: {
+    durationMinutes: 45 | 60 | 180;
+    planned: PlannedInterviewProblem[];
+    sourceLcInterviewPath?: string;
+    interviewName: string;
+    solutionFolderPath?: string;
+    attemptHex?: string;
+  }
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (!shouldAutoApplyTheme()) {
+    return {
+      ok: false,
+      message: "LeetCode workspace (.leetcode) required. Open a workspace with a .leetcode file.",
+    };
+  }
+  if (getInterviewSession(context.globalState)) {
+    return { ok: false, message: "An interview session is already active." };
+  }
+  if (!opts.planned.length) {
+    return { ok: false, message: "No problems in plan." };
+  }
+  await startInterviewSession(context.globalState, opts.durationMinutes, opts.planned, {
+    sourceLcInterviewPath: opts.sourceLcInterviewPath,
+    interviewName: opts.interviewName,
+    ...(opts.solutionFolderPath ? { solutionFolderPath: opts.solutionFolderPath } : {}),
+    ...(opts.attemptHex ? { attemptHex: opts.attemptHex } : {}),
+  });
+  await setInterviewContext(true);
+  await enterFocusModeUi(context);
+  notifyAllProblemPanelsUiMode(context);
+  startInterviewTick(context);
+  refreshInterviewStatusBarNow(context);
+  updateGamificationStatusBars(context);
+
+  const first = opts.planned[0];
+  const prob = await getProvider().getProblem(first.titleSlug);
+  const getProblemStatus = (slug: string) => getStoredStatus(context.globalState, slug);
+  const item: ProblemListItem = prob
+    ? {
+        id: prob.id,
+        title: prob.title,
+        titleSlug: prob.titleSlug,
+        difficulty: prob.difficulty || first.difficulty,
+      }
+    : {
+        id: first.titleSlug,
+        title: first.titleSlug,
+        titleSlug: first.titleSlug,
+        difficulty: first.difficulty,
+      };
+
+  await openProblemWebview(context, item, getProvider, getProblemStatus, getWebviewOpts());
+  await refreshInterviewHubIfOpen(context, getProvider);
+  return { ok: true };
+}
+
 let interviewStatusBar: vscode.StatusBarItem | undefined;
 let dailyGoalStatusBar: vscode.StatusBarItem | undefined;
 let xpStatusBar: vscode.StatusBarItem | undefined;
@@ -379,16 +664,15 @@ function startInterviewTick(context: vscode.ExtensionContext): void {
     }
     if (sess.endsAt <= Date.now()) {
       stopInterviewTick();
-      void endInterviewSession(context.globalState, "timer").then((entry) => {
-        void setInterviewContext(false);
-        interviewStatusBar?.hide();
+      interviewStatusBar?.hide();
+      void endInterviewSession(context.globalState, "timer").then(async (result) => {
         notifyAllProblemPanelsUiMode(context);
         updateGamificationStatusBars(context);
-        if (entry) {
-          vscode.window.showInformationMessage(
-            `Interview ended (time up). +${entry.bonusXp} bonus XP. Solved ${entry.solvedCount} in session.`
-          );
+        void refreshInterviewHubIfOpen(context, getProvider);
+        if (result) {
+          await exitFocusModeUi(context);
         }
+        await showInterviewSessionEnded(context, result);
       });
       return;
     }
@@ -401,6 +685,7 @@ function startInterviewTick(context: vscode.ExtensionContext): void {
       interviewStatusBar.command = "leetcode-practice.interviewModeStop";
       interviewStatusBar.show();
     }
+    void incrementInterviewTimeForFocusedProblem(context.globalState);
   }, 1000);
 }
 
@@ -457,14 +742,14 @@ function restoreInterviewOnActivate(context: vscode.ExtensionContext): void {
     return;
   }
   if (s.endsAt <= Date.now()) {
-    void endInterviewSession(context.globalState, "timer").then((entry) => {
+    void endInterviewSession(context.globalState, "timer").then(async (result) => {
       notifyAllProblemPanelsUiMode(context);
       updateGamificationStatusBars(context);
-      if (entry) {
-        vscode.window.showInformationMessage(
-          `Interview session had expired. Logged +${entry.bonusXp} bonus XP.`
-        );
+      void refreshInterviewHubIfOpen(context, getProvider);
+      if (result) {
+        await exitFocusModeUi(context);
       }
+      await showInterviewSessionEnded(context, result);
     });
     return;
   }
@@ -473,8 +758,10 @@ function restoreInterviewOnActivate(context: vscode.ExtensionContext): void {
   refreshInterviewStatusBarNow(context);
 }
 
-async function resolveProblemContextForExplain(): Promise<{ title: string; titleSlug: string } | undefined> {
-  const fromPanel = getTitleSlugForActiveSolutionFile();
+async function resolveProblemContextForExplain(
+  context: vscode.ExtensionContext
+): Promise<{ title: string; titleSlug: string } | undefined> {
+  const fromPanel = getTitleSlugForActiveSolutionFile(context);
   if (fromPanel) {
     const p = await getProvider().getProblem(fromPanel);
     if (p) return { title: p.title, titleSlug: p.titleSlug };
@@ -545,7 +832,7 @@ export function activate(context: vscode.ExtensionContext): void {
   Logger.init(outputChannel);
   Logger.log("Extension activated");
 
-  let webviewOpts: { onMarkSolved: (titleSlug: string) => void } | undefined;
+  let webviewOpts: OpenProblemWebviewOpts | undefined;
   const getWebviewOpts = () => webviewOpts;
   context.subscriptions.push(
     vscode.window.registerUriHandler(
@@ -582,13 +869,16 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.onDidChangeActiveTextEditor(() => {
       updateSolutionFileContext();
       updateAgentStatusBarVisibility();
+      if (shouldAutoApplyTheme()) {
+        updateGamificationStatusBars(context);
+      }
     })
   );
 
   statusBarMakeRunnable = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBarHint = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
   const statusBarTimer = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 98);
-  interviewStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 97);
+  interviewStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   dailyGoalStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 96);
   xpStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 95);
   context.subscriptions.push(
@@ -600,7 +890,9 @@ export function activate(context: vscode.ExtensionContext): void {
     xpStatusBar
   );
   context.subscriptions.push({ dispose: () => stopInterviewTick() });
-  initProblemTimer(context, statusBarTimer, shouldAutoApplyTheme, getTitleSlugForActiveSolutionFile);
+  initProblemTimer(context, statusBarTimer, shouldAutoApplyTheme, () =>
+    getTitleSlugForActiveSolutionFile(context)
+  );
   context.subscriptions.push({ dispose: () => disposeProblemTimer() });
   updateAgentStatusBarVisibility();
   updateGamificationStatusBars(context);
@@ -613,6 +905,24 @@ export function activate(context: vscode.ExtensionContext): void {
       { webviewOptions: { retainContextWhenHidden: true } }
     )
   );
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(
+      "leetcode-practice.lcInterviewEditor",
+      new LeetcodeInterviewEditorProvider(context, getProvider),
+      { webviewOptions: { retainContextWhenHidden: true } }
+    )
+  );
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(
+      "leetcode-practice.lcInterviewReportEditor",
+      new LcInterviewReportEditorProvider(context, getProvider),
+      { webviewOptions: { retainContextWhenHidden: true } }
+    )
+  );
+
+  void ensureCursorLcexPluginInstalled(context).catch((e) => {
+    Logger.logError("Cursor LCX plugin install skipped", e);
+  });
 
   // Register sign-in/sign-out first so they always exist
   context.subscriptions.push(
@@ -691,7 +1001,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const base =
         config.agentPromptExplain?.trim() ||
         "Explain my solution code for this LeetCode problem. Respond with: (1) Intuition; (2) Step-by-step dry run; (3) Time and space complexity with justification.";
-      const prob = await resolveProblemContextForExplain();
+      const prob = await resolveProblemContextForExplain(context);
       const ctx = prob
         ? `\n\nProblem: ${prob.title} (slug: ${prob.titleSlug})\n`
         : `\n\nProblem context unknown (file: ${path.basename(editor!.document.fileName)}).\n`;
@@ -703,41 +1013,16 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.focusModeEnter", async () => {
-      await context.globalState.update(FOCUS_COMPACT_WEBVIEW_KEY, true);
-      notifyAllProblemPanelsUiMode(context);
-      const cmds = [
-        "workbench.action.closeSidebar",
-        "workbench.action.closePanel",
-        "workbench.action.toggleZenMode",
-        "workbench.action.toggleMaximizeEditorGroup",
-      ];
-      for (const id of cmds) {
-        try {
-          await vscode.commands.executeCommand(id);
-        } catch {
-          /* command may be unavailable */
-        }
-      }
-      vscode.window.showInformationMessage("Focus mode: sidebar/panel hidden, Zen + compact problem chrome. Use Focus Mode (exit) to restore workbench toggles.");
+      await enterFocusModeUi(context);
+      vscode.window.showInformationMessage(
+        "Focus mode: sidebar/panel hidden, Zen + compact problem chrome. Use Focus Mode (exit) to restore workbench toggles."
+      );
     })
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.focusModeExit", async () => {
-      await context.globalState.update(FOCUS_COMPACT_WEBVIEW_KEY, false);
-      notifyAllProblemPanelsUiMode(context);
-      for (const id of [
-        "workbench.action.toggleMaximizeEditorGroup",
-        "workbench.action.toggleZenMode",
-        "workbench.action.togglePanel",
-        "workbench.action.toggleSidebarVisibility",
-      ]) {
-        try {
-          await vscode.commands.executeCommand(id);
-        } catch {
-          /* */
-        }
-      }
+      await exitFocusModeUi(context);
     })
   );
 
@@ -778,50 +1063,271 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.interviewModeStart", async () => {
-      if (getInterviewSession(context.globalState)) {
-        vscode.window.showWarningMessage("An interview session is already active.");
+      const startVia = await vscode.window.showQuickPick(
+        [
+          { label: "$(list-tree) Interview setup panel", id: "panel" as const },
+          { label: "$(sparkle) Generate interview with AI", id: "ai" as const },
+        ],
+        { title: "Interview mode", placeHolder: "How do you want to start?" }
+      );
+      if (!startVia) return;
+      if (startVia.id === "ai") {
+        await vscode.commands.executeCommand("leetcode-practice.interviewGenerateWithAi");
         return;
       }
-      const dur = await vscode.window.showQuickPick(
-        [
-          { label: "45 minutes", value: 45 as const },
-          { label: "60 minutes", value: 60 as const },
-          { label: "180 minutes (3 hours)", value: 180 as const },
-        ],
-        { placeHolder: "Interview duration" }
-      );
-      if (!dur) return;
-      const raw = await vscode.window.showInputBox({
-        prompt: "Optional: planned problem slugs (comma-separated)",
-        placeHolder: "e.g. two-sum, add-two-numbers",
-      });
-      const planned = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
-      await startInterviewSession(context.globalState, dur.value, planned);
-      await setInterviewContext(true);
-      notifyAllProblemPanelsUiMode(context);
-      startInterviewTick(context);
-      refreshInterviewStatusBarNow(context);
-      updateGamificationStatusBars(context);
-      vscode.window.showInformationMessage(
-        `Interview mode started (${dur.value} min). Hints and Explain are hidden/disabled.`
-      );
+      const getProblemStatus = (slug: string) => getStoredStatus(context.globalState, slug);
+      const onStart = async (
+        msg: InterviewSetupStartMessage
+      ): Promise<{ ok: true } | { ok: false; message: string }> => {
+        const dur = msg.durationMinutes;
+        if (dur !== 45 && dur !== 60 && dur !== 180) {
+          return { ok: false, message: "Invalid duration." };
+        }
+        const count = Math.min(50, Math.max(1, Math.floor(msg.problemCount)));
+
+        const plannedResult = await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: "Preparing interview…" },
+          () =>
+            plannedProblemsFromSetup(context, {
+              problemCount: count,
+              customSlugsRaw: msg.customSlugsRaw,
+            })
+        );
+
+        if (!plannedResult.ok) {
+          return plannedResult;
+        }
+        return runInterviewSessionAfterPlan(context, getWebviewOpts, {
+          durationMinutes: dur,
+          planned: plannedResult.planned,
+          interviewName: defaultInterviewNameFromDate(),
+        });
+      };
+      const onOpenProblem = async (titleSlug: string) => {
+        const prob = await getProvider().getProblem(titleSlug);
+        const planned = getInterviewSession(context.globalState)?.plannedProblems.find(
+          (p) => p.titleSlug === titleSlug
+        );
+        const item: ProblemListItem = prob
+          ? {
+              id: prob.id,
+              title: prob.title,
+              titleSlug: prob.titleSlug,
+              difficulty: prob.difficulty || planned?.difficulty || "MEDIUM",
+            }
+          : {
+              id: titleSlug,
+              title: titleSlug,
+              titleSlug,
+              difficulty: planned?.difficulty || "MEDIUM",
+            };
+        await openProblemWebview(context, item, getProvider, getProblemStatus, getWebviewOpts());
+      };
+      openInterviewSetupWebview(context, { onStart, onOpenProblem }, getProvider);
     })
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.interviewModeStop", async () => {
-      const entry = await endInterviewSession(context.globalState, "user");
+      const result = await endInterviewSession(context.globalState, "user");
       stopInterviewTick();
       interviewStatusBar?.hide();
       notifyAllProblemPanelsUiMode(context);
       updateGamificationStatusBars(context);
-      if (!entry) {
+      await refreshInterviewHubIfOpen(context, getProvider);
+      if (!result) {
         vscode.window.showInformationMessage("No active interview session.");
       } else {
-        vscode.window.showInformationMessage(
-          `Interview stopped. +${entry.bonusXp} bonus XP. Solved ${entry.solvedCount} in this session.`
-        );
+        await exitFocusModeUi(context);
+        await showInterviewSessionEnded(context, result);
       }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "leetcode-practice.openInterviewPlanProblem",
+      async (titleSlug?: string) => {
+        if (!titleSlug?.trim()) {
+          return;
+        }
+        if (!shouldAutoApplyTheme()) {
+          void vscode.window.showWarningMessage(
+            "LeetCode workspace (.leetcode) required. Open a workspace with a .leetcode file."
+          );
+          return;
+        }
+        const slug = titleSlug.trim();
+        const prob = await getProvider().getProblem(slug);
+        const session = getInterviewSession(context.globalState);
+        const planned = session?.plannedProblems.find((p) => p.titleSlug === slug);
+        const item: ProblemListItem = prob
+          ? {
+              id: prob.id,
+              title: prob.title,
+              titleSlug: prob.titleSlug,
+              difficulty: prob.difficulty || planned?.difficulty || "MEDIUM",
+            }
+          : {
+              id: slug,
+              title: slug,
+              titleSlug: slug,
+              difficulty: planned?.difficulty || "MEDIUM",
+            };
+        const getProblemStatus = (s: string) => getStoredStatus(context.globalState, s);
+        await openProblemWebview(context, item, getProvider, getProblemStatus, getWebviewOpts());
+      }
+    )
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "leetcode-practice.interviewStartFromLcInterviewFile",
+      async (args?: { fsPath?: string; payload?: LcInterviewFileV1 }) => {
+        if (!args?.fsPath || !args.payload?.problems) {
+          return;
+        }
+        const dur = args.payload.durationMinutes;
+        if (dur !== 45 && dur !== 60 && dur !== 180) {
+          void vscode.window.showErrorMessage("durationMinutes must be 45, 60, or 180.");
+          return;
+        }
+        const name = args.payload.name?.trim() || defaultInterviewNameFromDate();
+        const lcPath = normalizeInterviewFilePath(args.fsPath);
+        const solutionFolderPath = path.join(path.dirname(lcPath), sanitizeInterviewDirectoryName(name));
+        let diskText: string;
+        try {
+          diskText = fs.readFileSync(lcPath, "utf-8");
+        } catch (e) {
+          void vscode.window.showErrorMessage(
+            `Could not read interview file: ${e instanceof Error ? e.message : String(e)}`
+          );
+          return;
+        }
+        const parsed = parseLcInterviewFile(diskText);
+        if (!parsed.ok) {
+          void vscode.window.showErrorMessage(parsed.message);
+          return;
+        }
+        try {
+          fs.mkdirSync(solutionFolderPath, { recursive: true });
+        } catch (e) {
+          void vscode.window.showErrorMessage(
+            `Could not create interview folder: ${solutionFolderPath}. ${
+              e instanceof Error ? e.message : String(e)
+            }`
+          );
+          return;
+        }
+        let attemptHex: string;
+        try {
+          attemptHex = generateUniqueAttemptHex(parsed.data.attempts ?? [], solutionFolderPath);
+        } catch {
+          void vscode.window.showErrorMessage("Could not allocate a unique attempt id.");
+          return;
+        }
+        const nextAttempts = [
+          ...(parsed.data.attempts ?? []),
+          { id: attemptHex, time: new Date().toISOString() },
+        ];
+        const nextData: LcInterviewFileV1 = { ...parsed.data, attempts: nextAttempts };
+        try {
+          fs.writeFileSync(lcPath, serializeLcInterviewFile(nextData), "utf-8");
+        } catch (e) {
+          void vscode.window.showErrorMessage(
+            `Could not update interview file: ${e instanceof Error ? e.message : String(e)}`
+          );
+          return;
+        }
+        try {
+          await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+        } catch {
+          /* command unavailable in some hosts */
+        }
+        try {
+          await vscode.commands.executeCommand(
+            "vscode.openWith",
+            vscode.Uri.file(lcPath),
+            "leetcode-practice.lcInterviewEditor",
+            vscode.ViewColumn.One
+          );
+        } catch {
+          try {
+            const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(lcPath));
+            await vscode.window.showTextDocument(doc, { preview: false });
+          } catch {
+            void vscode.window.showWarningMessage("Could not reopen the interview plan file.");
+          }
+        }
+        const r = await runInterviewSessionAfterPlan(context, getWebviewOpts, {
+          durationMinutes: dur,
+          planned: args.payload.problems,
+          sourceLcInterviewPath: lcPath,
+          interviewName: name,
+          solutionFolderPath,
+          attemptHex,
+        });
+        if (!r.ok) {
+          void vscode.window.showWarningMessage(r.message);
+        }
+      }
+    )
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.openLcInterviewReportForPath", async (fsPath?: string) => {
+      if (typeof fsPath !== "string" || !fsPath.trim()) {
+        return;
+      }
+      const canonical = normalizeInterviewFilePath(fsPath.trim());
+      const reportPath = getReportPathForInterviewFile(canonical);
+      if (!fs.existsSync(reportPath)) {
+        void vscode.window.showWarningMessage("No report on disk for this interview file yet.");
+        return;
+      }
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(reportPath));
+      await vscode.window.showTextDocument(doc, { preview: false });
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.openLcInterviewReportFile", async () => {
+      const picked = await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        filters: { "LC Interview report": ["lcireport"] },
+        title: "Open LC Interview report",
+      });
+      const fp = picked?.[0]?.fsPath;
+      if (!fp) return;
+      const data = readInterviewReportFile(fp);
+      if (!data) {
+        void vscode.window.showWarningMessage("Could not read this report file.");
+        return;
+      }
+      await openInterviewReportWebview(context, interviewReportViewModelFromSnapshotFile(data), getProvider);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.interviewGenerateWithAi", async () => {
+      const defaultName = defaultInterviewNameFromDate();
+      const name =
+        (await vscode.window.showInputBox({
+          prompt: "Interview name (first line of the chat prompt)",
+          value: defaultName,
+        })) ?? "";
+      const label = name.trim() || defaultName;
+      const prompt = `Interview plan: ${label}
+
+Load the **lcex-interview-generator** skill and follow it exactly.
+
+Produce a single JSON object for a LeetCode Practice \`.lcInterview\` file (version 1) with:
+- name (string)
+- durationMinutes: 45, 60, or 180
+- problems: array of { "titleSlug": "leetcode-slug", "difficulty": "EASY" | "MEDIUM" | "HARD" }
+
+Output only the JSON inside one \`\`\`json code block. Save the result as a file ending in \`.lcInterview\` and open it in the editor.`;
+      await openChatWithPrompt(prompt);
     })
   );
 
@@ -1188,6 +1694,11 @@ export function activate(context: vscode.ExtensionContext): void {
       setProblemStatus(globalState, titleSlug, "solved");
       handleProblemSolved(context, titleSlug);
       refreshAllProblemViews();
+      void refreshInterviewHubIfOpen(context, getProvider);
+    },
+    onMarkInterviewSolved: async (titleSlug) => {
+      await recordInterviewSolve(globalState, titleSlug);
+      await refreshInterviewHubIfOpen(context, getProvider);
     },
   };
   context.subscriptions.push(

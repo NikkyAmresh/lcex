@@ -18,6 +18,8 @@
     "workspaceContains:**/.leetcode",
     "onStartupFinished",
     "onCustomEditor:leetcode-practice.configEditor",
+    "onCustomEditor:leetcode-practice.lcInterviewEditor",
+    "onCustomEditor:leetcode-practice.lcInterviewReportEditor",
     "onCommand:leetcode-practice.openProblem",
     "onCommand:leetcode-practice.openQotd",
     "onCommand:leetcode-practice.runExamples",
@@ -40,6 +42,8 @@
     "onCommand:leetcode-practice.setDailyGoal",
     "onCommand:leetcode-practice.interviewModeStart",
     "onCommand:leetcode-practice.interviewModeStop",
+    "onCommand:leetcode-practice.interviewGenerateWithAi",
+    "onCommand:leetcode-practice.openLcInterviewReportFile",
     "onView:leetcode-practice.problemsView",
     "onView:leetcode-practice.topInterview150View",
     "onView:leetcode-practice.problemListsView",
@@ -184,6 +188,16 @@
       {
         "command": "leetcode-practice.interviewModeStop",
         "title": "LeetCode: Interview Mode — Stop",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.interviewGenerateWithAi",
+        "title": "LeetCode: Generate LC Interview (AI)",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.openLcInterviewReportFile",
+        "title": "LeetCode: Open LC Interview Report…",
         "category": "LeetCode"
       }
     ],
@@ -341,6 +355,33 @@
           "light": "./icons/logo-dark-16.png",
           "dark": "./icons/logo-dark-16.png"
         }
+      },
+      {
+        "id": "leetcode-lc-interview",
+        "aliases": [
+          "LC Interview"
+        ],
+        "extensions": [
+          "lcInterview",
+          "lcinterview"
+        ],
+        "icon": {
+          "light": "./icons/logo-dark-16.png",
+          "dark": "./icons/logo-dark-16.png"
+        }
+      },
+      {
+        "id": "leetcode-lc-interview-report",
+        "aliases": [
+          "LC Interview Report"
+        ],
+        "extensions": [
+          "lcireport"
+        ],
+        "icon": {
+          "light": "./icons/logo-dark-16.png",
+          "dark": "./icons/logo-dark-16.png"
+        }
       }
     ],
     "configuration": {
@@ -472,6 +513,28 @@
         "selector": [
           {
             "filenamePattern": ".leetcode"
+          }
+        ],
+        "priority": "default"
+      },
+      {
+        "id": "leetcode-practice.lcInterviewEditor",
+        "viewType": "leetcode-practice.lcInterviewEditor",
+        "displayName": "LC Interview",
+        "selector": [
+          {
+            "filenamePattern": "*.lcInterview"
+          }
+        ],
+        "priority": "default"
+      },
+      {
+        "id": "leetcode-practice.lcInterviewReportEditor",
+        "viewType": "leetcode-practice.lcInterviewReportEditor",
+        "displayName": "LC Interview Report",
+        "selector": [
+          {
+            "filenamePattern": "*.lcireport"
           }
         ],
         "priority": "default"

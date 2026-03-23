@@ -8,5 +8,10 @@
   },
   "fileNames": {
     ".leetcode": "leetcode-file"
+  },
+  "fileExtensions": {
+    "lcInterview": "leetcode-file",
+    "lcinterview": "leetcode-file",
+    "lcireport": "leetcode-file"
   }
 }

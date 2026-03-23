@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= sessionMode ? "Interview" : "Interview setup" %></title>
+    <style>
+      :root {
+        --bg: #1e1e1e;
+        --text: #e5e5e5;
+        --text-muted: #9d9d9d;
+        --accent: #ffa116;
+        --border: #3c3c3c;
+        --field: #252526;
+        --row-hover: rgba(255, 255, 255, 0.06);
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        max-width: 560px;
+        font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+        font-size: 14px;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.5;
+      }
+      h1 {
+        font-size: 22px;
+        margin: 0 0 8px;
+        font-weight: 600;
+      }
+      .lead {
+        color: var(--text-muted);
+        margin: 0 0 24px;
+        font-size: 13px;
+      }
+      .timer {
+        font-size: 28px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        color: var(--accent);
+        margin: 0 0 20px;
+        letter-spacing: 0.02em;
+      }
+      .timer-note {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin: -12px 0 20px;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        color: var(--text-muted);
+        margin: 16px 0 6px;
+      }
+      select,
+      input[type="number"],
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--field);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 14px;
+      }
+      textarea {
+        min-height: 72px;
+        resize: vertical;
+      }
+      details {
+        margin-top: 20px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      summary {
+        cursor: pointer;
+        color: var(--text-muted);
+        font-size: 13px;
+      }
+      .actions {
+        margin-top: 28px;
+      }
+      button#startBtn {
+        font-size: 14px;
+        padding: 10px 22px;
+        border: none;
+        border-radius: 6px;
+        background: var(--accent);
+        color: #000;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      button#startBtn:hover {
+        filter: brightness(1.05);
+      }
+      button#startBtn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .err {
+        color: #f48771;
+        font-size: 12px;
+        margin-top: 12px;
+        display: none;
+      }
+      .err.show {
+        display: block;
+      }
+      .hub-section-title {
+        font-size: 12px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin: 0 0 10px;
+      }
+      .hub-list {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .hub-row {
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 12px 14px;
+        border: none;
+        border-bottom: 1px solid var(--border);
+        background: var(--field);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 14px;
+        cursor: pointer;
+        box-sizing: border-box;
+      }
+      .hub-row:last-child {
+        border-bottom: none;
+      }
+      .hub-row:hover {
+        background: var(--row-hover);
+      }
+      .hub-row-title {
+        font-weight: 500;
+        margin-bottom: 6px;
+      }
+      .hub-row-meta {
+        font-size: 12px;
+        color: var(--text-muted);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 14px;
+      }
+      .pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .pill.practice {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text-muted);
+      }
+      .pill.int-done {
+        background: rgba(38, 166, 65, 0.25);
+        color: #7fd896;
+      }
+      .pill.int-open {
+        background: rgba(240, 173, 78, 0.2);
+        color: #f0ad4e;
+      }
+    </style>
+  </head>
+  <body>
+    <% if (sessionMode && session && hubRows) { %>
+    <h1>Interview in progress</h1>
+    <p class="lead">Planned problems and progress for this session. Practice status is separate from whether you solved the problem during this interview.</p>
+    <div class="timer" id="hubTimer" aria-live="polite">—:—</div>
+    <p class="timer-note">Click a problem to open it in the problem panel.</p>
+    <p class="hub-section-title">Problems</p>
+    <div class="hub-list" role="list">
+      <% hubRows.forEach(function (row) { %>
+      <button type="button" class="hub-row" role="listitem" data-slug="<%= row.titleSlug %>">
+        <div class="hub-row-title"><%= row.title %></div>
+        <div class="hub-row-meta">
+          <span class="pill practice">Practice: <%= row.practiceLabel %></span>
+          <% if (row.interviewSolved) { %>
+          <span class="pill int-done">This interview: Solved</span>
+          <% } else { %>
+          <span class="pill int-open">This interview: Not yet</span>
+          <% } %>
+        </div>
+      </button>
+      <% }); %>
+    </div>
+    <script>
+      (function () {
+        var vscode = acquireVsCodeApi();
+        var endsAt = <%= typeof endsAt === "number" ? endsAt : 0 %>;
+        var timerEl = document.getElementById("hubTimer");
+        function tick() {
+          var rm = Math.max(0, endsAt - Date.now());
+          var m = Math.floor(rm / 60000);
+          var s = Math.floor((rm % 60000) / 1000);
+          timerEl.textContent = m + ":" + (s < 10 ? "0" : "") + s;
+        }
+        tick();
+        setInterval(tick, 1000);
+        document.querySelector(".hub-list").addEventListener("click", function (ev) {
+          var btn = ev.target.closest(".hub-row");
+          if (!btn || !btn.dataset.slug) return;
+          vscode.postMessage({ type: "openProblem", titleSlug: btn.dataset.slug });
+        });
+        window.addEventListener("message", function (e) {
+          var d = e.data;
+          if (!d || d.type !== "hubTimerEndsAt") return;
+          endsAt = typeof d.endsAt === "number" ? d.endsAt : endsAt;
+          tick();
+        });
+      })();
+    </script>
+    <% } else { %>
+    <h1>Interview setup</h1>
+    <p class="lead">Choose duration and how many problems to draw (mixed Easy / Medium / Hard). Timer starts when you press Start now.</p>
+
+    <label for="dur">Duration</label>
+    <select id="dur" aria-label="Interview duration">
+      <option value="45">45 minutes</option>
+      <option value="60">60 minutes</option>
+      <option value="180">180 minutes (3 hours)</option>
+    </select>
+
+    <label for="count">Number of problems</label>
+    <input type="number" id="count" min="1" max="50" value="2" aria-label="Problem count" />
+
+    <details>
+      <summary>Custom slugs (optional)</summary>
+      <p style="color: var(--text-muted); font-size: 12px; margin: 10px 0 8px;">
+        Comma-separated LeetCode title slugs. If set, these are used instead of random picks.
+      </p>
+      <textarea id="custom" placeholder="e.g. two-sum, add-two-numbers" aria-label="Custom slugs"></textarea>
+    </details>
+
+    <div class="actions">
+      <button type="button" id="startBtn">Start now</button>
+    </div>
+    <p class="err" id="err"></p>
+
+    <script>
+      (function () {
+        const vscode = acquireVsCodeApi();
+        const durEl = document.getElementById("dur");
+        const countEl = document.getElementById("count");
+        const customEl = document.getElementById("custom");
+        const btn = document.getElementById("startBtn");
+        const errEl = document.getElementById("err");
+
+        function showErr(msg) {
+          errEl.textContent = msg || "";
+          errEl.classList.toggle("show", !!msg);
+        }
+
+        btn.addEventListener("click", function () {
+          showErr("");
+          const d = parseInt(durEl.value, 10);
+          const n = parseInt(countEl.value, 10);
+          if (![45, 60, 180].includes(d)) {
+            showErr("Invalid duration.");
+            return;
+          }
+          if (!Number.isFinite(n) || n < 1 || n > 50) {
+            showErr("Enter a problem count between 1 and 50.");
+            return;
+          }
+          btn.disabled = true;
+          vscode.postMessage({
+            type: "start",
+            durationMinutes: d,
+            problemCount: n,
+            customSlugsRaw: (customEl.value || "").trim(),
+          });
+        });
+
+        window.addEventListener("message", function (e) {
+          var d = e.data;
+          if (!d || d.type !== "resetStart") return;
+          btn.disabled = false;
+          if (d.message) showErr(d.message);
+        });
+      })();
+    </script>
+    <% } %>
+  </body>
+</html>

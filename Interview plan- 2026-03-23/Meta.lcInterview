@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "Interview plan: Meta",
+  "durationMinutes": 60,
+  "problems": [
+    {
+      "titleSlug": "valid-palindrome",
+      "difficulty": "EASY"
+    },
+    {
+      "titleSlug": "number-of-islands",
+      "difficulty": "MEDIUM"
+    },
+    {
+      "titleSlug": "binary-tree-maximum-path-sum",
+      "difficulty": "HARD"
+    }
+  ],
+  "attempts": [
+    {
+      "id": "7b9",
+      "time": "2026-03-23T12:40:30.647Z"
+    }
+  ]
+}
