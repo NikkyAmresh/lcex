@@ -11,6 +11,7 @@ import {
   ProblemTreeItem,
   setProblemStatus,
   getStoredStatus,
+  getAllStatusEntries,
 } from "./modules/ProblemsProvider";
 import type { ProblemPanelState } from "./modules/ProblemView";
 import {
@@ -21,6 +22,8 @@ import {
   PROBLEM_WEBVIEW_VIEWTYPE,
   restoreProblemPanel,
   getTitleSlugForActiveSolutionFile,
+  notifyAllProblemPanelsUiMode,
+  getCachedProblemDifficulty,
 } from "./modules/ProblemView";
 import { runExamples as runExamplesImpl } from "./modules/ExampleRunner";
 import * as Logger from "./modules/Logger";
@@ -31,7 +34,26 @@ import {
   resolveDefaultProblemListSlug,
 } from "./modules/LeetcodeConfig";
 import { LeetcodeConfigEditorProvider } from "./modules/LeetcodeConfigEditor";
-import { initProblemTimer, disposeProblemTimer } from "./modules/ProblemTimer";
+import { initProblemTimer, disposeProblemTimer, TIMER_BY_DAY_KEY } from "./modules/ProblemTimer";
+import {
+  awardXpForFirstSolve,
+  countSolvedToday,
+  getDailyGoal as readDailyGoal,
+  getTotalXp,
+  setDailyGoal as persistDailyGoal,
+  sumTimerMinutesToday,
+  todayIso,
+  xpLevelProgress,
+  FOCUS_COMPACT_WEBVIEW_KEY,
+} from "./modules/Gamification";
+import {
+  endInterviewSession,
+  getInterviewSession,
+  recordInterviewSolve,
+  remainingMs,
+  startInterviewSession,
+  setInterviewContext,
+} from "./modules/InterviewMode";
 
 function getProvider(): IProblemProvider {
   const folders = vscode.workspace.workspaceFolders ?? [];
@@ -199,6 +221,9 @@ function updateHasMarkerContext(): void {
   void vscode.commands.executeCommand("setContext", SHOW_QOTD_CONTEXT, config?.showQotd ?? true);
   updateSolutionFileContext();
   updateAgentStatusBarVisibility();
+  if (extensionContextForBars) {
+    updateGamificationStatusBars(extensionContextForBars);
+  }
   Logger.log(`Sidebar visibility: hasMarker=${hasMarker}`);
 }
 
@@ -331,6 +356,153 @@ async function openChatWithPrompt(prompt: string): Promise<void> {
   await vscode.env.clipboard.writeText(previousClipboard);
 }
 
+let interviewStatusBar: vscode.StatusBarItem | undefined;
+let dailyGoalStatusBar: vscode.StatusBarItem | undefined;
+let xpStatusBar: vscode.StatusBarItem | undefined;
+let interviewTickHandle: ReturnType<typeof setInterval> | null = null;
+
+function stopInterviewTick(): void {
+  if (interviewTickHandle) {
+    clearInterval(interviewTickHandle);
+    interviewTickHandle = null;
+  }
+}
+
+function startInterviewTick(context: vscode.ExtensionContext): void {
+  stopInterviewTick();
+  interviewTickHandle = setInterval(() => {
+    const sess = getInterviewSession(context.globalState);
+    if (!sess) {
+      stopInterviewTick();
+      interviewStatusBar?.hide();
+      return;
+    }
+    if (sess.endsAt <= Date.now()) {
+      stopInterviewTick();
+      void endInterviewSession(context.globalState, "timer").then((entry) => {
+        void setInterviewContext(false);
+        interviewStatusBar?.hide();
+        notifyAllProblemPanelsUiMode(context);
+        updateGamificationStatusBars(context);
+        if (entry) {
+          vscode.window.showInformationMessage(
+            `Interview ended (time up). +${entry.bonusXp} bonus XP. Solved ${entry.solvedCount} in session.`
+          );
+        }
+      });
+      return;
+    }
+    const rm = remainingMs(sess);
+    const m = Math.floor(rm / 60_000);
+    const s = Math.floor((rm % 60_000) / 1000);
+    if (interviewStatusBar) {
+      interviewStatusBar.text = `$(vm-running) ${m}:${s < 10 ? "0" : ""}${s}`;
+      interviewStatusBar.tooltip = "Interview mode — click to stop";
+      interviewStatusBar.command = "leetcode-practice.interviewModeStop";
+      interviewStatusBar.show();
+    }
+  }, 1000);
+}
+
+function updateGamificationStatusBars(context: vscode.ExtensionContext): void {
+  if (!shouldAutoApplyTheme()) {
+    dailyGoalStatusBar?.hide();
+    xpStatusBar?.hide();
+    return;
+  }
+  const gs = context.globalState;
+  const g = readDailyGoal(gs);
+  const today = todayIso();
+  const entries = getAllStatusEntries(gs);
+  const timerByDay = gs.get<Record<string, Record<string, number>>>(TIMER_BY_DAY_KEY) ?? {};
+  if (g && dailyGoalStatusBar) {
+    const cur =
+      g.mode === "problems"
+        ? countSolvedToday(entries, today)
+        : sumTimerMinutesToday(timerByDay, today);
+    dailyGoalStatusBar.text =
+      g.mode === "problems" ? `$(checklist) ${cur}/${g.target} today` : `$(watch) ${cur}/${g.target} min`;
+    dailyGoalStatusBar.tooltip = "Daily goal — LeetCode: Set Daily Goal";
+    dailyGoalStatusBar.command = "leetcode-practice.setDailyGoal";
+    dailyGoalStatusBar.show();
+  } else {
+    dailyGoalStatusBar?.hide();
+  }
+  const txp = getTotalXp(gs);
+  const lv = xpLevelProgress(txp);
+  if (xpStatusBar) {
+    xpStatusBar.text = `$(star-full) Lv ${lv.level} · ${txp} XP`;
+    xpStatusBar.tooltip = `${txp} XP total · ${lv.xpInLevel}/${lv.xpNeededForNext} XP to next level`;
+    xpStatusBar.command = "leetcode-practice.viewStats";
+    xpStatusBar.show();
+  }
+}
+
+function refreshInterviewStatusBarNow(context: vscode.ExtensionContext): void {
+  const sess = getInterviewSession(context.globalState);
+  if (!sess || !interviewStatusBar) return;
+  const rm = remainingMs(sess);
+  const m = Math.floor(rm / 60_000);
+  const s = Math.floor((rm % 60_000) / 1000);
+  interviewStatusBar.text = `$(vm-running) ${m}:${s < 10 ? "0" : ""}${s}`;
+  interviewStatusBar.tooltip = "Interview mode — click to stop";
+  interviewStatusBar.command = "leetcode-practice.interviewModeStop";
+  interviewStatusBar.show();
+}
+
+function restoreInterviewOnActivate(context: vscode.ExtensionContext): void {
+  const s = getInterviewSession(context.globalState);
+  if (!s) {
+    void setInterviewContext(false);
+    return;
+  }
+  if (s.endsAt <= Date.now()) {
+    void endInterviewSession(context.globalState, "timer").then((entry) => {
+      notifyAllProblemPanelsUiMode(context);
+      updateGamificationStatusBars(context);
+      if (entry) {
+        vscode.window.showInformationMessage(
+          `Interview session had expired. Logged +${entry.bonusXp} bonus XP.`
+        );
+      }
+    });
+    return;
+  }
+  void setInterviewContext(true);
+  startInterviewTick(context);
+  refreshInterviewStatusBarNow(context);
+}
+
+async function resolveProblemContextForExplain(): Promise<{ title: string; titleSlug: string } | undefined> {
+  const fromPanel = getTitleSlugForActiveSolutionFile();
+  if (fromPanel) {
+    const p = await getProvider().getProblem(fromPanel);
+    if (p) return { title: p.title, titleSlug: p.titleSlug };
+  }
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) return undefined;
+  const base = path.basename(editor.document.fileName, path.extname(editor.document.fileName));
+  const num = base.match(/^(\d+)$/);
+  if (num) {
+    const p = await getProvider().getProblem(num[1]);
+    if (p) return { title: p.title, titleSlug: p.titleSlug };
+  }
+  if (/^[a-z0-9-]+$/i.test(base)) {
+    const p = await getProvider().getProblem(base);
+    if (p) return { title: p.title, titleSlug: p.titleSlug };
+  }
+  return undefined;
+}
+
+function handleProblemSolved(context: vscode.ExtensionContext, titleSlug: string): void {
+  void (async () => {
+    const diff = getCachedProblemDifficulty(titleSlug);
+    await awardXpForFirstSolve(context.globalState, titleSlug, diff);
+    await recordInterviewSolve(context.globalState, titleSlug);
+    updateGamificationStatusBars(context);
+  })();
+}
+
 async function applyLeetcodeThemeIfNeeded(): Promise<void> {
   Logger.log("Theme auto-apply: checking...");
   const folders = vscode.workspace.workspaceFolders ?? [];
@@ -364,7 +536,10 @@ async function applyLeetcodeThemeIfNeeded(): Promise<void> {
   }
 }
 
+let extensionContextForBars: vscode.ExtensionContext | null = null;
+
 export function activate(context: vscode.ExtensionContext): void {
+  extensionContextForBars = context;
   const outputChannel = vscode.window.createOutputChannel("LeetCode Practice");
   context.subscriptions.push(outputChannel);
   Logger.init(outputChannel);
@@ -413,10 +588,23 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBarMakeRunnable = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBarHint = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
   const statusBarTimer = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 98);
-  context.subscriptions.push(statusBarMakeRunnable, statusBarHint, statusBarTimer);
+  interviewStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 97);
+  dailyGoalStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 96);
+  xpStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 95);
+  context.subscriptions.push(
+    statusBarMakeRunnable,
+    statusBarHint,
+    statusBarTimer,
+    interviewStatusBar,
+    dailyGoalStatusBar,
+    xpStatusBar
+  );
+  context.subscriptions.push({ dispose: () => stopInterviewTick() });
   initProblemTimer(context, statusBarTimer, shouldAutoApplyTheme, getTitleSlugForActiveSolutionFile);
   context.subscriptions.push({ dispose: () => disposeProblemTimer() });
   updateAgentStatusBarVisibility();
+  updateGamificationStatusBars(context);
+  restoreInterviewOnActivate(context);
 
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(
@@ -466,6 +654,10 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.agentHint", async () => {
+      if (getInterviewSession(context.globalState)) {
+        vscode.window.showWarningMessage("Hints are disabled during Interview mode.");
+        return;
+      }
       if (!shouldAutoApplyTheme()) {
         vscode.window.showWarningMessage("LeetCode workspace (.leetcode) required. Open a workspace with a .leetcode file.");
         return;
@@ -474,6 +666,162 @@ export function activate(context: vscode.ExtensionContext): void {
       const config = getEffectiveConfig(folders);
       const prompt = config.agentPromptHint?.trim() || "Give me a hint for this problem. Do not give the solution.";
       await openChatWithPrompt(prompt);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.agentExplainCode", async () => {
+      if (getInterviewSession(context.globalState)) {
+        vscode.window.showWarningMessage("Explain code is disabled during Interview mode.");
+        return;
+      }
+      if (!shouldAutoApplyTheme()) {
+        vscode.window.showWarningMessage("LeetCode workspace (.leetcode) required. Open a workspace with a .leetcode file.");
+        return;
+      }
+      const editor = vscode.window.activeTextEditor;
+      const sel = editor?.selection;
+      const text = editor && !sel?.isEmpty ? editor.document.getText(sel) : "";
+      if (!text.trim()) {
+        vscode.window.showWarningMessage("Select code in your solution file first.");
+        return;
+      }
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      const config = getEffectiveConfig(folders);
+      const base =
+        config.agentPromptExplain?.trim() ||
+        "Explain my solution code for this LeetCode problem. Respond with: (1) Intuition; (2) Step-by-step dry run; (3) Time and space complexity with justification.";
+      const prob = await resolveProblemContextForExplain();
+      const ctx = prob
+        ? `\n\nProblem: ${prob.title} (slug: ${prob.titleSlug})\n`
+        : `\n\nProblem context unknown (file: ${path.basename(editor!.document.fileName)}).\n`;
+      const ext = editor ? path.extname(editor.document.fileName).replace(".", "") : "txt";
+      const prompt = `${base}${ctx}\nSelected code:\n\`\`\`${ext}\n${text}\n\`\`\``;
+      await openChatWithPrompt(prompt);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.focusModeEnter", async () => {
+      await context.globalState.update(FOCUS_COMPACT_WEBVIEW_KEY, true);
+      notifyAllProblemPanelsUiMode(context);
+      const cmds = [
+        "workbench.action.closeSidebar",
+        "workbench.action.closePanel",
+        "workbench.action.toggleZenMode",
+        "workbench.action.toggleMaximizeEditorGroup",
+      ];
+      for (const id of cmds) {
+        try {
+          await vscode.commands.executeCommand(id);
+        } catch {
+          /* command may be unavailable */
+        }
+      }
+      vscode.window.showInformationMessage("Focus mode: sidebar/panel hidden, Zen + compact problem chrome. Use Focus Mode (exit) to restore workbench toggles.");
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.focusModeExit", async () => {
+      await context.globalState.update(FOCUS_COMPACT_WEBVIEW_KEY, false);
+      notifyAllProblemPanelsUiMode(context);
+      for (const id of [
+        "workbench.action.toggleMaximizeEditorGroup",
+        "workbench.action.toggleZenMode",
+        "workbench.action.togglePanel",
+        "workbench.action.toggleSidebarVisibility",
+      ]) {
+        try {
+          await vscode.commands.executeCommand(id);
+        } catch {
+          /* */
+        }
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.setDailyGoal", async () => {
+      const pick = await vscode.window.showQuickPick(
+        [
+          { label: "$(checklist) Problems per day", value: "problems" as const },
+          { label: "$(watch) Minutes per day", value: "minutes" as const },
+          { label: "$(trash) Clear daily goal", value: "clear" as const },
+        ],
+        { placeHolder: "Daily goal" }
+      );
+      if (!pick) return;
+      if (pick.value === "clear") {
+        await persistDailyGoal(context.globalState, undefined);
+        updateGamificationStatusBars(context);
+        vscode.window.showInformationMessage("Daily goal cleared.");
+        return;
+      }
+      const inp = await vscode.window.showInputBox({
+        prompt: pick.value === "problems" ? "How many problems per day?" : "How many practice minutes per day?",
+        validateInput: (v) => {
+          const n = parseInt(v, 10);
+          if (!Number.isFinite(n) || n < 1 || n > 50_000) return "Enter a positive number (1–50000)";
+          return undefined;
+        },
+      });
+      if (!inp) return;
+      await persistDailyGoal(context.globalState, {
+        mode: pick.value,
+        target: parseInt(inp, 10),
+      });
+      updateGamificationStatusBars(context);
+      vscode.window.showInformationMessage("Daily goal saved.");
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.interviewModeStart", async () => {
+      if (getInterviewSession(context.globalState)) {
+        vscode.window.showWarningMessage("An interview session is already active.");
+        return;
+      }
+      const dur = await vscode.window.showQuickPick(
+        [
+          { label: "45 minutes", value: 45 as const },
+          { label: "60 minutes", value: 60 as const },
+          { label: "180 minutes (3 hours)", value: 180 as const },
+        ],
+        { placeHolder: "Interview duration" }
+      );
+      if (!dur) return;
+      const raw = await vscode.window.showInputBox({
+        prompt: "Optional: planned problem slugs (comma-separated)",
+        placeHolder: "e.g. two-sum, add-two-numbers",
+      });
+      const planned = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+      await startInterviewSession(context.globalState, dur.value, planned);
+      await setInterviewContext(true);
+      notifyAllProblemPanelsUiMode(context);
+      startInterviewTick(context);
+      refreshInterviewStatusBarNow(context);
+      updateGamificationStatusBars(context);
+      vscode.window.showInformationMessage(
+        `Interview mode started (${dur.value} min). Hints and Explain are hidden/disabled.`
+      );
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.interviewModeStop", async () => {
+      const entry = await endInterviewSession(context.globalState, "user");
+      stopInterviewTick();
+      interviewStatusBar?.hide();
+      notifyAllProblemPanelsUiMode(context);
+      updateGamificationStatusBars(context);
+      if (!entry) {
+        vscode.window.showInformationMessage("No active interview session.");
+      } else {
+        vscode.window.showInformationMessage(
+          `Interview stopped. +${entry.bonusXp} bonus XP. Solved ${entry.solvedCount} in this session.`
+        );
+      }
     })
   );
 
@@ -838,6 +1186,7 @@ export function activate(context: vscode.ExtensionContext): void {
   webviewOpts = {
     onMarkSolved: (titleSlug) => {
       setProblemStatus(globalState, titleSlug, "solved");
+      handleProblemSolved(context, titleSlug);
       refreshAllProblemViews();
     },
   };
@@ -995,6 +1344,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("leetcode-practice.markAsSolved", (node: ProblemTreeItem) => {
       if (node?.item?.titleSlug) {
         setProblemStatus(globalState, node.item.titleSlug, "solved");
+        handleProblemSolved(context, node.item.titleSlug);
         refreshAllProblemViews();
       }
     })

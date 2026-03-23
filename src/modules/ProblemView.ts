@@ -12,6 +12,17 @@ import { generateTemplate } from "./TemplateEngine";
 import { pollRunStatus, pollSubmitStatus } from "../utils/apiPoller";
 import * as Logger from "./Logger";
 import { getProblemTimer, TIMER_BY_DAY_KEY, TIMER_ELAPSED_KEY, type TimerByDay } from "./ProblemTimer";
+import {
+  FOCUS_COMPACT_WEBVIEW_KEY,
+  countSolvedToday,
+  dailyGoalProgressPercent,
+  getDailyGoal,
+  getTotalXp,
+  sumTimerMinutesToday,
+  todayIso,
+  xpLevelProgress,
+} from "./Gamification";
+import { getInterviewHistory, getInterviewSession } from "./InterviewMode";
 
 export interface ProblemViewState {
   webviewPanel: vscode.WebviewPanel;
@@ -85,6 +96,23 @@ function getCacheUri(context: vscode.ExtensionContext): vscode.Uri {
 
 function getCachedProblem(titleSlug: string): Problem | undefined {
   return problemCache.get(titleSlug);
+}
+
+/** For gamification / XP without importing the full panel registry elsewhere. */
+export function getCachedProblemDifficulty(titleSlug: string): string | undefined {
+  return getCachedProblem(titleSlug)?.difficulty;
+}
+
+export function notifyAllProblemPanelsUiMode(context: vscode.ExtensionContext): void {
+  const focusCompact = context.globalState.get<boolean>(FOCUS_COMPACT_WEBVIEW_KEY) ?? false;
+  const interviewMode = Boolean(getInterviewSession(context.globalState));
+  for (const [, state] of problemViews) {
+    state.webviewPanel.webview.postMessage({
+      event: "uiMode",
+      focusCompact,
+      interviewMode,
+    });
+  }
 }
 
 /** Normalize LeetCode difficulty strings (e.g. EASY / Easy) for stats bucketing. */
@@ -562,6 +590,8 @@ async function renderChallengeHtml(
 
   const notesMap = context.globalState.get<Record<string, string>>("leetcode-practice.problemNotes") ?? {};
   const note = notesMap[problem.titleSlug] ?? "";
+  const focusCompact = context.globalState.get<boolean>(FOCUS_COMPACT_WEBVIEW_KEY) ?? false;
+  const interviewMode = Boolean(getInterviewSession(context.globalState));
   return ejs.renderFile(path.join(templatesDir, "challenge.ejs"), {
     id: problem.id,
     title: problem.title,
@@ -575,6 +605,8 @@ async function renderChallengeHtml(
     note,
     solutionContent,
     solutionHtml,
+    focusCompact,
+    interviewMode,
   });
 }
 
@@ -734,6 +766,34 @@ async function renderStatsHtml(
 
   const leetcodeProfile = await leetcodeProfilePromise;
 
+  const today = todayIso();
+  const dailyGoal = getDailyGoal(globalState);
+  let dailyGoalSection:
+    | { label: string; current: number; target: number; percent: number }
+    | undefined;
+  if (dailyGoal) {
+    if (dailyGoal.mode === "problems") {
+      const cur = countSolvedToday(entries, today);
+      dailyGoalSection = {
+        label: "Problems solved today",
+        current: cur,
+        target: dailyGoal.target,
+        percent: dailyGoalProgressPercent(cur, dailyGoal.target),
+      };
+    } else {
+      const cur = sumTimerMinutesToday(timerByDay, today);
+      dailyGoalSection = {
+        label: "Practice minutes today",
+        current: cur,
+        target: dailyGoal.target,
+        percent: dailyGoalProgressPercent(cur, dailyGoal.target),
+      };
+    }
+  }
+  const totalXp = getTotalXp(globalState);
+  const xpProg = xpLevelProgress(totalXp);
+  const interviewHistory = getInterviewHistory(globalState);
+
   const templatesDir = getTemplatesDir(context);
   const logoUri = webview.asWebviewUri(
     vscode.Uri.joinPath(context.extensionUri, "icons", "logo-dark.png")
@@ -760,6 +820,12 @@ async function renderStatsHtml(
     timeLinePoints,
     solvedLinePoints,
     statsCacheHint: `LeetCode difficulty cache expires after ${PROBLEMSET_DIFFICULTY_CACHE_TTL_DAYS} days. Command Palette: “LeetCode: Refresh Stats Data” to clear cache and reload now.`,
+    dailyGoalSection,
+    totalXp,
+    xpLevel: xpProg.level,
+    xpInLevel: xpProg.xpInLevel,
+    xpNeededForNext: xpProg.xpNeededForNext,
+    interviewHistory,
   });
 }
 
@@ -923,6 +989,10 @@ function setupPanelMessageHandler(
       } else if (event === "saveNote" && msgSlug && note !== undefined) {
         const notesMap = context.globalState.get<Record<string, string>>("leetcode-practice.problemNotes") ?? {};
         await context.globalState.update("leetcode-practice.problemNotes", { ...notesMap, [msgSlug]: note });
+      } else if (event === "toggleFocusCompact") {
+        const cur = context.globalState.get<boolean>(FOCUS_COMPACT_WEBVIEW_KEY) ?? false;
+        await context.globalState.update(FOCUS_COMPACT_WEBVIEW_KEY, !cur);
+        notifyAllProblemPanelsUiMode(context);
       }
     }
   );

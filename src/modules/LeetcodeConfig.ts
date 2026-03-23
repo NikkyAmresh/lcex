@@ -32,6 +32,8 @@ export interface LeetcodeConfig {
   agentPromptMakeRunnable?: string;
   /** Prompt sent to Cursor when clicking "Hint" in a solution file. Only in LeetCode workspace. */
   agentPromptHint?: string;
+  /** Base prompt for "Explain my code" (selection appended). Only in LeetCode workspace. */
+  agentPromptExplain?: string;
 }
 
 const DEFAULTS: Required<
@@ -56,6 +58,8 @@ const DEFAULTS: Required<
   qotdMonths: 6,
   agentPromptMakeRunnable: "Make this Runnable, do not give solution.",
   agentPromptHint: "Give me a hint for this problem. Do not give the solution.",
+  agentPromptExplain:
+    "Explain my solution code for this LeetCode problem. Respond with: (1) Intuition — core idea in plain language; (2) Step-by-step dry run — walk through the algorithm with a small example, including loop/state changes; (3) Time and space complexity with brief justification. Do not rewrite the full solution unless needed for clarity.",
 };
 
 function isValidStudyPlanEntry(obj: unknown): obj is { slug: string; name: string } {
@@ -294,6 +298,9 @@ export function parseLeetcodeConfig(workspaceFolders: readonly vscode.WorkspaceF
       if (parsed.agentPromptHint !== undefined && typeof parsed.agentPromptHint === "string") {
         merged.agentPromptHint = parsed.agentPromptHint;
       }
+      if (parsed.agentPromptExplain !== undefined && typeof parsed.agentPromptExplain === "string") {
+        merged.agentPromptExplain = parsed.agentPromptExplain;
+      }
     } catch (e) {
       Logger.log(`LeetcodeConfig: failed to parse ${configPath}, using defaults: ${e}`);
     }
@@ -331,5 +338,6 @@ export function getEffectiveConfig(workspaceFolders: readonly vscode.WorkspaceFo
     qotdMonths: leetcode.qotdMonths ?? DEFAULTS.qotdMonths,
     agentPromptMakeRunnable: leetcode.agentPromptMakeRunnable ?? DEFAULTS.agentPromptMakeRunnable,
     agentPromptHint: leetcode.agentPromptHint ?? DEFAULTS.agentPromptHint,
+    agentPromptExplain: leetcode.agentPromptExplain ?? DEFAULTS.agentPromptExplain,
   };
 }

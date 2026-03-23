@@ -86,6 +86,37 @@
         font-size: 11px;
         line-height: 1.45;
       }
+      .goal-bar-wrap {
+        height: 22px;
+        background: var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+        margin-top: 8px;
+        max-width: 480px;
+      }
+      .goal-bar-fill {
+        height: 100%;
+        background: var(--medium);
+        border-radius: 6px;
+        min-width: 0;
+      }
+      .interview-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        margin-top: 12px;
+      }
+      .interview-table th,
+      .interview-table td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border);
+      }
+      .interview-table th {
+        color: var(--text-muted);
+        font-weight: 500;
+        font-size: 12px;
+      }
     </style>
   </head>
   <body>
@@ -126,6 +157,31 @@
           <div class="stat-value"><%= leetcodeProfile.hardSolved %></div>
         </div>
       </div>
+      <h2 class="subsection">Practice (this extension)</h2>
+      <div class="stat">
+        <div class="stat-label">Local solved / streak</div>
+        <div class="stat-value" style="font-size: 20px;"><%= totalSolved %> solved · <%= streak %> day streak</div>
+      </div>
+      <div class="stat" style="margin-top: 12px;">
+        <div class="stat-label">Level &amp; XP (local)</div>
+        <div class="stat-value" style="font-size: 22px;">Level <%= typeof xpLevel !== 'undefined' ? xpLevel : 1 %></div>
+        <div style="color: var(--text-muted); font-size: 13px; margin-top: 6px;">
+          <%= typeof totalXp !== 'undefined' ? totalXp : 0 %> total XP
+          <% if (typeof xpNeededForNext !== 'undefined' && xpNeededForNext) { %>
+          · <%= typeof xpInLevel !== 'undefined' ? xpInLevel : 0 %> / <%= xpNeededForNext %> toward next level
+          <% } %>
+        </div>
+      </div>
+      <% if (typeof dailyGoalSection !== 'undefined' && dailyGoalSection) { %>
+      <div class="stat" style="margin-top: 16px;">
+        <div class="stat-label">Daily goal — <%= dailyGoalSection.label %></div>
+        <div style="font-size: 18px; font-weight: 600; margin-top: 4px;"><%= dailyGoalSection.current %> / <%= dailyGoalSection.target %></div>
+        <div class="goal-bar-wrap">
+          <div class="goal-bar-fill" style="width: <%= dailyGoalSection.percent %>%;"></div>
+        </div>
+        <div style="color: var(--text-muted); font-size: 12px; margin-top: 6px;"><%= dailyGoalSection.percent %>% complete</div>
+      </div>
+      <% } %>
     </section>
     <% } else { %>
     <section class="local-section">
@@ -156,6 +212,26 @@
         <div class="stat-label">Current streak (days)</div>
         <div class="stat-value"><%= streak %></div>
       </div>
+      <div class="stat" style="margin-top: 20px;">
+        <div class="stat-label">Level &amp; XP (local)</div>
+        <div class="stat-value" style="font-size: 22px;">Level <%= typeof xpLevel !== 'undefined' ? xpLevel : 1 %></div>
+        <div style="color: var(--text-muted); font-size: 13px; margin-top: 6px;">
+          <%= typeof totalXp !== 'undefined' ? totalXp : 0 %> total XP
+          <% if (typeof xpNeededForNext !== 'undefined' && xpNeededForNext) { %>
+          · <%= typeof xpInLevel !== 'undefined' ? xpInLevel : 0 %> / <%= xpNeededForNext %> toward next level
+          <% } %>
+        </div>
+      </div>
+      <% if (typeof dailyGoalSection !== 'undefined' && dailyGoalSection) { %>
+      <div class="stat" style="margin-top: 16px;">
+        <div class="stat-label">Daily goal — <%= dailyGoalSection.label %></div>
+        <div style="font-size: 18px; font-weight: 600; margin-top: 4px;"><%= dailyGoalSection.current %> / <%= dailyGoalSection.target %></div>
+        <div class="goal-bar-wrap">
+          <div class="goal-bar-fill" style="width: <%= dailyGoalSection.percent %>%;"></div>
+        </div>
+        <div style="color: var(--text-muted); font-size: 12px; margin-top: 6px;"><%= dailyGoalSection.percent %>% complete</div>
+      </div>
+      <% } %>
     </section>
     <% } %>
     <% if (typeof timeAnalysis !== 'undefined' && timeAnalysis && typeof timeChartBars !== 'undefined' && timeChartBars.length > 0) { %>
@@ -240,6 +316,34 @@
           <% }); %>
         </svg>
       </div>
+    </section>
+    <% } %>
+    <% if (typeof interviewHistory !== 'undefined' && interviewHistory && interviewHistory.length > 0) { %>
+    <section class="local-section">
+      <h2 class="subsection">Interview mode sessions</h2>
+      <p style="color: var(--text-muted); font-size: 13px; margin: 0 0 8px;">Recent timed sessions (bonus XP on completion).</p>
+      <table class="interview-table">
+        <thead>
+          <tr>
+            <th>Ended</th>
+            <th>Length</th>
+            <th>Planned</th>
+            <th>Solved</th>
+            <th>Bonus XP</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% interviewHistory.forEach(function(row) { %>
+          <tr>
+            <td><%= new Date(row.endedAt).toLocaleString() %></td>
+            <td><%= row.durationMinutes %> min</td>
+            <td><%= row.plannedCount %></td>
+            <td><%= row.solvedCount %></td>
+            <td>+<%= row.bonusXp %></td>
+          </tr>
+          <% }); %>
+        </tbody>
+      </table>
     </section>
     <% } %>
     <section class="time-by-day local-section">

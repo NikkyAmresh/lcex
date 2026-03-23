@@ -34,6 +34,12 @@
     "onCommand:leetcode-practice.clearProblemStatus",
     "onCommand:leetcode-practice.agentMakeRunnable",
     "onCommand:leetcode-practice.agentHint",
+    "onCommand:leetcode-practice.agentExplainCode",
+    "onCommand:leetcode-practice.focusModeEnter",
+    "onCommand:leetcode-practice.focusModeExit",
+    "onCommand:leetcode-practice.setDailyGoal",
+    "onCommand:leetcode-practice.interviewModeStart",
+    "onCommand:leetcode-practice.interviewModeStop",
     "onView:leetcode-practice.problemsView",
     "onView:leetcode-practice.topInterview150View",
     "onView:leetcode-practice.problemListsView",
@@ -149,6 +155,36 @@
       {
         "command": "leetcode-practice.agentHint",
         "title": "LeetCode: Ask Agent – Hint"
+      },
+      {
+        "command": "leetcode-practice.agentExplainCode",
+        "title": "LeetCode: Ask Agent – Explain My Code",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.focusModeEnter",
+        "title": "LeetCode: Focus Mode (enter)",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.focusModeExit",
+        "title": "LeetCode: Focus Mode (exit)",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.setDailyGoal",
+        "title": "LeetCode: Set Daily Goal",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.interviewModeStart",
+        "title": "LeetCode: Interview Mode — Start",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.interviewModeStop",
+        "title": "LeetCode: Interview Mode — Stop",
+        "category": "LeetCode"
       }
     ],
     "menus": {
@@ -160,8 +196,20 @@
         },
         {
           "command": "leetcode-practice.agentHint",
-          "when": "leetcodePractice.hasMarker && leetcodePractice.isSolutionFile",
+          "when": "leetcodePractice.hasMarker && leetcodePractice.isSolutionFile && !leetcodePractice.interviewMode",
           "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.agentExplainCode",
+          "when": "leetcodePractice.hasMarker && leetcodePractice.isSolutionFile && !leetcodePractice.interviewMode",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "leetcode-practice.agentExplainCode",
+          "when": "editorHasSelection && leetcodePractice.hasMarker && leetcodePractice.isSolutionFile && !leetcodePractice.interviewMode",
+          "group": "navigation@9"
         }
       ],
       "view/item/context": [

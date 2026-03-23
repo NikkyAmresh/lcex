@@ -66,6 +66,7 @@ function parseConfig(text: string): LeetcodeConfig {
     if (typeof parsed.internalApiUrl === "string") config.internalApiUrl = parsed.internalApiUrl;
     if (typeof parsed.agentPromptMakeRunnable === "string") config.agentPromptMakeRunnable = parsed.agentPromptMakeRunnable;
     if (typeof parsed.agentPromptHint === "string") config.agentPromptHint = parsed.agentPromptHint;
+    if (typeof parsed.agentPromptExplain === "string") config.agentPromptExplain = parsed.agentPromptExplain;
     return config;
   } catch {
     return { ...DEFAULTS };
@@ -286,6 +287,10 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
       <label>Hint button</label>
       <input type="text" id="agentPromptHint" value="${escapeHtml(config.agentPromptHint ?? "Give me a hint for this problem. Do not give the solution.")}" placeholder="Give me a hint. Do not give the solution." />
     </div>
+    <div class="field">
+      <label>Explain selection (base prompt)</label>
+      <input type="text" id="agentPromptExplain" value="${escapeHtml(config.agentPromptExplain ?? "")}" placeholder="Explain my code: intuition, dry run, complexity…" style="width:100%;" />
+    </div>
   </div>
   <div class="section">
     <h2>Views</h2>
@@ -343,7 +348,8 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
         showQotd: document.getElementById('showQotd').checked,
         qotdMonths: Math.max(1, parseInt(document.getElementById('qotdMonths').value, 10) || 6),
         agentPromptMakeRunnable: document.getElementById('agentPromptMakeRunnable').value.trim() || undefined,
-        agentPromptHint: document.getElementById('agentPromptHint').value.trim() || undefined
+        agentPromptHint: document.getElementById('agentPromptHint').value.trim() || undefined,
+        agentPromptExplain: document.getElementById('agentPromptExplain').value.trim() || undefined
       };
     }
     function notifyChange() { vscode.postMessage({ type: 'update', config: collectConfig() }); }
@@ -383,6 +389,7 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
     document.getElementById('internalApiUrl').oninput = notifyChange;
     document.getElementById('agentPromptMakeRunnable').oninput = notifyChange;
     document.getElementById('agentPromptHint').oninput = notifyChange;
+    document.getElementById('agentPromptExplain').oninput = notifyChange;
   </script>
 </body>
 </html>`;

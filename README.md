@@ -13,10 +13,14 @@ Practice LeetCode problems directly in VS Code (or Cursor). Generate TypeScript,
 - **Solution file generation** — Create `167.ts`, `two-sum.ts`, or `167.py` (configurable) with LeetCode boilerplate and example test cases
 - **Example runner** — Run example blocks (`console.log` / `print`) and see pass/fail inline
 - **Run in terminal** — Run the solution file with ts-node / tsx / node / python (shortcut: `Cmd+Shift+R`)
-- **Progress tracking** — Mark problems as Solved or Attempting, view stats
+- **Progress tracking** — Mark problems as Solved or Attempting, view stats (time per day, charts)
+- **Streak, XP, and levels** — Local streak from solve dates; XP on first solve per problem (by difficulty); level from total XP (see **View Stats** and status bar)
+- **Daily goals** — Set problems/day or practice minutes/day; progress on the stats page and in the status bar
+- **Focus mode** — Command hides sidebar, panel, and enables Zen + maximized editor; problem webview can use **Focus** for a compact chrome (timer + Solve + Run)
+- **Interview mode** — Timed sessions (45 / 60 / 180 min), optional planned slugs, no hints/explain, stricter webview; session history and bonus XP on **View Stats**
 - **LeetCode sign-in** — Sync with your LeetCode account for problemset data
 - **LeetCode Dark theme** — Optional auto-apply when a workspace has `.leetcode`
-- **Cursor/Agent integration** — "Make Runnable" and "Hint" buttons in the editor toolbar (when in a solution file)
+- **Cursor/Agent integration** — "Make Runnable", "Hint", and **Explain My Code** (selection) in the editor toolbar when a solution file is active
 - **Chrome extension** — Add a "Cursor" button next to LeetCode problem links to open them in the extension via `vscode://` URI
 - **Internal API** — Optional internal API base URL for fetching problem data instead of LeetCode
 
@@ -83,7 +87,13 @@ For "Open in Cursor" buttons on LeetCode.com:
 | **LeetCode: Filter by Difficulty** | Filter problems by Easy / Medium / Hard |
 | **LeetCode: Search Problems** | Search by title or slug |
 | **LeetCode: Open Random Problem** | Open a random (unsolved) problem |
-| **LeetCode: View Stats** | View solved/attempting counts |
+| **LeetCode: View Stats** | Solved/attempting, streak, charts, XP/level, daily goal, interview history |
+| **LeetCode: Refresh Stats Data** | Clear cached problemset difficulty used for stats and reload |
+| **LeetCode: Set Daily Goal** | Problems per day, minutes per day, or clear goal |
+| **LeetCode: Focus Mode (enter)** | Compact problem webview + hide sidebar/panel + Zen + maximize editor group |
+| **LeetCode: Focus Mode (exit)** | Restore compact webview chrome; toggle workbench UI back (best effort) |
+| **LeetCode: Interview Mode — Start** | Pick duration, optional planned slugs; starts countdown and strict session |
+| **LeetCode: Interview Mode — Stop** | End session, log stats, award bonus XP |
 | **LeetCode: Apply Theme** | Apply LeetCode Dark theme if `.leetcode` exists |
 | **LeetCode: Switch Study Plan** | Switch active study plan |
 | **Mark as Solved** | Mark the selected problem as solved (right‑click) |
@@ -91,6 +101,7 @@ For "Open in Cursor" buttons on LeetCode.com:
 | **Clear Status** | Clear status (right‑click) |
 | **LeetCode: Ask Agent – Make Runnable** | Open agent chat with make-runnable prompt |
 | **LeetCode: Ask Agent – Hint** | Open agent chat with hint prompt |
+| **LeetCode: Ask Agent – Explain My Code** | Open agent chat with selected code + structured explain prompt (disabled in Interview mode) |
 
 ---
 
@@ -122,7 +133,8 @@ Example:
   "showQotd": true,
   "qotdMonths": 6,
   "agentPromptMakeRunnable": "Make this Runnable, do not give solution.",
-  "agentPromptHint": "Give me a hint for this problem. Do not give the solution."
+  "agentPromptHint": "Give me a hint for this problem. Do not give the solution.",
+  "agentPromptExplain": "Explain my solution… (intuition, dry run, complexity)."
 }
 ```
 
@@ -145,6 +157,7 @@ Example:
 | `qotdMonths` | Number of months of daily challenges to load |
 | `agentPromptMakeRunnable` | Prompt sent when clicking "Make Runnable" |
 | `agentPromptHint` | Prompt sent when clicking "Hint" |
+| `agentPromptExplain` | Base prompt for **Explain My Code**; selected code and problem context are appended |
 
 You can also edit `.leetcode` via the custom config editor: open the `.leetcode` file and use the visual editor.
 
@@ -213,13 +226,17 @@ Example: `vscode://lcex.leetcode-practice/open/two-sum` opens the Two Sum proble
 
 When a `.ts`, `.js`, or `.py` solution file is active in a LeetCode workspace:
 
-- A **"Make Runnable"** button appears in the editor title bar
-- A **"Hint"** button appears in the editor title bar
+- **Make Runnable** — editor title bar (always available in Interview mode)
+- **Hint** — editor title bar (hidden while **Interview mode** is active)
+- **Explain My Code** — editor title bar when a selection exists; also in the **editor context menu** (right‑click). Asks for intuition, step‑by‑step dry run, and time/space complexity. Disabled in Interview mode.
 
-Clicking either opens the Cursor agent chat and pastes the configured prompt (`agentPromptMakeRunnable` or `agentPromptHint`). Defaults:
+Clicking a button opens the agent chat and sends the prompt (same mechanism as paste + submit). Configure text in `.leetcode`: `agentPromptMakeRunnable`, `agentPromptHint`, `agentPromptExplain`. Sensible defaults are built in if a field is omitted.
 
-- **Make Runnable:** `Make this Runnable, do not give solution.`
-- **Hint:** `Give me a hint for this problem. Do not give the solution.`
+Problem context for Explain is taken from an open matching problem webview, or from the solution filename (`167.ts` → fetch by id, `two-sum.ts` → slug).
+
+### Status bar (LeetCode workspace)
+
+When `.leetcode` is present: **daily goal** progress (if set), **level / total XP**, and (during Interview mode) a **countdown** (click to stop).
 
 ---
 
@@ -264,6 +281,8 @@ lcex/
 │   │   ├── ProblemsProvider.ts
 │   │   ├── ProblemView.ts     # Problem webview
 │   │   ├── ProblemTimer.ts
+│   │   ├── Gamification.ts    # XP, levels, daily goals
+│   │   ├── InterviewMode.ts   # Timed interview sessions
 │   │   ├── TemplateEngine.ts  # Solution file templates
 │   │   └── ...
 │   ├── templates/             # EJS templates

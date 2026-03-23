@@ -160,15 +160,25 @@
         outline: 1px solid var(--accent);
         outline-offset: -1px;
       }
+      body.focus-compact .focus-chrome {
+        display: none !important;
+      }
+      .interview-mode .tag.extra {
+        display: none !important;
+      }
+      .interview-mode .interview-leetc {
+        display: none !important;
+      }
     </style>
   </head>
-  <body>
+  <body class="<%= (typeof focusCompact !== 'undefined' && focusCompact ? 'focus-compact ' : '') %><%= (typeof interviewMode !== 'undefined' && interviewMode ? 'interview-mode' : '') %>">
     <div class="header">
       <h1 class="title"><%= id %>. <%= title %></h1>
       <div class="timer-row">
         <span class="timer" id="timer">00:00</span>
         <button type="button" class="timer-btn" id="timerPause" title="Pause">Pause</button>
         <button type="button" class="timer-btn" id="timerRestart" title="Restart">Restart</button>
+        <button type="button" class="timer-btn" id="focusLayoutBtn" title="Toggle compact problem chrome">Focus</button>
       </div>
       <% if (isSolved) { %>
         <span class="solved-badge">
@@ -177,7 +187,7 @@
         </span>
       <% } %>
     </div>
-    <div class="tags">
+    <div class="tags focus-chrome">
       <span class="tag difficulty-<%= difficulty.toLowerCase() %>"><%= difficulty %></span>
       <span class="tag extra">Topics</span>
       <span class="tag extra">Companies</span>
@@ -186,12 +196,12 @@
     <div class="buttons">
       <button class="btn solve" onclick="solve()"><%= typeof hasSolution !== 'undefined' && hasSolution ? 'Open Solution' : 'Solve' %></button>
       <button class="btn run" onclick="run()">Run</button>
-      <% if (isLoggedIn) { %><button class="btn run" onclick="runOnLeetCode()">Run on LeetCode</button><button class="btn submit" onclick="submit()">Submit</button><% } %>
-      <% if (!isSolved) { %><button class="btn run" onclick="markAsSolved()" title="Mark this problem as solved">Mark as solved</button><% } %>
+      <% if (isLoggedIn) { %><button class="btn run focus-chrome interview-leetc" onclick="runOnLeetCode()">Run on LeetCode</button><button class="btn submit focus-chrome interview-leetc" onclick="submit()">Submit</button><% } %>
+      <% if (!isSolved) { %><button class="btn run focus-chrome" onclick="markAsSolved()" title="Mark this problem as solved">Mark as solved</button><% } %>
     </div>
     <% if (isLoggedIn) { %>
       <% if (isSolved && (typeof solutionHtml !== 'undefined' && solutionHtml || typeof solutionContent !== 'undefined' && solutionContent)) { %>
-    <div class="solution-editor-section" style="margin-bottom: 16px;">
+    <div class="solution-editor-section focus-chrome" style="margin-bottom: 16px;">
       <label class="stat-label" style="display:block; margin-bottom: 6px;">Solution</label>
       <% if (typeof solutionHtml !== 'undefined' && solutionHtml) { %>
       <div class="solution-code-wrap" style="border: 1px solid var(--border); border-radius: 6px; overflow: hidden; font-size: 13px; line-height: 1.5; max-height: 420px; overflow-y: auto;" ondblclick="solve()" title="Double-click to open solution"><%- solutionHtml %></div>
@@ -200,14 +210,14 @@
       <% } %>
     </div>
       <% } else { %>
-    <div class="custom-input-section" style="margin-bottom: 16px;">
+    <div class="custom-input-section focus-chrome" style="margin-bottom: 16px;">
       <label class="stat-label" for="customInput" style="display:block; margin-bottom: 6px;">Custom test input (for Run on LeetCode)</label>
       <textarea id="customInput" rows="3" style="width: 100%; box-sizing: border-box; background: var(--code-bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-family: var(--vscode-editor-font-family, monospace); font-size: 13px;"><%= typeof sampleTestCase !== 'undefined' ? (sampleTestCase || '') : '' %></textarea>
     </div>
       <% } %>
     <% } %>
     <div class="content"><%- content %></div>
-    <details style="margin-top: 24px;">
+    <details class="focus-chrome" style="margin-top: 24px;">
       <summary style="cursor: pointer; color: var(--text-muted);">Notes</summary>
       <textarea id="notes" rows="4" style="width: 100%; box-sizing: border-box; margin-top: 8px; background: var(--code-bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-family: inherit; font-size: 13px;"><%= typeof note !== 'undefined' ? (note || '') : '' %></textarea>
     </details>
@@ -223,13 +233,23 @@
         const s = sec % 60;
         return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
       }
+      function applyUiMode(focusC, interviewM) {
+        document.body.classList.toggle("focus-compact", !!focusC);
+        document.body.classList.toggle("interview-mode", !!interviewM);
+      }
+      applyUiMode(<%= typeof focusCompact !== 'undefined' && focusCompact ? 'true' : 'false' %>, <%= typeof interviewMode !== 'undefined' && interviewMode ? 'true' : 'false' %>);
       window.addEventListener("message", function (ev) {
         const msg = ev.data;
         if (msg.event === "timerUpdate") {
           timerEl.textContent = fmt(msg.elapsed);
           timerEl.classList.toggle("timer-paused", msg.paused);
           pauseBtn.textContent = msg.paused ? "Resume" : "Pause";
+        } else if (msg.event === "uiMode") {
+          applyUiMode(msg.focusCompact, msg.interviewMode);
         }
+      });
+      document.getElementById("focusLayoutBtn").addEventListener("click", function () {
+        vscode.postMessage({ event: "toggleFocusCompact", titleSlug: titleSlug });
       });
       vscode.postMessage({ event: "timerReady", titleSlug });
       pauseBtn.addEventListener("click", function () {
@@ -249,6 +269,7 @@
       function markAsSolved() { vscode.postMessage({ event: "markAsSolved", titleSlug }); }
       (function () {
         var notesEl = document.getElementById("notes");
+        if (!notesEl) return;
         var debounce;
         notesEl.addEventListener("input", function () {
           clearTimeout(debounce);
