@@ -32,6 +32,9 @@ import {
   getCachedProblemDifficulty,
 } from "./modules/ProblemView";
 import { runExamples as runExamplesImpl } from "./modules/ExampleRunner";
+import {
+  SOLUTION_FILE_EXTENSIONS,
+} from "./modules/language/LanguageStrategy";
 import * as Logger from "./modules/Logger";
 import {
   parseLeetcodeConfig,
@@ -52,6 +55,7 @@ import {
   todayIso,
   xpLevelProgress,
   FOCUS_COMPACT_WEBVIEW_KEY,
+  FOCUS_ZEN_STATUSBAR_PREV_KEY,
   FOCUS_LAST_PARTICIPATION_XP_AT_KEY,
   FOCUS_SESSION_PARTICIPATION_XP,
   FOCUS_SESSION_XP_COOLDOWN_MS,
@@ -122,9 +126,9 @@ const SHOW_PROBLEM_LISTS_CONTEXT = "leetcodePractice.showProblemLists";
 const SHOW_QOTD_CONTEXT = "leetcodePractice.showQotd";
 const IS_SOLUTION_FILE_CONTEXT = "leetcodePractice.isSolutionFile";
 
-const SOLUTION_EXTENSIONS = new Set([".ts", ".js", ".py"]);
+const SOLUTION_EXTENSIONS = new Set(SOLUTION_FILE_EXTENSIONS);
 
-const NUMBERED_FILE_PATTERN = /^(\d+)\.(ts|js|py)$/i;
+const NUMBERED_FILE_PATTERN = /^(\d+)\.(ts|js|py|cpp)$/i;
 
 /** Shows problem name as tooltip on numbered solution files in LeetCode workspaces. */
 class LeetCodeFileDecorationProvider implements vscode.FileDecorationProvider {
@@ -261,9 +265,6 @@ function delay(ms: number): Promise<void> {
 
 /** URI path prefix for opening a problem by slug: /open/{slug} */
 const URI_OPEN_PREFIX = "/open/";
-
-/** Saved `zenMode.hideStatusBar` while focus / interview layout is active (restored on exit). */
-const FOCUS_ZEN_HIDE_STATUSBAR_SAVED_KEY = "leetcode-practice.focusZenHideStatusBarPrev";
 
 /** Handles vscode://lcex.leetcode-practice/open/{slug} — opens the extension and the problem. */
 function createUriHandler(
@@ -407,9 +408,9 @@ async function enterFocusModeUi(context: vscode.ExtensionContext): Promise<void>
   notifyAllProblemPanelsUiMode(context);
   await enterFocusWorkbenchLayout();
   const cfg = vscode.workspace.getConfiguration();
-  if (context.workspaceState.get(FOCUS_ZEN_HIDE_STATUSBAR_SAVED_KEY) === undefined) {
+  if (context.workspaceState.get(FOCUS_ZEN_STATUSBAR_PREV_KEY) === undefined) {
     const prev = cfg.get<boolean>("zenMode.hideStatusBar");
-    await context.workspaceState.update(FOCUS_ZEN_HIDE_STATUSBAR_SAVED_KEY, prev ?? true);
+    await context.workspaceState.update(FOCUS_ZEN_STATUSBAR_PREV_KEY, prev ?? true);
   }
   await cfg.update("zenMode.hideStatusBar", false, vscode.ConfigurationTarget.Workspace);
 }
@@ -417,12 +418,12 @@ async function enterFocusModeUi(context: vscode.ExtensionContext): Promise<void>
 async function exitFocusModeUi(context: vscode.ExtensionContext): Promise<void> {
   await context.globalState.update(FOCUS_COMPACT_WEBVIEW_KEY, false);
   notifyAllProblemPanelsUiMode(context);
-  const prev = context.workspaceState.get<boolean | undefined>(FOCUS_ZEN_HIDE_STATUSBAR_SAVED_KEY);
+  const prev = context.workspaceState.get<boolean | undefined>(FOCUS_ZEN_STATUSBAR_PREV_KEY);
   if (prev !== undefined) {
     await vscode.workspace
       .getConfiguration()
       .update("zenMode.hideStatusBar", prev, vscode.ConfigurationTarget.Workspace);
-    await context.workspaceState.update(FOCUS_ZEN_HIDE_STATUSBAR_SAVED_KEY, undefined);
+    await context.workspaceState.update(FOCUS_ZEN_STATUSBAR_PREV_KEY, undefined);
   }
   for (const id of [
     "workbench.action.toggleMaximizeEditorGroup",
@@ -1012,11 +1013,14 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("leetcode-practice.focusModeEnter", async () => {
+    vscode.commands.registerCommand("leetcode-practice.focusModeEnter", async (...args: unknown[]) => {
+      const opts = args[0] as { silent?: boolean } | undefined;
       await enterFocusModeUi(context);
-      vscode.window.showInformationMessage(
-        "Focus mode: sidebar/panel hidden, Zen + compact problem chrome. Use Focus Mode (exit) to restore workbench toggles."
-      );
+      if (!opts?.silent) {
+        vscode.window.showInformationMessage(
+          "Focus mode: sidebar/panel hidden, Zen + compact problem chrome. Use Focus Mode (exit) to restore workbench toggles."
+        );
+      }
     })
   );
 
@@ -1413,9 +1417,9 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const editor = vscode.window.activeTextEditor;
       const uri = editor?.document.uri;
       const ext = uri ? path.extname(uri.fsPath) : "";
-      if (!uri || ![".ts", ".js", ".py"].includes(ext)) {
+      if (!uri || !SOLUTION_FILE_EXTENSIONS.includes(ext.toLowerCase())) {
         vscode.window.showWarningMessage(
-          "Open a .ts, .js, or .py solution file with example blocks to run examples."
+          "Open a supported solution file (.ts, .js, .py, .cpp) with example output lines to run examples."
         );
         return;
       }
@@ -1429,9 +1433,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
           () => runExamplesImpl(uri)
         );
         if (results.length === 0) {
-          vscode.window.showInformationMessage(
-            "No console.log example blocks found."
-          );
+          vscode.window.showInformationMessage("No example output lines found in this file.");
           return;
         }
         const passed = results.filter((r) => r.pass).length;
@@ -1464,8 +1466,10 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const editor = vscode.window.activeTextEditor;
       const filePath = editor?.document.uri.fsPath;
       const ext = filePath ? path.extname(filePath) : "";
-      if (!filePath || ![".ts", ".js", ".py"].includes(ext)) {
-        vscode.window.showWarningMessage("Open a .ts, .js, or .py solution file to run.");
+      if (!filePath || !SOLUTION_FILE_EXTENSIONS.includes(ext.toLowerCase())) {
+        vscode.window.showWarningMessage(
+          "Open a supported solution file (.ts, .js, .py, .cpp) to run."
+        );
         return;
       }
       runTsNodeInTerminal(filePath);

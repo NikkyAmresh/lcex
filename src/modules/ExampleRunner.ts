@@ -1,10 +1,12 @@
 import * as path from "path";
-import { exec } from "child_process";
-import { promisify } from "util";
+import type { SupportedLanguage } from "./interface/Problem";
+import {
+  getLanguageStrategy,
+  languageFromFileExtension,
+} from "./language/LanguageStrategy";
 
-const execAsync = promisify(exec);
-
-export type SolutionFileLang = "typescript" | "javascript" | "python";
+/** @deprecated Use SupportedLanguage from ./interface/Problem */
+export type SolutionFileLang = SupportedLanguage;
 
 export interface ExampleResult {
   lineIndex: number;
@@ -13,59 +15,35 @@ export interface ExampleResult {
   actual: string;
 }
 
-function langFromExt(ext: string): SolutionFileLang {
-  if (ext === ".py") return "python";
-  if (ext === ".js") return "javascript";
-  return "typescript";
+function languageFromPath(filePath: string): SupportedLanguage {
+  const ext = path.extname(filePath);
+  return languageFromFileExtension(ext) ?? "typescript";
 }
 
 export function parseExampleBlocks(
   content: string,
-  lang: SolutionFileLang = "typescript"
+  lang: SupportedLanguage = "typescript"
 ): { callLine: number; expected: string | null }[] {
+  const s = getLanguageStrategy(lang);
   const results: { callLine: number; expected: string | null }[] = [];
   const lines = content.split("\n");
-  const isOutputLine =
-    lang === "python"
-      ? (line: string) => /print\s*\(/.test(line)
-      : (line: string) => /console\.log\s*\(/.test(line);
-  const commentRegex = lang === "python" ? /#\s*(.+)$/ : /\/\/\s*(.+)$/;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (!isOutputLine(line)) continue;
-    const commentMatch = line.match(commentRegex);
-    results.push({ callLine: i + 1, expected: commentMatch ? commentMatch[1].trim() : null });
+    if (!s.isExampleOutputLine(line)) continue;
+    results.push({ callLine: i + 1, expected: s.parseExampleExpectedComment(line) });
   }
   return results;
 }
 
 export async function runSolutionFile(
   filePath: string,
-  lang?: SolutionFileLang
+  lang?: SupportedLanguage
 ): Promise<{ stdout: string; stderr: string }> {
-  const ext = path.extname(filePath);
-  const resolvedLang = lang ?? langFromExt(ext);
+  const resolvedLang = lang ?? languageFromPath(filePath);
+  const s = getLanguageStrategy(resolvedLang);
   const dir = path.dirname(filePath);
   const normalized = path.normalize(filePath);
-  const cmd =
-    resolvedLang === "python"
-      ? `python3 "${normalized}"`
-      : resolvedLang === "javascript"
-        ? `node "${normalized}"`
-        : `npx --yes tsx "${normalized}"`;
-  try {
-    const { stdout, stderr } = await execAsync(cmd, {
-      cwd: dir,
-      timeout: 15000,
-    });
-    return { stdout: stdout ?? "", stderr: stderr ?? "" };
-  } catch (err: unknown) {
-    const e = err as { stdout?: string; stderr?: string; message?: string };
-    return {
-      stdout: e.stdout ?? "",
-      stderr: e.stderr ?? e.message ?? String(err),
-    };
-  }
+  return s.runSolutionFile(normalized, dir);
 }
 
 /** @deprecated Use runSolutionFile */
@@ -76,8 +54,8 @@ export async function runTsFile(filePath: string): Promise<{ stdout: string; std
 function parseStdoutLines(stdout: string): string[] {
   return stdout
     .split("\n")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0);
 }
 
 function normalizeExpected(s: string): string {
@@ -91,7 +69,7 @@ function normalizeActual(s: string): string {
 export function compareOutput(
   content: string,
   stdout: string,
-  lang: SolutionFileLang = "typescript"
+  lang: SupportedLanguage = "typescript"
 ): ExampleResult[] {
   const blocks = parseExampleBlocks(content, lang);
   const actualLines = parseStdoutLines(stdout);
@@ -106,8 +84,7 @@ export function compareOutput(
 
 export async function runExamples(uri: { fsPath: string }): Promise<ExampleResult[]> {
   const vscode = await import("vscode");
-  const ext = path.extname(uri.fsPath);
-  const lang = langFromExt(ext);
+  const lang = languageFromPath(uri.fsPath);
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(uri.fsPath));
   const content = doc.getText();
   const blocks = parseExampleBlocks(content, lang);

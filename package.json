@@ -406,10 +406,21 @@
           "enum": [
             "typescript",
             "javascript",
-            "python"
+            "python",
+            "cpp"
           ],
           "default": "typescript",
           "description": "Language for generated solution files and run/submit."
+        },
+        "leetcodePractice.suppressAiTabOnSolve": {
+          "type": "boolean",
+          "default": true,
+          "description": "In workspaces with a root .leetcode file, when you open/create a solution from the problem page, write workspace settings to reduce Tab/inline AI completions for that solution language (editor.inlineSuggest.enabled false and editor.tabCompletion off in [typescript]/[javascript]/[python]/[cpp])."
+        },
+        "leetcodePractice.suppressAiTabWorkspaceWide": {
+          "type": "boolean",
+          "default": false,
+          "description": "If suppressAiTabOnSolve is enabled, set editor.inlineSuggest.enabled to false for the whole workspace instead of per-language scopes (stronger; affects all file types in this workspace folder)."
         },
         "leetcodePractice.internalApiUrl": {
           "type": "string",

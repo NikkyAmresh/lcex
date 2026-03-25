@@ -1,7 +1,21 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import * as ejs from "ejs";
-import type { IProblemProvider, Problem } from "./interface/Problem";
+import {
+  isSupportedLanguage,
+  SUPPORTED_LANGUAGES,
+  type IProblemProvider,
+  type Problem,
+  type SupportedLanguage,
+} from "./interface/Problem";
+import {
+  LANGUAGE_CHOICES,
+  LANGUAGE_SHORT,
+  getLanguageStrategy,
+  languageStrategyFromExtension,
+  leetcodeApiLangFor,
+  SOLUTION_FILE_EXTENSIONS,
+} from "./language/LanguageStrategy";
 import type { ProblemListItem } from "./LeetCode";
 import type { ProblemStatus } from "./ProblemsProvider";
 import {
@@ -19,6 +33,8 @@ import * as Logger from "./Logger";
 import { getProblemTimer, TIMER_BY_DAY_KEY, TIMER_ELAPSED_KEY, type TimerByDay } from "./ProblemTimer";
 import {
   FOCUS_COMPACT_WEBVIEW_KEY,
+  FOCUS_ZEN_STATUSBAR_PREV_KEY,
+  LAST_CHALLENGE_PANEL_LANGUAGE_KEY,
   countSolvedToday,
   dailyGoalProgressPercent,
   getDailyGoal,
@@ -35,6 +51,11 @@ import {
   type InterviewSessionState,
 } from "./InterviewMode";
 import type { LcInterviewReportFileV1 } from "./LcexInterviewReportStore";
+import {
+  suppressInlineSuggestWorkspaceWide,
+  suppressTabLikeFeaturesForPracticeLanguage,
+  workspaceHasLeetcodeMarker,
+} from "./LeetcodePracticeEditorSettings";
 
 export interface ProblemViewState {
   webviewPanel: vscode.WebviewPanel;
@@ -226,7 +247,36 @@ export const PROBLEMSET_DIFFICULTY_CACHE_TTL_DAYS = 7;
 const PROBLEMSET_DIFFICULTY_CACHE_TTL_MS =
   PROBLEMSET_DIFFICULTY_CACHE_TTL_DAYS * 24 * 60 * 60 * 1000;
 
-const SOLUTION_EXTENSIONS = new Set([".ts", ".js", ".py"]);
+const SOLUTION_EXTENSIONS = new Set(SOLUTION_FILE_EXTENSIONS);
+
+function getEffectiveChallengePanelLanguage(context: vscode.ExtensionContext): SupportedLanguage {
+  const last = context.globalState.get<string>(LAST_CHALLENGE_PANEL_LANGUAGE_KEY);
+  if (last && isSupportedLanguage(last)) return last;
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  return getEffectiveConfig(folders).language ?? "typescript";
+}
+
+/** Languages that already have a solution file on disk for this problem (id- or slug-named). */
+async function languagesWithSolutionFilesOnDisk(
+  context: vscode.ExtensionContext,
+  problem: Problem
+): Promise<SupportedLanguage[]> {
+  const solutionBase = interviewSolutionBaseDir(context.globalState);
+  const attemptHex = interviewSolutionAttemptHex(context.globalState);
+  const found: SupportedLanguage[] = [];
+  for (const lang of SUPPORTED_LANGUAGES) {
+    const { exists } = await Database.resolveSolutionFilePathForOpen(
+      undefined,
+      problem.id,
+      problem.titleSlug,
+      solutionBase,
+      attemptHex,
+      lang
+    );
+    if (exists) found.push(lang);
+  }
+  return found;
+}
 
 function interviewSolutionBaseDir(globalState: vscode.Memento): string | undefined {
   const s = getInterviewSession(globalState);
@@ -742,15 +792,18 @@ function getTemplatesDir(context: vscode.ExtensionContext): string {
 
 async function solutionFileExists(
   context: vscode.ExtensionContext,
-  problem: Problem
+  problem: Problem,
+  language?: SupportedLanguage
 ): Promise<boolean> {
   const uri = vscode.window.activeTextEditor?.document.uri;
+  const lang = language ?? getEffectiveChallengePanelLanguage(context);
   const { exists } = await Database.resolveSolutionFilePathForOpen(
     uri,
     problem.id,
     problem.titleSlug,
     interviewSolutionBaseDir(context.globalState),
-    interviewSolutionAttemptHex(context.globalState)
+    interviewSolutionAttemptHex(context.globalState),
+    lang
   );
   return exists;
 }
@@ -765,8 +818,11 @@ async function renderChallengeHtml(
   const templatesDir = getTemplatesDir(context);
   const content = problem.content || "<p>No description.</p>";
   const difficulty = problem.difficulty || "Unknown";
-  const hasSolution = await solutionFileExists(context, problem);
+  const panelLanguage = getEffectiveChallengePanelLanguage(context);
+  const hasSolution = await solutionFileExists(context, problem, panelLanguage);
   const isSolved = status === "solved";
+  const langsOnDisk = await languagesWithSolutionFilesOnDisk(context, problem);
+  const otherSolutionLangs = langsOnDisk.map((id) => ({ id, short: LANGUAGE_SHORT[id] }));
 
   let solutionContent: string | undefined;
   let solutionHtml: string | undefined;
@@ -777,7 +833,8 @@ async function renderChallengeHtml(
       problem.id,
       problem.titleSlug,
       interviewSolutionBaseDir(context.globalState),
-      interviewSolutionAttemptHex(context.globalState)
+      interviewSolutionAttemptHex(context.globalState),
+      panelLanguage
     );
     if (exists) {
       try {
@@ -785,7 +842,7 @@ async function renderChallengeHtml(
         const raw = Buffer.from(buf).toString("utf8");
         solutionContent = raw;
         const ext = path.extname(solutionPath).toLowerCase();
-        const lang = ext === ".ts" ? "typescript" : ext === ".js" ? "javascript" : ext === ".py" ? "python" : "typescript";
+        const lang = languageStrategyFromExtension(ext)?.shikiLang ?? "typescript";
         const theme =
           vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.Light ||
           vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrastLight
@@ -824,6 +881,9 @@ async function renderChallengeHtml(
     focusCompact,
     interviewMode,
     interviewSolvedInSession,
+    panelLanguage,
+    languageChoices: LANGUAGE_CHOICES,
+    otherSolutionLangs,
   });
 }
 
@@ -1319,20 +1379,15 @@ export async function openInterviewReportWebview(
   panel.webview.html = html;
 }
 
-const TERMINAL_CMD_BY_EXT: Record<string, string> = {
-  ".ts": "ts-node",
-  ".js": "node",
-  ".py": "python3",
-};
-
-/** Runs the solution file in the terminal (ts-node / node / python3 by extension). */
+/** Runs the solution file in the integrated terminal (strategy: tsx / node / python3 / g++). */
 export function runTsNodeInTerminal(filePath: string): void {
   const ext = path.extname(filePath);
-  const cmd = TERMINAL_CMD_BY_EXT[ext] ?? "ts-node";
-  const quoted = filePath.includes(" ") ? `"${filePath.replace(/"/g, '\\"')}"` : filePath;
+  const strategy = languageStrategyFromExtension(ext);
   const terminal = vscode.window.activeTerminal ?? vscode.window.createTerminal("LeetCode");
   terminal.show();
-  terminal.sendText(`${cmd} ${quoted}`);
+  terminal.sendText(
+    (strategy ?? getLanguageStrategy("typescript")).buildTerminalCommand(filePath)
+  );
 }
 
 async function renderTestcasesHtml(
@@ -1404,8 +1459,14 @@ function setupPanelMessageHandler(
   const state = problemViews.get(titleSlug);
   if (!state) return;
   state.webviewPanel.webview.onDidReceiveMessage(
-    async (msg: { event: string; titleSlug: string; customInput?: string; note?: string }) => {
-      const { event, titleSlug: msgSlug, customInput, note } = msg;
+    async (msg: {
+      event: string;
+      titleSlug: string;
+      customInput?: string;
+      note?: string;
+      language?: string;
+    }) => {
+      const { event, titleSlug: msgSlug, customInput, note, language: msgLanguage } = msg;
       const s = problemViews.get(msgSlug);
       if (!s) return;
       const timer = getProblemTimer();
@@ -1418,15 +1479,35 @@ function setupPanelMessageHandler(
       } else if (event === "timerResume" && timer) {
         timer.handleResume(msgSlug);
       } else if (event === "solve") {
-        await openOrCreateSolution(context, s.problem);
+        const lang =
+          msgLanguage && isSupportedLanguage(String(msgLanguage))
+            ? (String(msgLanguage) as SupportedLanguage)
+            : getEffectiveChallengePanelLanguage(context);
+        await openOrCreateSolution(context, s.problem, lang);
+      } else if (event === "solveAsLang") {
+        if (!msgLanguage || !isSupportedLanguage(String(msgLanguage))) return;
+        await openOrCreateSolution(
+          context,
+          s.problem,
+          String(msgLanguage) as SupportedLanguage
+        );
+      } else if (event === "setChallengeLanguage") {
+        if (msgLanguage && isSupportedLanguage(String(msgLanguage))) {
+          await context.globalState.update(
+            LAST_CHALLENGE_PANEL_LANGUAGE_KEY,
+            String(msgLanguage) as SupportedLanguage
+          );
+        }
       } else if (event === "run") {
         const uri = vscode.window.activeTextEditor?.document.uri;
+        const lang = getEffectiveChallengePanelLanguage(context);
         const { path: filePath } = await Database.resolveSolutionFilePathForOpen(
           uri,
           s.problem.id,
           s.problem.titleSlug,
           interviewSolutionBaseDir(context.globalState),
-          interviewSolutionAttemptHex(context.globalState)
+          interviewSolutionAttemptHex(context.globalState),
+          lang
         );
         runTsNodeInTerminal(filePath);
       } else if (event === "runOnLeetCode" && customInput !== undefined) {
@@ -1453,10 +1534,16 @@ function setupPanelMessageHandler(
       } else if (event === "saveNote" && msgSlug && note !== undefined) {
         const notesMap = context.globalState.get<Record<string, string>>("leetcode-practice.problemNotes") ?? {};
         await context.globalState.update("leetcode-practice.problemNotes", { ...notesMap, [msgSlug]: note });
-      } else if (event === "toggleFocusCompact") {
-        const cur = context.globalState.get<boolean>(FOCUS_COMPACT_WEBVIEW_KEY) ?? false;
-        await context.globalState.update(FOCUS_COMPACT_WEBVIEW_KEY, !cur);
-        notifyAllProblemPanelsUiMode(context);
+      } else if (event === "toggleFocusMode") {
+        const inWorkbenchFocus =
+          context.workspaceState.get(FOCUS_ZEN_STATUSBAR_PREV_KEY) !== undefined;
+        if (inWorkbenchFocus) {
+          await vscode.commands.executeCommand("leetcode-practice.focusModeExit");
+        } else {
+          await vscode.commands.executeCommand("leetcode-practice.focusModeEnter", { silent: true });
+        }
+      } else if (event === "agentHint") {
+        await vscode.commands.executeCommand("leetcode-practice.agentHint");
       }
     }
   );
@@ -1626,20 +1713,36 @@ export async function restoreProblemPanel(
 
 export async function openOrCreateSolution(
   context: vscode.ExtensionContext,
-  problem: Problem
+  problem: Problem,
+  language?: SupportedLanguage
 ): Promise<void> {
+  const lang = language ?? getEffectiveChallengePanelLanguage(context);
+  if (workspaceHasLeetcodeMarker()) {
+    const practice = vscode.workspace.getConfiguration("leetcodePractice");
+    const suppress = practice.get<boolean>("suppressAiTabOnSolve") ?? true;
+    if (suppress) {
+      const workspaceWide = practice.get<boolean>("suppressAiTabWorkspaceWide") ?? false;
+      try {
+        if (workspaceWide) {
+          await suppressInlineSuggestWorkspaceWide();
+        } else {
+          await suppressTabLikeFeaturesForPracticeLanguage(lang);
+        }
+      } catch {
+        /* settings update can fail in restricted workspaces */
+      }
+    }
+  }
   const uri = vscode.window.activeTextEditor?.document.uri;
   const { path: filePath, exists } = await Database.resolveSolutionFilePathForOpen(
     uri,
     problem.id,
     problem.titleSlug,
     interviewSolutionBaseDir(context.globalState),
-    interviewSolutionAttemptHex(context.globalState)
+    interviewSolutionAttemptHex(context.globalState),
+    lang
   );
   if (!exists) {
-    const folders = vscode.workspace.workspaceFolders ?? [];
-    const config = getEffectiveConfig(folders);
-    const lang = (config.language ?? "typescript") as "typescript" | "javascript" | "python";
     const content = generateTemplate(problem, { language: lang });
     await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), Buffer.from(content, "utf8"));
   }
@@ -1663,12 +1766,14 @@ async function executeCode(
   const editor = vscode.window.activeTextEditor;
   const fileName = editor?.document.fileName ?? "";
   const ext = path.extname(fileName);
-  const langSlug =
-    ext === ".py" ? "python3" : ext === ".js" ? "javascript" : "typescript";
-  if (!editor || !/[.]ts$|[.]js$|[.]py$/.test(fileName)) {
-    vscode.window.showWarningMessage("Open a solution file (.ts, .js, or .py) and try again.");
+  const strategy = languageStrategyFromExtension(ext);
+  if (!editor || !strategy) {
+    vscode.window.showWarningMessage(
+      "Open a solution file (.ts, .js, .py, or .cpp) and try again."
+    );
     return;
   }
+  const langSlug = leetcodeApiLangFor(strategy.id);
   const code = editor.document.getText();
   const leetcode = new LeetCodeProvider();
   const state = problemViews.get(problem.titleSlug);

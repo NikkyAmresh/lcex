@@ -17,6 +17,12 @@ export const DAILY_GOAL_KEY = "leetcode-practice.dailyGoal";
 /** Webview compact chrome (problem panel). */
 export const FOCUS_COMPACT_WEBVIEW_KEY = "leetcode-practice.focusCompactWebview";
 
+/** Workspace: saved `zenMode.hideStatusBar` while focus mode is active; key present ⇒ workbench focus mode on. */
+export const FOCUS_ZEN_STATUSBAR_PREV_KEY = "leetcode-practice.focusZenHideStatusBarPrev";
+
+/** Last language chosen in the problem webview (Solve / dropdown); not per-problem. */
+export const LAST_CHALLENGE_PANEL_LANGUAGE_KEY = "leetcode-practice.lastChallengePanelLanguage";
+
 /** Participation XP when exiting focus mode (at most once per cooldown). */
 export const FOCUS_SESSION_PARTICIPATION_XP = 10;
 export const FOCUS_SESSION_XP_COOLDOWN_MS = 60 * 60 * 1000;

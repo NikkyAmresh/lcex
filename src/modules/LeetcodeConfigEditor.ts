@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import { isSupportedLanguage, type SupportedLanguage } from "./interface/Problem";
+import { LANGUAGE_CHOICES } from "./language/LanguageStrategy";
 import type { LeetcodeConfig } from "./LeetcodeConfig";
 
 const DEFAULTS: LeetcodeConfig = {
@@ -55,8 +57,8 @@ function parseConfig(text: string): LeetcodeConfig {
     if (["id", "slug"].includes(String(parsed.fileNamePattern))) {
       config.fileNamePattern = parsed.fileNamePattern as "id" | "slug";
     }
-    if (["typescript", "javascript", "python"].includes(String(parsed.language))) {
-      config.language = parsed.language as "typescript" | "javascript" | "python";
+    if (parsed.language !== undefined && isSupportedLanguage(String(parsed.language))) {
+      config.language = parsed.language as SupportedLanguage;
     }
     if (typeof parsed.showProblemset === "boolean") config.showProblemset = parsed.showProblemset;
     if (typeof parsed.showStudyPlans === "boolean") config.showStudyPlans = parsed.showStudyPlans;
@@ -270,15 +272,16 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
     <div class="field">
       <label>Language</label>
       <select id="language">
-        <option value="typescript" ${config.language === "typescript" ? "selected" : ""}>TypeScript</option>
-        <option value="javascript" ${config.language === "javascript" ? "selected" : ""}>JavaScript</option>
-        <option value="python" ${config.language === "python" ? "selected" : ""}>Python</option>
+        ${LANGUAGE_CHOICES.map(
+          ({ id, label }) =>
+            `<option value="${id}" ${config.language === id ? "selected" : ""}>${escapeHtml(label)}</option>`
+        ).join("\n        ")}
       </select>
     </div>
   </div>
   <div class="section">
     <h2>Agent prompts (solution file toolbar)</h2>
-    <p style="color: var(--vscode-descriptionForeground); font-size: 12px; margin: 0 0 12px 0;">When a .ts, .js, or .py file is open in a LeetCode workspace, toolbar buttons open Cursor chat with these prompts. Edit in .leetcode to customize.</p>
+    <p style="color: var(--vscode-descriptionForeground); font-size: 12px; margin: 0 0 12px 0;">When a solution file (.ts, .js, .py, .cpp) is open in a LeetCode workspace, toolbar buttons open Cursor chat with these prompts. Edit in .leetcode to customize.</p>
     <div class="field">
       <label>Make runnable button</label>
       <input type="text" id="agentPromptMakeRunnable" value="${escapeHtml(config.agentPromptMakeRunnable ?? "Make this Runnable, do not give solution.")}" placeholder="Make this Runnable, do not give solution." />

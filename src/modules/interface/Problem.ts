@@ -12,13 +12,12 @@ export interface Problem {
   exampleTestCases?: string[];
 }
 
-export type SupportedLanguage = "typescript" | "javascript" | "python";
+export const SUPPORTED_LANGUAGES = ["typescript", "javascript", "python", "cpp"] as const;
+export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
-export const LEETCODE_LANG_SLUG: Record<SupportedLanguage, string> = {
-  typescript: "typescript",
-  javascript: "javascript",
-  python: "python3",
-};
+export function isSupportedLanguage(value: string): value is SupportedLanguage {
+  return (SUPPORTED_LANGUAGES as readonly string[]).includes(value);
+}
 
 export interface IProblemProvider {
   getProblem(idOrSlug: string): Promise<Problem | null>;

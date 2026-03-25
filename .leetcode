@@ -20,7 +20,7 @@
   "theme": "auto",
   "defaultDirectory": ".",
   "fileNamePattern": "slug",
-  "language": "typescript",
+  "language": "cpp",
   "internalApiUrl": "",
   "showProblemset": true,
   "showStudyPlans": true,

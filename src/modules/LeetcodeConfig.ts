@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import * as Logger from "./Logger";
+import { isSupportedLanguage, type SupportedLanguage } from "./interface/Problem";
 
 /** Whether the active slug refers to a study plan or a problem list (disambiguates shared slugs). */
 export type ActiveListSource = "studyPlan" | "problemList";
@@ -20,7 +21,7 @@ export interface LeetcodeConfig {
   theme?: "auto" | "leetcode-dark" | "none";
   defaultDirectory?: string;
   fileNamePattern?: "id" | "slug";
-  language?: "typescript" | "javascript" | "python";
+  language?: SupportedLanguage;
   internalApiUrl?: string;
   showProblemset?: boolean;
   showStudyPlans?: boolean;
@@ -271,8 +272,8 @@ export function parseLeetcodeConfig(workspaceFolders: readonly vscode.WorkspaceF
       if (parsed.fileNamePattern !== undefined && ["id", "slug"].includes(String(parsed.fileNamePattern))) {
         merged.fileNamePattern = parsed.fileNamePattern as "id" | "slug";
       }
-      if (parsed.language !== undefined && ["typescript", "javascript", "python"].includes(String(parsed.language))) {
-        merged.language = parsed.language as "typescript" | "javascript" | "python";
+      if (parsed.language !== undefined && isSupportedLanguage(String(parsed.language))) {
+        merged.language = parsed.language as SupportedLanguage;
       }
       if (parsed.showProblemset !== undefined && typeof parsed.showProblemset === "boolean") {
         merged.showProblemset = parsed.showProblemset;
@@ -329,7 +330,11 @@ export function getEffectiveConfig(workspaceFolders: readonly vscode.WorkspaceFo
     theme: leetcode.theme ?? DEFAULTS.theme,
     defaultDirectory: leetcode.defaultDirectory ?? vscodeConfig.get<string>("defaultDirectory") ?? DEFAULTS.defaultDirectory,
     fileNamePattern: (leetcode.fileNamePattern ?? vscodeConfig.get<string>("fileNamePattern") ?? DEFAULTS.fileNamePattern) as "id" | "slug",
-    language: (leetcode.language ?? vscodeConfig.get<string>("language") ?? DEFAULTS.language) as "typescript" | "javascript" | "python",
+    language: (() => {
+      const raw = leetcode.language ?? vscodeConfig.get<string>("language") ?? DEFAULTS.language;
+      const s = String(raw);
+      return isSupportedLanguage(s) ? s : DEFAULTS.language;
+    })(),
     internalApiUrl: leetcode.internalApiUrl ?? vscodeConfig.get<string>("internalApiUrl") ?? "",
     showProblemset: leetcode.showProblemset ?? DEFAULTS.showProblemset,
     showStudyPlans: leetcode.showStudyPlans ?? DEFAULTS.showStudyPlans,

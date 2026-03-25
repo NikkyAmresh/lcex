@@ -2,6 +2,8 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { Session } from "./interface/Session";
 import { getEffectiveConfig } from "./LeetcodeConfig";
+import type { SupportedLanguage } from "./interface/Problem";
+import { getLanguageStrategy } from "./language/LanguageStrategy";
 
 const SESSION_KEY = "leetcodeSession";
 
@@ -32,18 +34,12 @@ export function getTargetDir(uri: vscode.Uri | undefined): string {
   return path.resolve(workspaceRoot ?? base, config);
 }
 
-const EXT_BY_LANG: Record<string, string> = {
-  typescript: ".ts",
-  javascript: ".js",
-  python: ".py",
-};
-
 export function getFileName(problemId: string, titleSlug: string): string {
   const folders = vscode.workspace.workspaceFolders ?? [];
   const config = getEffectiveConfig(folders);
   const pattern = config.fileNamePattern ?? "id";
   const lang = config.language ?? "typescript";
-  const ext = EXT_BY_LANG[lang] ?? ".ts";
+  const ext = getLanguageStrategy(lang).fileExtension;
   const base = pattern === "slug" ? titleSlug : problemId;
   return base + ext;
 }
@@ -56,7 +52,8 @@ export function getSolutionPathSet(
   problemId: string,
   titleSlug: string,
   solutionBaseDir?: string,
-  attemptHex?: string
+  attemptHex?: string,
+  language?: SupportedLanguage
 ): { idPath: string; slugPath: string; preferredNewPath: string } {
   const targetDir =
     typeof solutionBaseDir === "string" && solutionBaseDir.trim()
@@ -64,7 +61,8 @@ export function getSolutionPathSet(
       : getTargetDir(baseUri);
   const folders = vscode.workspace.workspaceFolders ?? [];
   const config = getEffectiveConfig(folders);
-  const ext = EXT_BY_LANG[config.language ?? "typescript"] ?? ".ts";
+  const lang = language ?? config.language ?? "typescript";
+  const ext = getLanguageStrategy(lang).fileExtension;
   const pattern = config.fileNamePattern ?? "id";
   const suffix =
     typeof attemptHex === "string" && ATTEMPT_HEX.test(attemptHex.trim())
@@ -85,14 +83,16 @@ export async function resolveSolutionFilePathForOpen(
   problemId: string,
   titleSlug: string,
   solutionBaseDir?: string,
-  attemptHex?: string
+  attemptHex?: string,
+  language?: SupportedLanguage
 ): Promise<{ path: string; exists: boolean }> {
   const { idPath, slugPath, preferredNewPath } = getSolutionPathSet(
     baseUri,
     problemId,
     titleSlug,
     solutionBaseDir,
-    attemptHex
+    attemptHex,
+    language
   );
   const folders = vscode.workspace.workspaceFolders ?? [];
   const pattern = getEffectiveConfig(folders).fileNamePattern ?? "id";
