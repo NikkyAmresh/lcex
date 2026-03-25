@@ -28,6 +28,19 @@ export const FOCUS_SESSION_PARTICIPATION_XP = 10;
 export const FOCUS_SESSION_XP_COOLDOWN_MS = 60 * 60 * 1000;
 export const FOCUS_LAST_PARTICIPATION_XP_AT_KEY = "leetcode-practice.focusLastParticipationXpAt";
 
+/** Once per calendar day (UTC) when the extension activates. */
+export const DAILY_LOGIN_XP = 1;
+export const LAST_DAILY_LOGIN_XP_DATE_KEY = "leetcode-practice.lastDailyLoginXpDate";
+
+/** +5 XP per full 30 minutes of problem-timer practice (any problems; cumulative). */
+export const ATTEMPT_BLOCK_MINUTES = 30;
+export const ATTEMPT_BLOCK_XP = 5;
+export const PRACTICE_SECONDS_TOTAL_KEY = "leetcode-practice.practiceSecondsTotalForAttemptXp";
+export const ATTEMPT_XP_BLOCKS_PAID_KEY = "leetcode-practice.attemptXpBlocksPaid";
+const PRACTICE_SECONDS_FROM_TIMER_MIGRATED_KEY = "leetcode-practice.practiceSecondsFromTimerByDayMigrated_v1";
+/** Must match `TIMER_BY_DAY_KEY` in ProblemTimer.ts (avoid circular import). */
+const TIMER_BY_DAY_KEY_FOR_MIGRATION = "leetcode-practice.timerByDay";
+
 /** XP for interview bonus / first-solve (same curve). */
 export function xpForDifficultyLabel(difficultyRaw: string | undefined): number {
   if (!difficultyRaw) return 15;
@@ -117,6 +130,57 @@ export async function addBonusXp(memento: vscode.Memento, amount: number): Promi
   if (amount <= 0) return;
   const prev = getTotalXp(memento);
   await memento.update(TOTAL_XP_KEY, prev + amount);
+}
+
+/**
+ * Awards +{@link DAILY_LOGIN_XP} once per UTC calendar day on first call that day.
+ * @returns XP granted (0 if already granted today)
+ */
+export async function grantDailyLoginXpIfNeeded(memento: vscode.Memento): Promise<number> {
+  const today = todayIso();
+  const last = memento.get<string>(LAST_DAILY_LOGIN_XP_DATE_KEY);
+  if (last === today) return 0;
+  await addBonusXp(memento, DAILY_LOGIN_XP);
+  await memento.update(LAST_DAILY_LOGIN_XP_DATE_KEY, today);
+  return DAILY_LOGIN_XP;
+}
+
+async function migratePracticeSecondsBaselineFromTimerByDay(memento: vscode.Memento): Promise<void> {
+  if (memento.get<boolean>(PRACTICE_SECONDS_FROM_TIMER_MIGRATED_KEY)) return;
+  const byDay = memento.get<Record<string, Record<string, number>>>(TIMER_BY_DAY_KEY_FOR_MIGRATION) ?? {};
+  let sum = 0;
+  for (const day of Object.values(byDay)) {
+    for (const v of Object.values(day)) {
+      if (typeof v === "number" && Number.isFinite(v)) sum += v;
+    }
+  }
+  const blockSec = ATTEMPT_BLOCK_MINUTES * 60;
+  const blocksAlready = Math.floor(sum / blockSec);
+  await memento.update(PRACTICE_SECONDS_TOTAL_KEY, sum);
+  await memento.update(ATTEMPT_XP_BLOCKS_PAID_KEY, blocksAlready);
+  await memento.update(PRACTICE_SECONDS_FROM_TIMER_MIGRATED_KEY, true);
+}
+
+/**
+ * Call once per active problem-timer second. Grants {@link ATTEMPT_BLOCK_XP} XP for each new full
+ * {@link ATTEMPT_BLOCK_MINUTES}-minute block of cumulative practice (all slugs).
+ * @returns XP granted this call (0 most of the time)
+ */
+export async function recordPracticeSecondForAttemptXp(memento: vscode.Memento): Promise<number> {
+  await migratePracticeSecondsBaselineFromTimerByDay(memento);
+  const prev = memento.get<number>(PRACTICE_SECONDS_TOTAL_KEY);
+  const base = typeof prev === "number" && Number.isFinite(prev) ? prev : 0;
+  const total = base + 1;
+  await memento.update(PRACTICE_SECONDS_TOTAL_KEY, total);
+  const blockSec = ATTEMPT_BLOCK_MINUTES * 60;
+  const eligibleBlocks = Math.floor(total / blockSec);
+  const paid = memento.get<number>(ATTEMPT_XP_BLOCKS_PAID_KEY) ?? 0;
+  if (eligibleBlocks <= paid) return 0;
+  const newBlocks = eligibleBlocks - paid;
+  const xp = newBlocks * ATTEMPT_BLOCK_XP;
+  await addBonusXp(memento, xp);
+  await memento.update(ATTEMPT_XP_BLOCKS_PAID_KEY, eligibleBlocks);
+  return xp;
 }
 
 export async function setDailyGoal(memento: vscode.Memento, goal: DailyGoal | undefined): Promise<void> {

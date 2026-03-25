@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { recordPracticeSecondForAttemptXp } from "./Gamification";
 
 /** Per-problem cumulative timer state (seconds), keyed by titleSlug */
 export const TIMER_ELAPSED_KEY = "leetcode-practice.timerElapsed";
@@ -51,9 +52,16 @@ export function initProblemTimer(
   context: vscode.ExtensionContext,
   statusBarItem: vscode.StatusBarItem,
   shouldShow: () => boolean,
-  getTitleSlugForActiveSolutionFile: () => string | null
+  getTitleSlugForActiveSolutionFile: () => string | null,
+  onAttemptXpGranted?: () => void
 ): ProblemTimer {
-  instance = new ProblemTimer(context, statusBarItem, shouldShow, getTitleSlugForActiveSolutionFile);
+  instance = new ProblemTimer(
+    context,
+    statusBarItem,
+    shouldShow,
+    getTitleSlugForActiveSolutionFile,
+    onAttemptXpGranted
+  );
   return instance;
 }
 
@@ -73,6 +81,7 @@ export class ProblemTimer {
   private readonly statusBarItem: vscode.StatusBarItem;
   private readonly shouldShow: () => boolean;
   private readonly getTitleSlugForActiveSolutionFile: () => string | null;
+  private readonly onAttemptXpGranted?: () => void;
   private readonly panels = new Map<string, RegisteredPanel>();
   private activeTitleSlug: string | null = null;
   private lastActiveTitleSlug: string | null = null;
@@ -87,12 +96,14 @@ export class ProblemTimer {
     context: vscode.ExtensionContext,
     statusBarItem: vscode.StatusBarItem,
     shouldShow: () => boolean,
-    getTitleSlugForActiveSolutionFile: () => string | null
+    getTitleSlugForActiveSolutionFile: () => string | null,
+    onAttemptXpGranted?: () => void
   ) {
     this.context = context;
     this.statusBarItem = statusBarItem;
     this.shouldShow = shouldShow;
     this.getTitleSlugForActiveSolutionFile = getTitleSlugForActiveSolutionFile;
+    this.onAttemptXpGranted = onAttemptXpGranted;
     this.windowFocused = vscode.window.state?.focused ?? true;
     this.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(() => this.recomputeActive()));
     this.subscriptions.push(
@@ -239,6 +250,8 @@ export class ProblemTimer {
     day[titleSlug] = (day[titleSlug] ?? 0) + 1;
     byDay[today] = day;
     await this.context.globalState.update(TIMER_BY_DAY_KEY, byDay);
+    const xpAdded = await recordPracticeSecondForAttemptXp(this.context.globalState);
+    if (xpAdded > 0) this.onAttemptXpGranted?.();
   }
 
   private setActive(titleSlug: string | null): void {

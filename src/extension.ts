@@ -50,6 +50,7 @@ import {
   countSolvedToday,
   getDailyGoal as readDailyGoal,
   getTotalXp,
+  grantDailyLoginXpIfNeeded,
   setDailyGoal as persistDailyGoal,
   sumTimerMinutesToday,
   todayIso,
@@ -891,12 +892,17 @@ export function activate(context: vscode.ExtensionContext): void {
     xpStatusBar
   );
   context.subscriptions.push({ dispose: () => stopInterviewTick() });
-  initProblemTimer(context, statusBarTimer, shouldAutoApplyTheme, () =>
-    getTitleSlugForActiveSolutionFile(context)
+  initProblemTimer(
+    context,
+    statusBarTimer,
+    shouldAutoApplyTheme,
+    () => getTitleSlugForActiveSolutionFile(context),
+    () => updateGamificationStatusBars(context)
   );
   context.subscriptions.push({ dispose: () => disposeProblemTimer() });
   updateAgentStatusBarVisibility();
   updateGamificationStatusBars(context);
+  void grantDailyLoginXpIfNeeded(context.globalState).then(() => updateGamificationStatusBars(context));
   restoreInterviewOnActivate(context);
 
   context.subscriptions.push(
