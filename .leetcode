@@ -29,5 +29,8 @@
   "qotdMonths": 6,
   "agentPromptMakeRunnable": "Make this Runnable, do not give solution.",
   "agentPromptHint": "Give me a hint for this problem. Do not give the solution.",
-  "agentPromptExplain": "Explain my solution code for this LeetCode problem. Respond with: (1) Intuition — core idea; (2) Step-by-step dry run with a small example; (3) Time and space complexity with justification."
+  "agentPromptExplain": "Explain my solution code for this LeetCode problem. Respond with: (1) Intuition — core idea; (2) Step-by-step dry run with a small example; (3) Time and space complexity with justification.",
+  "editorBackgroundImage": "/Users/nikky.amresh/Downloads/pexels-alex-250137-757240.jpg",
+  "editorBackgroundOpacity": 0.22,
+  "editorBackgroundWorkbench": false
 }

@@ -58,7 +58,8 @@ const DEFAULTS: Required<
   showQotd: true,
   qotdMonths: 6,
   agentPromptMakeRunnable: "Make this Runnable, do not give solution.",
-  agentPromptHint: "Give me a hint for this problem. Do not give the solution.",
+  agentPromptHint:
+    "Load **lcex-dsa-hint** and follow it. Hint for my current LeetCode problem—no solution.",
   agentPromptExplain:
     "Explain my solution code for this LeetCode problem. Respond with: (1) Intuition — core idea in plain language; (2) Step-by-step dry run — walk through the algorithm with a small example, including loop/state changes; (3) Time and space complexity with brief justification. Do not rewrite the full solution unless needed for clarity.",
 };

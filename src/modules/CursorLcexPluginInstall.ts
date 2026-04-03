@@ -47,6 +47,20 @@ Return a single fenced \`\`\`json code block containing:
 If the user specifies topics (e.g. graphs, DP), pick a coherent set of slugs and mix difficulties reasonably for a mock interview. Respect requested problem count and duration when given.
 `;
 
+const DSA_HINT_SKILL_MD = `---
+name: lcex-dsa-hint
+description: Short LeetCode hints—one nudge per reply, no full solution.
+---
+
+# DSA hints
+
+They are practicing one problem and may share code or what they tried.
+
+- Give **one** short hint per reply (a question, a small example to trace, or one thing to check). Not a list of ideas.
+- Prefer their **current** approach. If it cannot work, say that in **one** sentence and ask **one** question—still no solution.
+- **Never** give the full answer: no working solution code, no step-by-step algorithm that solves the problem.
+`;
+
 const PLUGIN_JSON = `{
   "name": "lcex-leetcode-practice",
   "displayName": "LeetCode Practice (LCX)",
@@ -68,11 +82,15 @@ async function writeIfDifferent(filePath: string, content: string): Promise<"cre
 }
 
 export async function ensureCursorLcexPluginInstalled(_context: vscode.ExtensionContext): Promise<void> {
-  const skillPath = path.join(PLUGIN_ROOT, "skills", "lcex-interview-generator", "SKILL.md");
+  const interviewSkillPath = path.join(PLUGIN_ROOT, "skills", "lcex-interview-generator", "SKILL.md");
+  const dsaHintSkillPath = path.join(PLUGIN_ROOT, "skills", "lcex-dsa-hint", "SKILL.md");
   const metaPath = path.join(PLUGIN_ROOT, ".cursor-plugin", "plugin.json");
-  const r1 = await writeIfDifferent(skillPath, SKILL_MD);
-  const r2 = await writeIfDifferent(metaPath, PLUGIN_JSON);
-  if (r1 !== "unchanged" || r2 !== "unchanged") {
-    Logger.log(`Cursor LCX plugin: skill ${r1}, plugin.json ${r2} at ${PLUGIN_ROOT}`);
+  const r1 = await writeIfDifferent(interviewSkillPath, SKILL_MD);
+  const r2 = await writeIfDifferent(dsaHintSkillPath, DSA_HINT_SKILL_MD);
+  const r3 = await writeIfDifferent(metaPath, PLUGIN_JSON);
+  if (r1 !== "unchanged" || r2 !== "unchanged" || r3 !== "unchanged") {
+    Logger.log(
+      `Cursor LCX plugin: interview skill ${r1}, dsa-hint skill ${r2}, plugin.json ${r3} at ${PLUGIN_ROOT}`
+    );
   }
 }

@@ -288,7 +288,7 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
     </div>
     <div class="field">
       <label>Hint button</label>
-      <input type="text" id="agentPromptHint" value="${escapeHtml(config.agentPromptHint ?? "Give me a hint for this problem. Do not give the solution.")}" placeholder="Give me a hint. Do not give the solution." />
+      <input type="text" id="agentPromptHint" value="${escapeHtml(config.agentPromptHint ?? "Load **lcex-dsa-hint** and follow it. Hint for my current LeetCode problem—no solution.")}" placeholder="Load lcex-dsa-hint; hint only, no solution." />
     </div>
     <div class="field">
       <label>Explain selection (base prompt)</label>

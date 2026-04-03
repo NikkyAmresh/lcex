@@ -87,6 +87,8 @@ import { defaultInterviewNameFromDate, parseLcInterviewFile, serializeLcIntervie
 import { LeetcodeInterviewEditorProvider } from "./modules/LcInterviewEditorProvider";
 import { LcInterviewReportEditorProvider } from "./modules/LcInterviewReportEditorProvider";
 import { ensureCursorLcexPluginInstalled } from "./modules/CursorLcexPluginInstall";
+import { ensureLcexBundledFontsInstalled } from "./modules/LcexFontInstall";
+import { applyLcexEditorFontAndTokenSettingsIfNeeded } from "./modules/LeetcodePracticeEditorSettings";
 
 function getProvider(): IProblemProvider {
   const folders = vscode.workspace.workspaceFolders ?? [];
@@ -105,19 +107,21 @@ function hasLeetcodeMarker(workspaceFolder: vscode.WorkspaceFolder): boolean {
   return fs.existsSync(markerPath);
 }
 
-function shouldAutoApplyTheme(): boolean {
+function computeHasLeetcodeMarker(): boolean {
   const folders = vscode.workspace.workspaceFolders;
-  if (!folders?.length) {
-    Logger.log("Theme auto-apply: no workspace folders, skipping");
-    return false;
+  if (!folders?.length) return false;
+  return folders.some(hasLeetcodeMarker);
+}
+
+let hasMarkerCache = false;
+let hasMarkerCacheInitialized = false;
+
+function shouldAutoApplyTheme(): boolean {
+  if (!hasMarkerCacheInitialized) {
+    hasMarkerCache = computeHasLeetcodeMarker();
+    hasMarkerCacheInitialized = true;
   }
-  const hasMarker = folders.some(hasLeetcodeMarker);
-  folders.forEach((f) => {
-    const markerPath = path.join(f.uri.fsPath, LEETCODE_MARKER);
-    Logger.log(`Theme auto-apply: folder=${f.uri.fsPath} .leetcode exists=${fs.existsSync(markerPath)}`);
-  });
-  Logger.log(`Theme auto-apply: shouldApply=${hasMarker}`);
-  return hasMarker;
+  return hasMarkerCache;
 }
 
 const HAS_MARKER_CONTEXT = "leetcodePractice.hasMarker";
@@ -244,7 +248,9 @@ function updateAgentStatusBarVisibility(): void {
 }
 
 function updateHasMarkerContext(): void {
-  const hasMarker = shouldAutoApplyTheme();
+  const hasMarker = computeHasLeetcodeMarker();
+  hasMarkerCache = hasMarker;
+  hasMarkerCacheInitialized = true;
   void vscode.commands.executeCommand("setContext", HAS_MARKER_CONTEXT, hasMarker);
   const folders = vscode.workspace.workspaceFolders ?? [];
   const config = folders.length > 0 ? getEffectiveConfig(folders) : null;
@@ -801,7 +807,10 @@ async function applyLeetcodeThemeIfNeeded(): Promise<void> {
     Logger.log("Theme auto-apply: skipped (theme: none in .leetcode)");
     return;
   }
-  if (!shouldAutoApplyTheme()) {
+  const hasMarker = computeHasLeetcodeMarker();
+  hasMarkerCache = hasMarker;
+  hasMarkerCacheInitialized = true;
+  if (!hasMarker) {
     Logger.log("Theme auto-apply: skipped (no .leetcode in workspace root)");
     return;
   }
@@ -825,6 +834,13 @@ async function applyLeetcodeThemeIfNeeded(): Promise<void> {
   }
 }
 
+async function applyLeetcodeWorkspaceAppearanceIfNeeded(context: vscode.ExtensionContext): Promise<void> {
+  await applyLeetcodeThemeIfNeeded();
+  if (!computeHasLeetcodeMarker()) return;
+  await ensureLcexBundledFontsInstalled(context.extensionPath);
+  await applyLcexEditorFontAndTokenSettingsIfNeeded();
+}
+
 let extensionContextForBars: vscode.ExtensionContext | null = null;
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -845,25 +861,25 @@ export function activate(context: vscode.ExtensionContext): void {
   // Defer theme apply and sidebar visibility so the contributed theme is registered before we set it
   setImmediate(() => {
     Logger.log("Theme auto-apply: scheduled (setImmediate)");
-    void applyLeetcodeThemeIfNeeded();
+    void applyLeetcodeWorkspaceAppearanceIfNeeded(context);
     updateHasMarkerContext();
   });
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       Logger.log("Theme auto-apply: workspace folders changed, rechecking...");
-      void applyLeetcodeThemeIfNeeded();
+      void applyLeetcodeWorkspaceAppearanceIfNeeded(context);
       updateHasMarkerContext();
     })
   );
   const leetcodeWatcher = vscode.workspace.createFileSystemWatcher("**/.leetcode");
   leetcodeWatcher.onDidCreate(() => {
     updateHasMarkerContext();
-    void applyLeetcodeThemeIfNeeded();
+    void applyLeetcodeWorkspaceAppearanceIfNeeded(context);
   });
   leetcodeWatcher.onDidDelete(() => updateHasMarkerContext());
   leetcodeWatcher.onDidChange(() => {
     updateHasMarkerContext();
-    void applyLeetcodeThemeIfNeeded();
+    void applyLeetcodeWorkspaceAppearanceIfNeeded(context);
   });
   context.subscriptions.push(leetcodeWatcher);
 
@@ -948,7 +964,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.applyTheme", async () => {
-      await applyLeetcodeThemeIfNeeded();
+      await applyLeetcodeWorkspaceAppearanceIfNeeded(context);
       if (shouldAutoApplyTheme()) {
         vscode.window.showInformationMessage("LeetCode Dark theme applied (workspace has .leetcode)");
       } else {
@@ -981,7 +997,9 @@ export function activate(context: vscode.ExtensionContext): void {
       }
       const folders = vscode.workspace.workspaceFolders ?? [];
       const config = getEffectiveConfig(folders);
-      const prompt = config.agentPromptHint?.trim() || "Give me a hint for this problem. Do not give the solution.";
+      const prompt =
+        config.agentPromptHint?.trim() ||
+        "Load **lcex-dsa-hint** and follow it. Hint for my current LeetCode problem—no solution.";
       await openChatWithPrompt(prompt);
     })
   );
