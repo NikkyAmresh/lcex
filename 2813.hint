@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "titleSlug": "to-be-or-not-to-be",
+  "problemTitle": "To Be Or Not To Be",
+  "approach": {
+    "current": "You are building a tiny assertion helper: toBe means must strictly equal, notToBe means must not strictly equal, with failures expressed by throwing.",
+    "suggested": "Re-read the statement examples and the exact strings/messages the grader expects on failure; align toBe / notToBe with strict === / !== and with those messages only.",
+    "keyIdea": "Each method should have exactly two outcomes: return true when the comparison matches the methods meaning, otherwise throw with the prescribed message—nothing else.",
+    "currentRating": "avg"
+  },
+  "efficiency": {
+    "time": {
+      "current": "O(1) per call (constant-time comparisons).",
+      "suggested": "O(1) is appropriate; no asymptotic optimization applies here.",
+      "suggestion": "Focus on correctness of the contract (return vs throw), not on speed.",
+      "currentRating": "good"
+    },
+    "space": {
+      "current": "O(1) extra (closure over val only).",
+      "suggested": "O(1) is standard.",
+      "suggestion": "N/A for this problem.",
+      "currentRating": "good"
+    }
+  },
+  "codeStyle": {
+    "readability": "Mixed — logic is short, but brace/indentation in notToBe is easy to misread; one stray brace can change control flow.",
+    "structure": "The object returned from expect is the right shape; keep toBe and notToBe symmetric so you do not accidentally return when you should throw (or the reverse).",
+    "suggestions": "Remove or fix the bottom console.log blocks: they pass strings into expect instead of exercising expect(5) etc., so they will not validate your implementation the way the official tests do."
+  },
+  "updatedAt": "2026-04-04T22:29:25.781Z"
+}

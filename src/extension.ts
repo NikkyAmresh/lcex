@@ -30,7 +30,10 @@ import {
   getTitleSlugForActiveSolutionFile,
   notifyAllProblemPanelsUiMode,
   getCachedProblemDifficulty,
+  openHintFileForProblem,
+  tryOpenExistingHintFile,
 } from "./modules/ProblemView";
+import { HintEditorProvider } from "./modules/HintEditorProvider";
 import { runExamples as runExamplesImpl } from "./modules/ExampleRunner";
 import {
   SOLUTION_FILE_EXTENSIONS,
@@ -238,7 +241,8 @@ function updateAgentStatusBarVisibility(): void {
   if (statusBarHint) {
     if (visible) {
       statusBarHint.text = "$(lightbulb) Hint";
-      statusBarHint.tooltip = "Ask agent: Get a hint (prompt from .leetcode)";
+      statusBarHint.tooltip =
+        "Open saved hint analysis if a .hint file exists; otherwise ask the agent (prompt from .leetcode)";
       statusBarHint.command = "leetcode-practice.agentHint";
       statusBarHint.show();
     } else {
@@ -273,7 +277,7 @@ function delay(ms: number): Promise<void> {
 /** URI path prefix for opening a problem by slug: /open/{slug} */
 const URI_OPEN_PREFIX = "/open/";
 
-/** Handles vscode://lcex.leetcode-practice/open/{slug} — opens the extension and the problem. */
+/** Handles vscode://lcex.leetcode-practice/open/{slug}. */
 function createUriHandler(
   context: vscode.ExtensionContext,
   getProvider: () => IProblemProvider,
@@ -942,6 +946,13 @@ export function activate(context: vscode.ExtensionContext): void {
       { webviewOptions: { retainContextWhenHidden: true } }
     )
   );
+  context.subscriptions.push(
+    vscode.window.registerCustomEditorProvider(
+      HintEditorProvider.viewType,
+      new HintEditorProvider(context),
+      { webviewOptions: { retainContextWhenHidden: true } }
+    )
+  );
 
   void ensureCursorLcexPluginInstalled(context).catch((e) => {
     Logger.logError("Cursor LCX plugin install skipped", e);
@@ -986,22 +997,48 @@ export function activate(context: vscode.ExtensionContext): void {
     })
   );
   context.subscriptions.push(
-    vscode.commands.registerCommand("leetcode-practice.agentHint", async () => {
-      if (getInterviewSession(context.globalState)) {
-        vscode.window.showWarningMessage("Hints are disabled during Interview mode.");
-        return;
+    vscode.commands.registerCommand(
+      "leetcode-practice.agentHint",
+      async (args?: { titleSlug?: string; forceAgent?: boolean }) => {
+        if (getInterviewSession(context.globalState)) {
+          vscode.window.showWarningMessage("Hints are disabled during Interview mode.");
+          return;
+        }
+        if (!shouldAutoApplyTheme()) {
+          vscode.window.showWarningMessage("LeetCode workspace (.leetcode) required. Open a workspace with a .leetcode file.");
+          return;
+        }
+        if (!args?.forceAgent) {
+          const opened = await tryOpenExistingHintFile(context, getProvider, args?.titleSlug);
+          if (opened) {
+            return;
+          }
+        }
+        const folders = vscode.workspace.workspaceFolders ?? [];
+        const config = getEffectiveConfig(folders);
+        const prompt =
+          config.agentPromptHint?.trim() ||
+          "Load **lcex-dsa-hint** and follow it. Hint for my current LeetCode problem—no solution.";
+        await openChatWithPrompt(prompt);
       }
-      if (!shouldAutoApplyTheme()) {
-        vscode.window.showWarningMessage("LeetCode workspace (.leetcode) required. Open a workspace with a .leetcode file.");
-        return;
+    )
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "leetcode-practice.openHintAnalysis",
+      async (args?: { titleSlug?: string }) => {
+        if (getInterviewSession(context.globalState)) {
+          vscode.window.showWarningMessage("Hint analysis is disabled during Interview mode.");
+          return;
+        }
+        if (!shouldAutoApplyTheme()) {
+          vscode.window.showWarningMessage("LeetCode workspace (.leetcode) required. Open a workspace with a .leetcode file.");
+          return;
+        }
+        await openHintFileForProblem(context, getProvider, args?.titleSlug);
       }
-      const folders = vscode.workspace.workspaceFolders ?? [];
-      const config = getEffectiveConfig(folders);
-      const prompt =
-        config.agentPromptHint?.trim() ||
-        "Load **lcex-dsa-hint** and follow it. Hint for my current LeetCode problem—no solution.";
-      await openChatWithPrompt(prompt);
-    })
+    )
   );
 
   context.subscriptions.push(

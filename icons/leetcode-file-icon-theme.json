@@ -4,12 +4,16 @@
   "iconDefinitions": {
     "leetcode-file": {
       "iconPath": "./logo-dark-16.png"
+    },
+    "leetcode-hint": {
+      "iconPath": "./hint.svg"
     }
   },
   "fileNames": {
     ".leetcode": "leetcode-file"
   },
   "fileExtensions": {
+    "hint": "leetcode-hint",
     "lcInterview": "leetcode-file",
     "lcinterview": "leetcode-file",
     "lcireport": "leetcode-file"

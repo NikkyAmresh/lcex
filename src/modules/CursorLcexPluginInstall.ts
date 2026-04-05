@@ -49,16 +49,107 @@ If the user specifies topics (e.g. graphs, DP), pick a coherent set of slugs and
 
 const DSA_HINT_SKILL_MD = `---
 name: lcex-dsa-hint
-description: Short LeetCode hints—one nudge per reply, no full solution.
+description: LeetCode DSA hints in a structured Analysis-style format—no full solution.
 ---
 
-# DSA hints
+# DSA hints (LeetCode-style analysis)
 
 They are practicing one problem and may share code or what they tried.
 
-- Give **one** short hint per reply (a question, a small example to trace, or one thing to check). Not a list of ideas.
-- Prefer their **current** approach. If it cannot work, say that in **one** sentence and ask **one** question—still no solution.
-- **Never** give the full answer: no working solution code, no step-by-step algorithm that solves the problem.
+## Rules
+
+- **Never** give the full answer: no working solution code, no step-by-step algorithm that fully solves the problem. Hints only.
+- Prefer their **current** approach. If it cannot work, say that in **one** sentence in **Approach → Key idea**, then point to what class of fix is needed—still no solution.
+- Use the **exact section order and headings** below every time you give a hint or review their attempt. Keep each bullet **short** (one line or two); do not pad with filler.
+
+## Output format (required)
+
+Use this skeleton. Omit a subsection only if there is nothing useful to say (e.g. no code shared → skip **Code style** or mark as N/A briefly).
+
+### Approach
+
+- **Current:** Name the pattern you see (e.g. heap, greedy, linear scan, DP). One short comment on what the solution is doing or trying.
+- **Suggested:** What direction would fix or improve it (still a hint—no full algorithm).
+- **Key idea:** One crisp sentence—the main insight or fix to try next.
+
+### Efficiency
+
+**Time complexity**
+
+- **Current:** Best characterization of what they have (e.g. \\(O(k \\cdot n)\\), \\(O(n^2)\\)). Use big-O; say "unknown" if you cannot tell.
+- **Suggested:** What the usual target is for a good approach on this problem (still not a full walkthrough).
+- **Suggestion:** One concrete lever (e.g. "replace the inner linear max with a max-heap")—not code.
+
+**Space complexity**
+
+- **Current:** e.g. \\(O(n)\\), \\(O(1)\\) extra, or "unknown".
+- **Suggested:** What a typical optimal or acceptable solution uses.
+- **Suggestion:** One line (e.g. "indexing by capital in-place vs. extra structure tradeoff") if it helps.
+
+### Code style
+
+- **Readability:** Brief rating or label (e.g. Good / Mixed / Needs work) plus **one** reason if not excellent.
+- **Structure:** Same—rating + **one** reason if relevant.
+- **Suggestions:** **One** actionable refactor (e.g. "collapse nested loops into a dual-heap flow so selection is one place")—not a rewrite of their file.
+
+## Tone
+
+- Sound like concise LeetCode **Analysis** feedback: direct, structured, technical.
+- Still **one focused reply** per turn: the template keeps you organized; it is not an excuse to dump a full editorial.
+
+## LCX \`.hint\` file — **JSON only** (no markdown blob)
+
+The file next to the solution (e.g. \`2813.hint\`) is **valid JSON**. The Analysis editor shows one scrollable view (Approach → Efficiency → Code style). **Reopen Editor With… → Text Editor** edits raw JSON.
+
+\`version\` must be \`1\`. Use **only** these keys (omit empty objects):
+
+\`\`\`json
+{
+  "version": 1,
+  "titleSlug": "problem-slug",
+  "problemTitle": "Display Name",
+  "approach": {
+    "current": "…",
+    "suggested": "…",
+    "keyIdea": "…",
+    "currentRating": "good"
+  },
+  "efficiency": {
+    "time": {
+      "current": "…",
+      "suggested": "…",
+      "suggestion": "…",
+      "currentRating": "avg"
+    },
+    "space": {
+      "current": "…",
+      "suggested": "…",
+      "suggestion": "…",
+      "currentRating": "good"
+    }
+  },
+  "codeStyle": {
+    "readability": "…",
+    "structure": "…",
+    "suggestions": "…"
+  },
+  "updatedAt": "2026-01-01T00:00:00.000Z"
+}
+\`\`\`
+
+- **\`currentRating\` (required when you fill the matching \`current\` line):** \`"good"\` | \`"avg"\` | \`"worst"\`. **You** judge against **this problem’s** expectations — not by comparing raw big-O strings. Examples: on a full \`n×n\` matrix DP, \`O(n²)\` time may be **\`good\`**; the same bound can be **\`worst\`** on a different problem where \`O(n)\` is achievable. Set \`approach.currentRating\` for the approach **Current** line; set \`efficiency.time.currentRating\` and \`efficiency.space.currentRating\` for those **Current** lines. Omit only if there is no \`current\` text for that block.
+- Write **plain text** in strings. For big-O use \`O(n)\`, \`O(1)\`, etc.
+- **Do not** put a top-level \`markdown\` field; legacy files may still migrate once when opened.
+
+### Automation (required after every hint)
+
+1. Resolve \`<same-dir>/<id-or-slug>.hint\` (same basename as the solution file).
+2. **Write** the **full** JSON with the \`write\` tool — create or **replace** the entire file (include \`currentRating\` fields as above).
+3. If write fails, ask the user to open **Analysis** in the problem panel and try again.
+
+**File icon:** **File Icon Theme** → **LeetCode Practice** for \`.hint\` icons.
+
+**Re-analyze** clears hint fields and runs **Ask Agent – Hint** again.
 `;
 
 const PLUGIN_JSON = `{

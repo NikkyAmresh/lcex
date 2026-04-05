@@ -260,6 +260,7 @@
       <span class="tag extra">Topics</span>
       <span class="tag extra">Companies</span>
       <button type="button" class="tag extra tag-action" id="hintChipBtn">Hint</button>
+      <button type="button" class="tag extra tag-action" id="hintAnalysisBtn" title="Open saved hint analysis or paste the agent reply">Analysis</button>
     </div>
     <div class="lang-toolbar focus-chrome">
       <!-- <label class="lang-toolbar-label" for="challengeLang">Language</label> -->
@@ -377,6 +378,12 @@
       if (hintChip) {
         hintChip.addEventListener("click", function () {
           vscode.postMessage({ event: "agentHint", titleSlug: titleSlug });
+        });
+      }
+      var analysisChip = document.getElementById("hintAnalysisBtn");
+      if (analysisChip) {
+        analysisChip.addEventListener("click", function () {
+          vscode.postMessage({ event: "openHintAnalysis", titleSlug: titleSlug });
         });
       }
       document.getElementById("focusLayoutBtn").addEventListener("click", function () {

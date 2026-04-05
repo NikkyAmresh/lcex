@@ -20,6 +20,7 @@
     "onCustomEditor:leetcode-practice.configEditor",
     "onCustomEditor:leetcode-practice.lcInterviewEditor",
     "onCustomEditor:leetcode-practice.lcInterviewReportEditor",
+    "onCustomEditor:leetcode-practice.hintEditor",
     "onCommand:leetcode-practice.openProblem",
     "onCommand:leetcode-practice.openQotd",
     "onCommand:leetcode-practice.runExamples",
@@ -36,6 +37,7 @@
     "onCommand:leetcode-practice.clearProblemStatus",
     "onCommand:leetcode-practice.agentMakeRunnable",
     "onCommand:leetcode-practice.agentHint",
+    "onCommand:leetcode-practice.openHintAnalysis",
     "onCommand:leetcode-practice.agentExplainCode",
     "onCommand:leetcode-practice.focusModeEnter",
     "onCommand:leetcode-practice.focusModeExit",
@@ -158,7 +160,12 @@
       },
       {
         "command": "leetcode-practice.agentHint",
-        "title": "LeetCode: Ask Agent – Hint"
+        "title": "LeetCode: Hint (open .hint or ask agent)"
+      },
+      {
+        "command": "leetcode-practice.openHintAnalysis",
+        "title": "LeetCode: Open Hint Analysis",
+        "category": "LeetCode"
       },
       {
         "command": "leetcode-practice.agentExplainCode",
@@ -210,6 +217,11 @@
         },
         {
           "command": "leetcode-practice.agentHint",
+          "when": "leetcodePractice.hasMarker && leetcodePractice.isSolutionFile && !leetcodePractice.interviewMode",
+          "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.openHintAnalysis",
           "when": "leetcodePractice.hasMarker && leetcodePractice.isSolutionFile && !leetcodePractice.interviewMode",
           "group": "navigation"
         },
@@ -382,6 +394,19 @@
           "light": "./icons/logo-dark-16.png",
           "dark": "./icons/logo-dark-16.png"
         }
+      },
+      {
+        "id": "leetcode-hint",
+        "aliases": [
+          "LeetCode Hint"
+        ],
+        "extensions": [
+          "hint"
+        ],
+        "icon": {
+          "light": "./icons/hint.svg",
+          "dark": "./icons/hint.svg"
+        }
       }
     ],
     "configuration": {
@@ -546,6 +571,17 @@
         "selector": [
           {
             "filenamePattern": "*.lcireport"
+          }
+        ],
+        "priority": "default"
+      },
+      {
+        "id": "leetcode-practice.hintEditor",
+        "viewType": "leetcode-practice.hintEditor",
+        "displayName": "LeetCode Hint Analysis",
+        "selector": [
+          {
+            "filenamePattern": "*.hint"
           }
         ],
         "priority": "default"

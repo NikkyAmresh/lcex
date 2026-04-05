@@ -1,7 +1,35 @@
 {
     "workbench.colorTheme": "LeetCode Dark",
     "workbench.preferredDarkColorTheme": "LeetCode Dark",
-    "zenMode.hideStatusBar": true
+    "zenMode.hideStatusBar": true,
+    "editor.fontFamily": "Fira Code iScript",
+    "editor.tokenColorCustomizations": {
+        "textMateRules": [
+            {
+                "scope": [
+                    "comment",
+                    "keyword",
+                    "storage.modifier",
+                    "storage.type",
+                    "storage.type.class.js",
+                    "storage.type.js",
+                    "storage.type.ts",
+                    "storage.type.class.ts"
+                ],
+                "settings": {
+                    "fontStyle": "italic"
+                }
+            },
+            {
+                "scope": [
+                    "keyword.operator"
+                ],
+                "settings": {
+                    "fontStyle": ""
+                }
+            }
+        ]
+    }
     // "workbench.colorTheme": "LeetCode Dark",
     // "workbench.preferredDarkColorTheme": "LeetCode Dark"
 }

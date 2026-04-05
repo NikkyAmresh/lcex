@@ -1,3 +1,4 @@
+import * as fs from "fs/promises";
 import * as path from "path";
 import * as vscode from "vscode";
 import * as ejs from "ejs";
@@ -30,6 +31,7 @@ import { LeetCodeProvider } from "./LeetCode";
 import { generateTemplate } from "./TemplateEngine";
 import { pollRunStatus, pollSubmitStatus } from "../utils/apiPoller";
 import * as Logger from "./Logger";
+import { createDefaultHintFileJson } from "./HintFile";
 import { getProblemTimer, TIMER_BY_DAY_KEY, TIMER_ELAPSED_KEY, type TimerByDay } from "./ProblemTimer";
 import {
   FOCUS_COMPACT_WEBVIEW_KEY,
@@ -316,6 +318,179 @@ export function getTitleSlugForActiveSolutionFile(context: vscode.ExtensionConte
   return null;
 }
 
+/**
+ * Creates a `*.hint` JSON file beside the solution if missing, then opens it (custom Analysis editor).
+ */
+export async function openHintFileForProblem(
+  context: vscode.ExtensionContext,
+  getProvider: () => IProblemProvider,
+  titleSlug?: string
+): Promise<void> {
+  await ensureProblemCacheLoaded(context);
+  const slug = titleSlug?.trim() ?? getTitleSlugForActiveSolutionFile(context);
+  if (!slug) {
+    vscode.window.showWarningMessage("Open a problem from the list or a solution file first.");
+    return;
+  }
+  let problem = getCachedProblem(slug);
+  if (!problem) {
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: "Loading problem…" },
+      async () => {
+        const p = await getProvider().getProblem(slug);
+        if (p) {
+          setCachedProblem(slug, p, context);
+          problem = p;
+        }
+      }
+    );
+  }
+  if (!problem) {
+    vscode.window.showErrorMessage("Could not load problem. Open it from the practice panel or check the slug.");
+    return;
+  }
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder) {
+    vscode.window.showWarningMessage("Open a workspace folder first.");
+    return;
+  }
+  const solutionBase = interviewSolutionBaseDir(context.globalState);
+  const attemptHex = interviewSolutionAttemptHex(context.globalState);
+  const { path: hintPath, exists } = await Database.resolveHintFilePathForOpen(
+    folder.uri,
+    problem.id,
+    problem.titleSlug,
+    solutionBase,
+    attemptHex
+  );
+  const uri = vscode.Uri.file(hintPath);
+  const body = createDefaultHintFileJson(problem.titleSlug, problem.title);
+  try {
+    await fs.mkdir(path.dirname(hintPath), { recursive: true });
+  } catch (e) {
+    Logger.logError("Hint file: could not create parent directory", e);
+    vscode.window.showErrorMessage(
+      `Could not create folder for hint file: ${path.dirname(hintPath)}`
+    );
+    return;
+  }
+  if (!exists) {
+    try {
+      await vscode.workspace.fs.writeFile(uri, Buffer.from(body, "utf8"));
+    } catch (e) {
+      Logger.logError("Hint file: workspace write failed, retrying with fs", e);
+      try {
+        await fs.writeFile(hintPath, body, "utf-8");
+      } catch (e2) {
+        Logger.logError("Hint file: write failed", e2);
+        vscode.window.showErrorMessage(
+          `Could not create ${path.basename(hintPath)}. Check folder permissions and workspace trust.`
+        );
+        return;
+      }
+    }
+  }
+  try {
+    await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
+  } catch {
+    /* explorer command may be unavailable */
+  }
+  await vscode.window.showTextDocument(uri, { preview: false });
+}
+
+/** Numeric problem id from active solution tab (e.g. `2813.ts` → `2813`). */
+function numericIdFromActiveSolutionEditor(): string | undefined {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) return undefined;
+  const ext = path.extname(editor.document.fileName).toLowerCase();
+  if (!SOLUTION_FILE_EXTENSIONS.includes(ext)) return undefined;
+  const base = path.basename(editor.document.fileName, ext);
+  return /^\d+$/.test(base) ? base : undefined;
+}
+
+/** Slug basename from active solution tab (e.g. `two-sum.ts` → `two-sum`). */
+function slugBasenameFromActiveSolutionEditor(): string | undefined {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) return undefined;
+  const ext = path.extname(editor.document.fileName).toLowerCase();
+  if (!SOLUTION_FILE_EXTENSIONS.includes(ext)) return undefined;
+  const base = path.basename(editor.document.fileName, ext);
+  return /^[a-z0-9-]+$/i.test(base) && !/^\d+$/.test(base) ? base : undefined;
+}
+
+/**
+ * If a `.hint` file already exists for this problem (by **numeric id** and/or **slug** path), open it and return true.
+ * Otherwise return false (caller may open agent chat).
+ * Resolves paths even when the problem API is unavailable, using the open solution file name + panel slug.
+ */
+export async function tryOpenExistingHintFile(
+  context: vscode.ExtensionContext,
+  getProvider: () => IProblemProvider,
+  titleSlug?: string
+): Promise<boolean> {
+  await ensureProblemCacheLoaded(context);
+  const slugArg = titleSlug?.trim();
+  const slugFromPanel = getTitleSlugForActiveSolutionFile(context);
+  const slug = slugArg ?? slugFromPanel ?? undefined;
+
+  let problem: Problem | undefined = slug ? getCachedProblem(slug) : undefined;
+  if (slug && !problem) {
+    await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: "Loading problem…" },
+      async () => {
+        const p = await getProvider().getProblem(slug);
+        if (p) {
+          setCachedProblem(slug, p, context);
+          problem = p;
+        }
+      }
+    );
+  }
+
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder) {
+    return false;
+  }
+  const solutionBase = interviewSolutionBaseDir(context.globalState);
+  const attemptHex = interviewSolutionAttemptHex(context.globalState);
+
+  let problemIdStr: string;
+  let titleSlugStr: string;
+
+  if (problem) {
+    problemIdStr = String(problem.id);
+    titleSlugStr = problem.titleSlug;
+  } else {
+    const numId = numericIdFromActiveSolutionEditor();
+    const slugFromFile = slugBasenameFromActiveSolutionEditor();
+    const s = slugArg ?? slugFromPanel ?? slugFromFile ?? "";
+    if (!numId && !s) {
+      return false;
+    }
+    problemIdStr = numId ?? s;
+    titleSlugStr = s || numId || "";
+  }
+
+  const { path: hintPath, exists } = await Database.resolveHintFilePathForOpen(
+    folder.uri,
+    problemIdStr,
+    titleSlugStr,
+    solutionBase,
+    attemptHex
+  );
+  if (!exists) {
+    return false;
+  }
+  const uri = vscode.Uri.file(hintPath);
+  try {
+    await vscode.commands.executeCommand("workbench.files.action.refreshFilesExplorer");
+  } catch {
+    /* */
+  }
+  await vscode.window.showTextDocument(uri, { preview: false });
+  return true;
+}
+
 /** In-memory cache of problem data (by titleSlug) for instant show and soft reload. */
 const problemCache = new Map<string, Problem>();
 
@@ -350,6 +525,11 @@ function getCacheUri(context: vscode.ExtensionContext): vscode.Uri {
 
 function getCachedProblem(titleSlug: string): Problem | undefined {
   return problemCache.get(titleSlug);
+}
+
+/** Title for a slug when the problem was loaded into the session cache. */
+export function getCachedProblemTitle(titleSlug: string): string | undefined {
+  return getCachedProblem(titleSlug)?.title;
 }
 
 /** For gamification / XP without importing the full panel registry elsewhere. */
@@ -1543,7 +1723,9 @@ function setupPanelMessageHandler(
           await vscode.commands.executeCommand("leetcode-practice.focusModeEnter", { silent: true });
         }
       } else if (event === "agentHint") {
-        await vscode.commands.executeCommand("leetcode-practice.agentHint");
+        await vscode.commands.executeCommand("leetcode-practice.agentHint", { titleSlug: msgSlug });
+      } else if (event === "openHintAnalysis") {
+        await vscode.commands.executeCommand("leetcode-practice.openHintAnalysis", { titleSlug: msgSlug });
       }
     }
   );
