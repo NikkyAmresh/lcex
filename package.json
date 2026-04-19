@@ -1,67 +1,37 @@
 {
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice",
-  "description": "Practice LeetCode problems in VS Code: generate TypeScript templates with example test cases, run examples with ts-node, browse problems & study plans, and track your progress. Sign in to sync with your LeetCode account.",
-  "version": "0.1.0",
-  "publisher": "lcex",
+  "description": "Practice LeetCode problems in VS Code: generate TypeScript / JavaScript / Python / C++ templates with example test cases, run examples inline, browse problems & study plans, and track your progress with XP, streaks, and timed interview mode.",
+  "version": "0.1.1",
+  "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Other",
+    "Education",
     "Programming Languages",
-    "Snippets"
+    "Other"
   ],
-  "icon": "icons/logo-dark.png",
+  "icon": "icons/icon.png",
   "activationEvents": [
     "onUri",
     "onWebviewPanel:leetcodeProblem",
-    "workspaceContains:**/.leetcode",
-    "onStartupFinished",
-    "onCustomEditor:leetcode-practice.configEditor",
-    "onCustomEditor:leetcode-practice.lcInterviewEditor",
-    "onCustomEditor:leetcode-practice.lcInterviewReportEditor",
-    "onCustomEditor:leetcode-practice.hintEditor",
-    "onCommand:leetcode-practice.openProblem",
-    "onCommand:leetcode-practice.openQotd",
-    "onCommand:leetcode-practice.runExamples",
-    "onCommand:leetcode-practice.runInTerminal",
-    "onCommand:leetcode-practice.signIn",
-    "onCommand:leetcode-practice.signOut",
-    "onCommand:leetcode-practice.refreshProblems",
-    "onCommand:leetcode-practice.refreshQotd",
-    "onCommand:leetcode-practice.refreshStatsData",
-    "onCommand:leetcode-practice.setCloudUsername",
-    "onCommand:leetcode-practice.pushCloudStats",
-    "onCommand:leetcode-practice.pullCloudStats",
-    "onCommand:leetcode-practice.switchStudyPlan",
-    "onCommand:leetcode-practice.switchProblemList",
-    "onCommand:leetcode-practice.markAsSolved",
-    "onCommand:leetcode-practice.markAsAttempting",
-    "onCommand:leetcode-practice.clearProblemStatus",
-    "onCommand:leetcode-practice.agentMakeRunnable",
-    "onCommand:leetcode-practice.agentHint",
-    "onCommand:leetcode-practice.agentAnalyze",
-    "onCommand:leetcode-practice.openHintAnalysis",
-    "onCommand:leetcode-practice.agentExplainCode",
-    "onCommand:leetcode-practice.focusModeEnter",
-    "onCommand:leetcode-practice.focusModeExit",
-    "onCommand:leetcode-practice.setDailyGoal",
-    "onCommand:leetcode-practice.interviewModeStart",
-    "onCommand:leetcode-practice.interviewModeStop",
-    "onCommand:leetcode-practice.interviewGenerateWithAi",
-    "onCommand:leetcode-practice.openLcInterviewReportFile",
-    "onView:leetcode-practice.problemsView",
-    "onView:leetcode-practice.topInterview150View",
-    "onView:leetcode-practice.problemListsView",
-    "onView:leetcode-practice.qotdView"
+    "workspaceContains:**/.leetcode"
   ],
   "main": "./out/extension.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lcex/leetcode-practice"
+    "url": "https://github.com/NikkyAmresh/lcex"
   },
+  "bugs": {
+    "url": "https://github.com/NikkyAmresh/lcex/issues"
+  },
+  "homepage": "https://github.com/NikkyAmresh/lcex#readme",
   "license": "MIT",
+  "galleryBanner": {
+    "color": "#1e1e2e",
+    "theme": "dark"
+  },
   "keywords": [
     "leetcode",
     "practice",
@@ -69,10 +39,8 @@
     "coding",
     "interview",
     "typescript",
-    "ts-node",
-    "study-plan",
-    "vscode",
-    "extension"
+    "python",
+    "study-plan"
   ],
   "contributes": {
     "commands": [
@@ -93,7 +61,7 @@
       },
       {
         "command": "leetcode-practice.runInTerminal",
-        "title": "LeetCode: Run in Terminal (ts-node)",
+        "title": "LeetCode: Run in Terminal",
         "category": "LeetCode"
       },
       {
@@ -148,8 +116,18 @@
         "category": "LeetCode"
       },
       {
+        "command": "leetcode-practice.cloudSignIn",
+        "title": "LeetCode: Sign in to Cloud Sync",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.cloudSignOut",
+        "title": "LeetCode: Sign out of Cloud Sync",
+        "category": "LeetCode"
+      },
+      {
         "command": "leetcode-practice.setCloudUsername",
-        "title": "LeetCode: Set cloud username",
+        "title": "LeetCode: Set LeetCode username",
         "category": "LeetCode"
       },
       {
@@ -335,7 +313,7 @@
         {
           "id": "leetcode-practice.container",
           "title": "LeetCode",
-          "icon": "./icons/logo-dark-16.png"
+          "icon": "./icons/icon-mono.svg"
         }
       ]
     },
@@ -367,7 +345,8 @@
       {
         "command": "leetcode-practice.runInTerminal",
         "key": "ctrl+shift+r",
-        "mac": "cmd+shift+r"
+        "mac": "cmd+shift+r",
+        "when": "leetcodePractice.hasMarker && leetcodePractice.isSolutionFile && editorTextFocus"
       }
     ],
     "viewsWelcome": [
@@ -566,7 +545,7 @@
         "leetcodePractice.leetcodeUsername": {
           "type": "string",
           "default": "",
-          "description": "LeetCode handle used as the Firestore document id for cloud stats (leetcodeStats/<username>). Should match your LeetCode profile name."
+          "description": "LeetCode handle used as the per-account document id for cloud stats. Cloud path: users/<your-firebase-uid>/stats/<username>. Sign in with 'LeetCode: Sign in to Cloud Sync' first."
         }
       }
     },
@@ -633,13 +612,14 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./ && npm run copy-assets",
-    "copy-assets": "copyfiles -u 1 \"src/templates/*.ejs\" out",
-    "watch": "tsc -w -p ./",
+    "vscode:prepublish": "npm run bundle",
+    "typecheck": "tsc -p ./ --noEmit",
+    "bundle": "node esbuild.config.mjs",
+    "compile": "npm run typecheck && npm run bundle",
+    "watch": "node esbuild.config.mjs --watch",
     "test": "node --test --import tsx test/integration.test.ts",
     "package": "npm run compile && npx vsce package",
-    "install-extension": "npm run package && code --install-extension leetcode-practice-0.1.0.vsix --force"
+    "install-extension": "npm run package && node -e \"const v=require('./package.json').version;require('child_process').execSync('code --install-extension leetcode-practice-'+v+'.vsix --force',{stdio:'inherit'})\""
   },
   "devDependencies": {
     "@types/ejs": "^3.1.3",
@@ -647,12 +627,12 @@
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.2.1",
     "copyfiles": "^2.4.1",
+    "esbuild": "^0.28.0",
     "tsx": "^4.19.0",
     "typescript": "^5.3.0"
   },
   "dependencies": {
     "ejs": "^3.1.9",
-    "firebase": "^11.10.0",
     "shiki": "^4.0.2"
   }
 }

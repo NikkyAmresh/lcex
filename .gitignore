@@ -2,3 +2,21 @@ node_modules/
 out/
 test-output/
 *.vsix
+
+# Local/editor metadata
+.claude/
+.cursor/
+.DS_Store
+
+# Firebase local cache and deploy state
+.firebase/
+.firebaserc
+firebase.json
+auth-page/
+
+# Local packaged/release artifacts
+leetcode-practice-*.vsix
+leetcode-practice-*.vsix.zip
+leetcode-practice-*.png
+leetcode-practice-*.png.zip
+backfill-solved-dates.json

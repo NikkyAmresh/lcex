@@ -1172,8 +1172,8 @@ async function renderChallengeHtml(
           vscode.window.activeColorTheme.kind === vscode.ColorThemeKind.HighContrastLight
             ? "light-plus"
             : "dark-plus";
-        const { codeToHtml } = await import("shiki");
-        solutionHtml = await codeToHtml(raw, { lang, theme });
+        const { highlightCode } = await import("./shikiLite");
+        solutionHtml = highlightCode(raw, lang, theme);
       } catch {
         solutionHtml = undefined;
       }

@@ -1,9 +1,63 @@
+# Source — bundled into out/extension.js by esbuild
 src/**
 tsconfig.json
+esbuild.config.mjs
 .gitignore
-*.md
+.vscodeignore
+
+# Dev artefacts
 .vscode/**
+.github/**
+.claude/**
+.cursor/**
 test/**
 test-output/**
-hackerrank-vscode-ref/**
+node_modules/**
+scripts/**
+
+# Repo docs (README.md is included by vsce automatically; ignore other markdown)
+CLAUDE.md
+
+# Cloud / backend artefacts not needed in extension
+.firebase/**
+.firebaserc
+firebase.json
+firestore.rules
+auth-page/**
+
+# Chrome extension lives here as a sibling, not part of the VS Code extension
+chrome-extension/**
+chrome-extension.crx
+chrome-extension.pem
 *.pem
+
+# Personal solution files / interview plans / hint notes that should never ship
+*.ts
+*.tsx
+*.js
+*.mjs
+*.cjs
+*.py
+*.cpp
+*.hint
+*.lcInterview
+*.lcireport
+*.leetcode
+Interview*/**
+Meta*/**
+backfill-*.json
+*.vsix
+*.vsix.zip
+*.png.zip
+leetcode-practice-*.png
+
+# But keep what we DO want shipped (whitelist overrides above)
+!out/**/*.js
+!out/**/*.ejs
+!icons/**
+!themes/**
+!resources/**
+!package.json
+!LICENSE
+!README.md
+!CHANGELOG.md

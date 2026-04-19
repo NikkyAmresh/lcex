@@ -102,6 +102,8 @@ import {
   pushStatsToCloud,
   sanitizeCloudUsername,
 } from "./modules/cloud/cloudStatsSync";
+import { getCloudIdentity, parseAuthCallback } from "./modules/cloud/firebaseApp";
+import { handleAuthCallback, signInToCloud, signOutFromCloud } from "./modules/cloud/cloudAuth";
 
 function getProvider(): IProblemProvider {
   const folders = vscode.workspace.workspaceFolders ?? [];
@@ -308,6 +310,17 @@ function createUriHandler(
   return {
     handleUri(uri: vscode.Uri): void {
       const path = uri.path ?? "";
+      if (path === "/auth" || path === "/auth/") {
+        const params = parseAuthCallback(uri);
+        if (!params) {
+          void vscode.window.showErrorMessage("Cloud sign-in callback was malformed.");
+          return;
+        }
+        if (!handleAuthCallback(params)) {
+          void vscode.window.showWarningMessage("Cloud sign-in callback ignored (no pending sign-in).");
+        }
+        return;
+      }
       if (!path.startsWith(URI_OPEN_PREFIX)) return;
       const slug = path.slice(URI_OPEN_PREFIX.length).trim();
       if (!slug) return;
@@ -1948,17 +1961,27 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.cloudSignIn", async () => {
+      await signInToCloud(context);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.cloudSignOut", async () => {
+      await signOutFromCloud(context);
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.setCloudUsername", async () => {
       const cfg = vscode.workspace.getConfiguration("leetcodePractice");
       const current = cfg.get<string>("leetcodeUsername") ?? "";
       const value = await vscode.window.showInputBox({
-        prompt: "LeetCode username for Firestore sync (document id)",
+        prompt: "LeetCode username (used as the per-account Firestore document id)",
         value: current,
         validateInput: (s) => {
           const t = s.trim();
-          if (!t) {
-            return "Enter a non-empty username, or cancel.";
-          }
+          if (!t) return "Enter a non-empty username, or cancel.";
           if (!sanitizeCloudUsername(t)) {
             return "Use only letters, numbers, _, -, . (1–128 characters).";
           }
@@ -1967,9 +1990,14 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       });
       if (value === undefined) return;
       await cfg.update("leetcodeUsername", value.trim(), vscode.ConfigurationTarget.Global);
-      void vscode.window.showInformationMessage(`Cloud username set to "${value.trim()}".`);
+      void vscode.window.showInformationMessage(`LeetCode username set to "${value.trim()}".`);
     })
   );
+
+  const warnNotSignedIn = () =>
+    vscode.window.showWarningMessage(
+      'Sign in to cloud sync first (command "LeetCode: Sign in to Cloud Sync").'
+    );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.pushCloudStats", async () => {
@@ -1978,15 +2006,19 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
         void vscode.window.showInformationMessage("Stats pushed to cloud.");
         return;
       }
+      if (result.reason === "not_signed_in") {
+        void warnNotSignedIn();
+        return;
+      }
       if (result.reason === "no_username") {
         void vscode.window.showWarningMessage(
-          'Set a cloud username first (command "LeetCode: Set cloud username").'
+          'Set your LeetCode username first (command "LeetCode: Set LeetCode username").'
         );
         return;
       }
       if (result.reason === "invalid_username") {
         void vscode.window.showWarningMessage(
-          "Cloud username is invalid. Use only letters, numbers, _, -, . (1–128 characters)."
+          "LeetCode username is invalid. Use only letters, numbers, _, -, . (1–128 characters)."
         );
         return;
       }
@@ -2002,17 +2034,21 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
 
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.pullCloudStats", async () => {
+      if (!getCloudIdentity(globalState)) {
+        void warnNotSignedIn();
+        return;
+      }
       const raw = getConfiguredLeetcodeUsername();
       const id = sanitizeCloudUsername(raw);
       if (!raw || !id) {
         void vscode.window.showWarningMessage(
-          'Set a cloud username first (command "LeetCode: Set cloud username").'
+          'Set your LeetCode username first (command "LeetCode: Set LeetCode username").'
         );
         return;
       }
-      const cloudDoc = await fetchCloudStatsDocument(raw);
+      const cloudDoc = await fetchCloudStatsDocument(context, raw);
       if (!cloudDoc) {
-        void vscode.window.showInformationMessage("No cloud stats document found for this username.");
+        void vscode.window.showInformationMessage("No cloud stats document found for this account.");
         return;
       }
       const choice = await vscode.window.showWarningMessage(
@@ -2038,8 +2074,8 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
   );
 
   const cloudPushInterval = setInterval(() => {
-    const u = getConfiguredLeetcodeUsername();
-    if (!sanitizeCloudUsername(u)) return;
+    if (!getCloudIdentity(globalState)) return;
+    if (!sanitizeCloudUsername(getConfiguredLeetcodeUsername())) return;
     void pushStatsToCloud(context, globalState).then((r) => {
       if (!r.ok && r.reason === "firestore") {
         Logger.logError("Scheduled cloud push failed", new Error(r.message));
