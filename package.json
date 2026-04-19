@@ -15,6 +15,7 @@
   "icon": "icons/logo-dark.png",
   "activationEvents": [
     "onUri",
+    "onWebviewPanel:leetcodeProblem",
     "workspaceContains:**/.leetcode",
     "onStartupFinished",
     "onCustomEditor:leetcode-practice.configEditor",
@@ -30,6 +31,9 @@
     "onCommand:leetcode-practice.refreshProblems",
     "onCommand:leetcode-practice.refreshQotd",
     "onCommand:leetcode-practice.refreshStatsData",
+    "onCommand:leetcode-practice.setCloudUsername",
+    "onCommand:leetcode-practice.pushCloudStats",
+    "onCommand:leetcode-practice.pullCloudStats",
     "onCommand:leetcode-practice.switchStudyPlan",
     "onCommand:leetcode-practice.switchProblemList",
     "onCommand:leetcode-practice.markAsSolved",
@@ -37,6 +41,7 @@
     "onCommand:leetcode-practice.clearProblemStatus",
     "onCommand:leetcode-practice.agentMakeRunnable",
     "onCommand:leetcode-practice.agentHint",
+    "onCommand:leetcode-practice.agentAnalyze",
     "onCommand:leetcode-practice.openHintAnalysis",
     "onCommand:leetcode-practice.agentExplainCode",
     "onCommand:leetcode-practice.focusModeEnter",
@@ -143,6 +148,21 @@
         "category": "LeetCode"
       },
       {
+        "command": "leetcode-practice.setCloudUsername",
+        "title": "LeetCode: Set cloud username",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.pushCloudStats",
+        "title": "LeetCode: Push stats to cloud now",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.pullCloudStats",
+        "title": "LeetCode: Pull stats from cloud",
+        "category": "LeetCode"
+      },
+      {
         "command": "leetcode-practice.applyTheme",
         "title": "LeetCode: Apply Theme"
       },
@@ -160,11 +180,16 @@
       },
       {
         "command": "leetcode-practice.agentHint",
-        "title": "LeetCode: Hint (open .hint or ask agent)"
+        "title": "LeetCode: Ask Agent — Hint (coaching)"
+      },
+      {
+        "command": "leetcode-practice.agentAnalyze",
+        "title": "LeetCode: Ask Agent — Analyze (scored review)",
+        "category": "LeetCode"
       },
       {
         "command": "leetcode-practice.openHintAnalysis",
-        "title": "LeetCode: Open Hint Analysis",
+        "title": "LeetCode: Open solution notes (.hint)",
         "category": "LeetCode"
       },
       {
@@ -217,6 +242,11 @@
         },
         {
           "command": "leetcode-practice.agentHint",
+          "when": "leetcodePractice.hasMarker && leetcodePractice.isSolutionFile && !leetcodePractice.interviewMode",
+          "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.agentAnalyze",
           "when": "leetcodePractice.hasMarker && leetcodePractice.isSolutionFile && !leetcodePractice.interviewMode",
           "group": "navigation"
         },
@@ -437,6 +467,15 @@
           "default": "typescript",
           "description": "Language for generated solution files and run/submit."
         },
+        "leetcodePractice.problemViewMode": {
+          "type": "string",
+          "enum": [
+            "ui",
+            "text"
+          ],
+          "default": "ui",
+          "description": "When opening a problem from sidebar lists: 'ui' (webview with run/submit) or 'text' (plain statement in an editor tab). Overridden by problemViewMode in a workspace .leetcode file when set."
+        },
         "leetcodePractice.suppressAiTabOnSolve": {
           "type": "boolean",
           "default": true,
@@ -523,6 +562,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show the Problem Lists sidebar view."
+        },
+        "leetcodePractice.leetcodeUsername": {
+          "type": "string",
+          "default": "",
+          "description": "LeetCode handle used as the Firestore document id for cloud stats (leetcodeStats/<username>). Should match your LeetCode profile name."
         }
       }
     },
@@ -578,7 +622,7 @@
       {
         "id": "leetcode-practice.hintEditor",
         "viewType": "leetcode-practice.hintEditor",
-        "displayName": "LeetCode Hint Analysis",
+        "displayName": "LeetCode solution notes (.hint)",
         "selector": [
           {
             "filenamePattern": "*.hint"
@@ -608,6 +652,7 @@
   },
   "dependencies": {
     "ejs": "^3.1.9",
+    "firebase": "^11.10.0",
     "shiki": "^4.0.2"
   }
 }

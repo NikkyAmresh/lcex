@@ -33,12 +33,19 @@ export interface LeetcodeConfig {
   agentPromptMakeRunnable?: string;
   /** Prompt sent to Cursor when clicking "Hint" in a solution file. Only in LeetCode workspace. */
   agentPromptHint?: string;
+  /** Prompt for scored implementation review (fills Analysis in `.hint`). Only in LeetCode workspace. */
+  agentPromptAnalyze?: string;
   /** Base prompt for "Explain my code" (selection appended). Only in LeetCode workspace. */
   agentPromptExplain?: string;
+  /** Rich webview vs plain text editor when opening a problem from sidebar lists. */
+  problemViewMode?: "ui" | "text";
 }
 
 const DEFAULTS: Required<
-  Omit<LeetcodeConfig, "internalApiUrl" | "activeStudyPlan" | "activeProblemList" | "activeListSource">
+  Omit<
+    LeetcodeConfig,
+    "internalApiUrl" | "activeStudyPlan" | "activeProblemList" | "activeListSource" | "problemViewMode"
+  >
 > & {
   internalApiUrl: string;
   activeStudyPlan?: string;
@@ -59,7 +66,9 @@ const DEFAULTS: Required<
   qotdMonths: 6,
   agentPromptMakeRunnable: "Make this Runnable, do not give solution.",
   agentPromptHint:
-    "Load **lcex-dsa-hint** and follow it. Hint for my current LeetCode problem—no solution.",
+    "Load **lcex-dsa-hint** and follow it. Nudge from the problem only—do not read or review my code. Each `coaching` value: one short line; no solution.",
+  agentPromptAnalyze:
+    "Load **lcex-dsa-analyze** and follow it. Analyze my current LeetCode solution implementation.",
   agentPromptExplain:
     "Explain my solution code for this LeetCode problem. Respond with: (1) Intuition — core idea in plain language; (2) Step-by-step dry run — walk through the algorithm with a small example, including loop/state changes; (3) Time and space complexity with brief justification. Do not rewrite the full solution unless needed for clarity.",
 };
@@ -124,6 +133,10 @@ export function reconcileListSource(
   if (source === "studyPlan" && !inStudy && inProblem) return "problemList";
   if (source === "problemList" && !inProblem && inStudy) return "studyPlan";
   return source;
+}
+
+function normalizeProblemViewMode(value: unknown): "ui" | "text" {
+  return value === "text" ? "text" : "ui";
 }
 
 /** Problem list sidebar has no configured lists — skip API calls. */
@@ -300,8 +313,14 @@ export function parseLeetcodeConfig(workspaceFolders: readonly vscode.WorkspaceF
       if (parsed.agentPromptHint !== undefined && typeof parsed.agentPromptHint === "string") {
         merged.agentPromptHint = parsed.agentPromptHint;
       }
+      if (parsed.agentPromptAnalyze !== undefined && typeof parsed.agentPromptAnalyze === "string") {
+        merged.agentPromptAnalyze = parsed.agentPromptAnalyze;
+      }
       if (parsed.agentPromptExplain !== undefined && typeof parsed.agentPromptExplain === "string") {
         merged.agentPromptExplain = parsed.agentPromptExplain;
+      }
+      if (parsed.problemViewMode === "ui" || parsed.problemViewMode === "text") {
+        merged.problemViewMode = parsed.problemViewMode;
       }
     } catch (e) {
       Logger.log(`LeetcodeConfig: failed to parse ${configPath}, using defaults: ${e}`);
@@ -311,7 +330,9 @@ export function parseLeetcodeConfig(workspaceFolders: readonly vscode.WorkspaceF
 }
 
 /** Merged config: .leetcode overrides VS Code leetcodePractice.* settings. */
-export function getEffectiveConfig(workspaceFolders: readonly vscode.WorkspaceFolder[]): LeetcodeConfig & { internalApiUrl: string } {
+export function getEffectiveConfig(
+  workspaceFolders: readonly vscode.WorkspaceFolder[]
+): LeetcodeConfig & { internalApiUrl: string; problemViewMode: "ui" | "text" } {
   const vscodeConfig = vscode.workspace.getConfiguration("leetcodePractice");
   const leetcode = parseLeetcodeConfig(workspaceFolders);
   const studyPlans = leetcode.studyPlans ?? vscodeConfig.get<Array<{ slug: string; name: string }>>("studyPlans") ?? DEFAULTS.studyPlans;
@@ -344,6 +365,10 @@ export function getEffectiveConfig(workspaceFolders: readonly vscode.WorkspaceFo
     qotdMonths: leetcode.qotdMonths ?? DEFAULTS.qotdMonths,
     agentPromptMakeRunnable: leetcode.agentPromptMakeRunnable ?? DEFAULTS.agentPromptMakeRunnable,
     agentPromptHint: leetcode.agentPromptHint ?? DEFAULTS.agentPromptHint,
+    agentPromptAnalyze: leetcode.agentPromptAnalyze ?? DEFAULTS.agentPromptAnalyze,
     agentPromptExplain: leetcode.agentPromptExplain ?? DEFAULTS.agentPromptExplain,
+    problemViewMode: normalizeProblemViewMode(
+      leetcode.problemViewMode ?? vscodeConfig.get<string>("problemViewMode")
+    ),
   };
 }

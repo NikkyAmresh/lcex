@@ -365,7 +365,7 @@ Example:
   "showQotd": true,
   "qotdMonths": 6,
   "agentPromptMakeRunnable": "Make this Runnable, do not give solution.",
-  "agentPromptHint": "Give me a hint for this problem. Do not give the solution.",
+  "agentPromptHint": "Load **lcex-dsa-hint** and follow it. Nudge from the problem only—do not read or review my code. Each `coaching` value: one short line; no solution.",
   "agentPromptExplain": "Explain my solution… (intuition, dry run, complexity)."
 }
 ```

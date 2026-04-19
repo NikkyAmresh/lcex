@@ -49,59 +49,94 @@ If the user specifies topics (e.g. graphs, DP), pick a coherent set of slugs and
 
 const DSA_HINT_SKILL_MD = `---
 name: lcex-dsa-hint
-description: LeetCode DSA hints in a structured Analysis-style format—no full solution.
+description: LeetCode DSA coaching — problem-only nudges; never reviews the user’s code; fills .hint coaching JSON with one-line hints; no full solution.
 ---
 
-# DSA hints (LeetCode-style analysis)
+# DSA coaching (hints only)
 
-They are practicing one problem and may share code or what they tried.
+They are practicing **one** LeetCode-style problem.
 
-## Rules
+## Hard rules (read twice)
 
-- **Never** give the full answer: no working solution code, no step-by-step algorithm that fully solves the problem. Hints only.
-- Prefer their **current** approach. If it cannot work, say that in **one** sentence in **Approach → Key idea**, then point to what class of fix is needed—still no solution.
-- Use the **exact section order and headings** below every time you give a hint or review their attempt. Keep each bullet **short** (one line or two); do not pad with filler.
+- **Never** analyze, summarize, quote, score, or pass judgment on their code, pasted snippet, or “what I tried so far” from an implementation. Treat attached code as **out of scope**—do not infer their approach from it.
+- Hints come **only** from the **problem statement** (and generic patterns anyone could mention without seeing their file). Write like someone who has **not** opened their solution.
+- **Not** the full answer: no complete program, no line-by-line algorithm that finishes the problem.
 
-## Output format (required)
+## What this skill is **not**
 
-Use this skeleton. Omit a subsection only if there is nothing useful to say (e.g. no code shared → skip **Code style** or mark as N/A briefly).
+- **Not** implementation review — that is **lcex-dsa-analyze** (\`approach\` / \`efficiency\` / \`codeStyle\`).
+- **Not** long paragraphs or multi-step coaching essays.
 
-### Approach
+## Your job
 
-- **Current:** Name the pattern you see (e.g. heap, greedy, linear scan, DP). One short comment on what the solution is doing or trying.
-- **Suggested:** What direction would fix or improve it (still a hint—no full algorithm).
-- **Key idea:** One crisp sentence—the main insight or fix to try next.
+Give **tiny** nudges: one **simple** idea per \`coaching\` field—**one short line** each (about one sentence max), plain language, immediately usable. Prefer a single clause over lists.
 
-### Efficiency
+## Chat reply (optional short preamble)
 
-**Time complexity**
+At most **one** short sentence, or **none**. The **machine-readable** part must be the JSON block below.
 
-- **Current:** Best characterization of what they have (e.g. \\(O(k \\cdot n)\\), \\(O(n^2)\\)). Use big-O; say "unknown" if you cannot tell.
-- **Suggested:** What the usual target is for a good approach on this problem (still not a full walkthrough).
-- **Suggestion:** One concrete lever (e.g. "replace the inner linear max with a max-heap")—not code.
+## LCX \`.hint\` — \`coaching\` object only for this skill
 
-**Space complexity**
+When you update the file, **preserve** any existing \`approach\`, \`efficiency\`, and \`codeStyle\` keys unless the user explicitly asked to refresh everything. If the file does not exist yet, include only metadata + \`coaching\`.
 
-- **Current:** e.g. \\(O(n)\\), \\(O(1)\\) extra, or "unknown".
-- **Suggested:** What a typical optimal or acceptable solution uses.
-- **Suggestion:** One line (e.g. "indexing by capital in-place vs. extra structure tradeoff") if it helps.
+\`version\` must be \`1\`. Strings are plain text; complexity only if it fits in one short line.
 
-### Code style
+\`\`\`json
+{
+  "version": 1,
+  "titleSlug": "problem-slug",
+  "problemTitle": "Display Name",
+  "coaching": {
+    "breakdown": "Name the one object each answer must depend on.",
+    "thinking": "Ask what you can reuse as you sweep once.",
+    "pitfalls": "Watch empty input and duplicates.",
+    "nextFocus": "Try mapping value → index before the second pass."
+  },
+  "updatedAt": "2026-01-01T00:00:00.000Z"
+}
+\`\`\`
 
-- **Readability:** Brief rating or label (e.g. Good / Mixed / Needs work) plus **one** reason if not excellent.
-- **Structure:** Same—rating + **one** reason if relevant.
-- **Suggestions:** **One** actionable refactor (e.g. "collapse nested loops into a dual-heap flow so selection is one place")—not a rewrite of their file.
+- Omit a \`coaching\` key if you have nothing for that slot (avoid \`N/A\` filler unless every slot would otherwise be empty).
+- **Do not** fill \`approach\`, \`efficiency\`, or \`codeStyle\` in the same turn unless the user asked for a full refresh.
 
-## Tone
+### Automation (required after coaching)
 
-- Sound like concise LeetCode **Analysis** feedback: direct, structured, technical.
-- Still **one focused reply** per turn: the template keeps you organized; it is not an excuse to dump a full editorial.
+1. Resolve \`<same-dir>/<id-or-slug>.hint\` (same basename as the solution file).
+2. If a file exists, **read** it, merge your \`coaching\` (and \`updatedAt\`), keep analysis keys.
+3. **Write** the merged JSON with the \`write\` tool.
+4. If write fails, ask the user to open **Notes** from the problem panel and try again.
 
-## LCX \`.hint\` file — **JSON only** (no markdown blob)
+**Re-open:** **LeetCode: Open solution notes (.hint)**. **Reopen Editor With… → Text Editor** edits raw JSON.
+`;
 
-The file next to the solution (e.g. \`2813.hint\`) is **valid JSON**. The Analysis editor shows one scrollable view (Approach → Efficiency → Code style). **Reopen Editor With… → Text Editor** edits raw JSON.
+const DSA_ANALYZE_SKILL_MD = `---
+name: lcex-dsa-analyze
+description: LeetCode solution analysis — scored review (1–10) for approach, time, space, code style; problem-relative; no forced optimization.
+---
 
-\`version\` must be \`1\`. Use **only** these keys (omit empty objects):
+# DSA implementation analysis
+
+They want **feedback on their current solution**: approach fit, complexity vs this problem, and code quality — with **numeric scores** so they can see where they stand.
+
+## What this skill is **not**
+
+- **Not** coaching-only hints — that is **lcex-dsa-hint** (\`coaching\` object).
+- **Not** rewriting their whole file unless a tiny snippet fixes a clear bug.
+
+## Principles
+
+- Scores are **1–10** **relative to this problem’s** expectations (not global contests).
+- If the approach is **already appropriate** and complexity is **in line with a sound solution**, give **high scores** and **short** suggestions. **Do not** push micro-optimizations or “clever” refactors.
+- If the code is **correct and readable** for the constraints, **say so** and score accordingly — “works and passes” is **fine**; you do not need to invent weaknesses.
+- Use \`currentRating\` on **Current** lines (\`"good"\` | \`"avg"\` | \`"worst"\`) in line with those scores.
+
+## Chat reply (optional short preamble)
+
+You may add **one or two** sentences. The **machine-readable** part must be the JSON block.
+
+## LCX \`.hint\` — analysis keys only for this skill
+
+When you update the file, **preserve** any existing \`coaching\` object unless the user asked to clear it.
 
 \`\`\`json
 {
@@ -109,47 +144,52 @@ The file next to the solution (e.g. \`2813.hint\`) is **valid JSON**. The Analys
   "titleSlug": "problem-slug",
   "problemTitle": "Display Name",
   "approach": {
-    "current": "…",
-    "suggested": "…",
-    "keyIdea": "…",
-    "currentRating": "good"
+    "current": "Pattern you see; what their code is doing.",
+    "suggested": "Only if something is off — optional lever, not a full walkthrough.",
+    "keyIdea": "One crisp sentence on the main gap or strength.",
+    "currentRating": "good",
+    "score": 8
   },
   "efficiency": {
     "time": {
-      "current": "…",
-      "suggested": "…",
-      "suggestion": "…",
-      "currentRating": "avg"
+      "current": "e.g. O(n log n)",
+      "suggested": "Target for this problem if different",
+      "suggestion": "One lever if useful; else omit",
+      "currentRating": "good",
+      "score": 8
     },
     "space": {
-      "current": "…",
-      "suggested": "…",
-      "suggestion": "…",
-      "currentRating": "good"
+      "current": "e.g. O(n)",
+      "suggested": "Typical optimal/acceptable",
+      "suggestion": "Optional",
+      "currentRating": "avg",
+      "score": 7
     }
   },
   "codeStyle": {
-    "readability": "…",
-    "structure": "…",
-    "suggestions": "…"
+    "readability": "Brief + one reason if not great",
+    "structure": "Brief + one reason if relevant",
+    "suggestions": "One optional tweak — skip if code is already clear",
+    "readabilityScore": 8,
+    "structureScore": 7
   },
   "updatedAt": "2026-01-01T00:00:00.000Z"
 }
 \`\`\`
 
-- **\`currentRating\` (required when you fill the matching \`current\` line):** \`"good"\` | \`"avg"\` | \`"worst"\`. **You** judge against **this problem’s** expectations — not by comparing raw big-O strings. Examples: on a full \`n×n\` matrix DP, \`O(n²)\` time may be **\`good\`**; the same bound can be **\`worst\`** on a different problem where \`O(n)\` is achievable. Set \`approach.currentRating\` for the approach **Current** line; set \`efficiency.time.currentRating\` and \`efficiency.space.currentRating\` for those **Current** lines. Omit only if there is no \`current\` text for that block.
-- Write **plain text** in strings. For big-O use \`O(n)\`, \`O(1)\`, etc.
-- **Do not** put a top-level \`markdown\` field; legacy files may still migrate once when opened.
+- **\`score\`** (and \`readabilityScore\` / \`structureScore\`): integers **1–10**. Include when you fill the matching section; omit if you truly cannot judge.
+- **\`currentRating\`:** required when you fill a **Current** string for that block (same semantics as before: problem-relative).
+- **Plain text** strings; big-O as \`O(n)\`, etc.
+- Omit **Suggested** / **Suggestion** lines when there is nothing meaningful to add (especially when scores are high).
 
-### Automation (required after every hint)
+### Automation (required)
 
-1. Resolve \`<same-dir>/<id-or-slug>.hint\` (same basename as the solution file).
-2. **Write** the **full** JSON with the \`write\` tool — create or **replace** the entire file (include \`currentRating\` fields as above).
-3. If write fails, ask the user to open **Analysis** in the problem panel and try again.
+1. Resolve \`<same-dir>/<id-or-slug>.hint\`.
+2. If file exists, **read** it, merge analysis keys, **keep** \`coaching\`.
+3. **Write** merged JSON.
+4. If write fails, ask the user to open **Notes** from the problem panel.
 
-**File icon:** **File Icon Theme** → **LeetCode Practice** for \`.hint\` icons.
-
-**Re-analyze** clears hint fields and runs **Ask Agent – Hint** again.
+**In-editor:** **Ask agent — Analyze** clears analysis fields then runs this flow.
 `;
 
 const PLUGIN_JSON = `{
@@ -175,13 +215,15 @@ async function writeIfDifferent(filePath: string, content: string): Promise<"cre
 export async function ensureCursorLcexPluginInstalled(_context: vscode.ExtensionContext): Promise<void> {
   const interviewSkillPath = path.join(PLUGIN_ROOT, "skills", "lcex-interview-generator", "SKILL.md");
   const dsaHintSkillPath = path.join(PLUGIN_ROOT, "skills", "lcex-dsa-hint", "SKILL.md");
+  const dsaAnalyzeSkillPath = path.join(PLUGIN_ROOT, "skills", "lcex-dsa-analyze", "SKILL.md");
   const metaPath = path.join(PLUGIN_ROOT, ".cursor-plugin", "plugin.json");
   const r1 = await writeIfDifferent(interviewSkillPath, SKILL_MD);
   const r2 = await writeIfDifferent(dsaHintSkillPath, DSA_HINT_SKILL_MD);
+  const r4 = await writeIfDifferent(dsaAnalyzeSkillPath, DSA_ANALYZE_SKILL_MD);
   const r3 = await writeIfDifferent(metaPath, PLUGIN_JSON);
-  if (r1 !== "unchanged" || r2 !== "unchanged" || r3 !== "unchanged") {
+  if (r1 !== "unchanged" || r2 !== "unchanged" || r3 !== "unchanged" || r4 !== "unchanged") {
     Logger.log(
-      `Cursor LCX plugin: interview skill ${r1}, dsa-hint skill ${r2}, plugin.json ${r3} at ${PLUGIN_ROOT}`
+      `Cursor LCX plugin: interview ${r1}, dsa-hint ${r2}, dsa-analyze ${r4}, plugin.json ${r3} at ${PLUGIN_ROOT}`
     );
   }
 }

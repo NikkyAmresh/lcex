@@ -191,6 +191,16 @@
         opacity: 0.88;
         color: var(--accent);
       }
+      .tag.tag-hint {
+        border: 1px solid rgba(255, 161, 22, 0.35);
+      }
+      .tag.tag-analyze {
+        border: 1px solid rgba(137, 180, 250, 0.45);
+        color: #a8c7fa;
+      }
+      .tag.tag-notes {
+        border: 1px solid var(--border);
+      }
       .lang-toolbar {
         display: flex;
         flex-wrap: wrap;
@@ -259,8 +269,9 @@
       <span class="tag difficulty-<%= difficulty.toLowerCase() %>"><%= difficulty %></span>
       <span class="tag extra">Topics</span>
       <span class="tag extra">Companies</span>
-      <button type="button" class="tag extra tag-action" id="hintChipBtn">Hint</button>
-      <button type="button" class="tag extra tag-action" id="hintAnalysisBtn" title="Open saved hint analysis or paste the agent reply">Analysis</button>
+      <button type="button" class="tag extra tag-action tag-hint" id="hintChipBtn" title="Coaching — ask agent (how to think; no full solution)">Hint</button>
+      <button type="button" class="tag extra tag-action tag-analyze" id="analyzeChipBtn" title="Analyze — ask agent (scored review in .hint)">Analyze</button>
+      <button type="button" class="tag extra tag-action tag-notes" id="hintAnalysisBtn" title="Open solution notes (.hint) in the editor">Notes</button>
     </div>
     <div class="lang-toolbar focus-chrome">
       <!-- <label class="lang-toolbar-label" for="challengeLang">Language</label> -->
@@ -378,6 +389,12 @@
       if (hintChip) {
         hintChip.addEventListener("click", function () {
           vscode.postMessage({ event: "agentHint", titleSlug: titleSlug });
+        });
+      }
+      var analyzeChip = document.getElementById("analyzeChipBtn");
+      if (analyzeChip) {
+        analyzeChip.addEventListener("click", function () {
+          vscode.postMessage({ event: "agentAnalyze", titleSlug: titleSlug });
         });
       }
       var analysisChip = document.getElementById("hintAnalysisBtn");

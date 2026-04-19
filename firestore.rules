@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /logs/{docId} {
+      allow create: if true;
+      allow read: if request.auth != null && request.auth.uid == 'ZzoFamfai2NiUXzmYOub8aWvlpi1';
+      allow update, delete: if false;
+    }
+    // Prototype: public read/write by document id (LeetCode username). Anyone can read or overwrite
+    // any username's doc — use Firebase Auth + tighter rules for production.
+    match /leetcodeStats/{username} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if false;
+    }
+  }
+}

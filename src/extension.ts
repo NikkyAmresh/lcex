@@ -26,6 +26,7 @@ import {
   refreshStatsData,
   runTsNodeInTerminal,
   PROBLEM_WEBVIEW_VIEWTYPE,
+  registerProblemPlainTextDocumentProvider,
   restoreProblemPanel,
   getTitleSlugForActiveSolutionFile,
   notifyAllProblemPanelsUiMode,
@@ -92,6 +93,15 @@ import { LcInterviewReportEditorProvider } from "./modules/LcInterviewReportEdit
 import { ensureCursorLcexPluginInstalled } from "./modules/CursorLcexPluginInstall";
 import { ensureLcexBundledFontsInstalled } from "./modules/LcexFontInstall";
 import { applyLcexEditorFontAndTokenSettingsIfNeeded } from "./modules/LeetcodePracticeEditorSettings";
+import {
+  applyCloudStatsMerge,
+  fetchCloudStatsDocument,
+  formatPushWaitMessage,
+  getConfiguredLeetcodeUsername,
+  PUSH_INTERVAL_MS,
+  pushStatsToCloud,
+  sanitizeCloudUsername,
+} from "./modules/cloud/cloudStatsSync";
 
 function getProvider(): IProblemProvider {
   const folders = vscode.workspace.workspaceFolders ?? [];
@@ -211,6 +221,7 @@ class LeetCodeFileDecorationProvider implements vscode.FileDecorationProvider {
 
 let statusBarMakeRunnable: vscode.StatusBarItem | undefined;
 let statusBarHint: vscode.StatusBarItem | undefined;
+let statusBarAnalyze: vscode.StatusBarItem | undefined;
 
 function isSolutionFile(uri: vscode.Uri | undefined): boolean {
   if (!uri) return false;
@@ -242,11 +253,22 @@ function updateAgentStatusBarVisibility(): void {
     if (visible) {
       statusBarHint.text = "$(lightbulb) Hint";
       statusBarHint.tooltip =
-        "Open saved hint analysis if a .hint file exists; otherwise ask the agent (prompt from .leetcode)";
+        "Coaching: open .hint if it exists, else ask the agent (lcex-dsa-hint). Configure in .leetcode.";
       statusBarHint.command = "leetcode-practice.agentHint";
       statusBarHint.show();
     } else {
       statusBarHint.hide();
+    }
+  }
+  if (statusBarAnalyze) {
+    if (visible) {
+      statusBarAnalyze.text = "$(graph) Analyze";
+      statusBarAnalyze.tooltip =
+        "Scored review: open .hint if it exists, else ask the agent (lcex-dsa-analyze). Configure in .leetcode.";
+      statusBarAnalyze.command = "leetcode-practice.agentAnalyze";
+      statusBarAnalyze.show();
+    } else {
+      statusBarAnalyze.hide();
     }
   }
 }
@@ -854,8 +876,8 @@ export function activate(context: vscode.ExtensionContext): void {
   Logger.init(outputChannel);
   Logger.log("Extension activated");
 
-  let webviewOpts: OpenProblemWebviewOpts | undefined;
-  const getWebviewOpts = () => webviewOpts;
+  const webviewOptsHolder: { current?: OpenProblemWebviewOpts } = {};
+  const getWebviewOpts = () => webviewOptsHolder.current;
   context.subscriptions.push(
     vscode.window.registerUriHandler(
       createUriHandler(context, getProvider, getWebviewOpts)
@@ -899,13 +921,15 @@ export function activate(context: vscode.ExtensionContext): void {
 
   statusBarMakeRunnable = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   statusBarHint = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
-  const statusBarTimer = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 98);
+  statusBarAnalyze = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 98);
+  const statusBarTimer = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 97);
   interviewStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   dailyGoalStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 96);
   xpStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 95);
   context.subscriptions.push(
     statusBarMakeRunnable,
     statusBarHint,
+    statusBarAnalyze,
     statusBarTimer,
     interviewStatusBar,
     dailyGoalStatusBar,
@@ -920,11 +944,26 @@ export function activate(context: vscode.ExtensionContext): void {
     () => updateGamificationStatusBars(context)
   );
   context.subscriptions.push({ dispose: () => disposeProblemTimer() });
+  context.subscriptions.push(
+    vscode.window.registerWebviewPanelSerializer(PROBLEM_WEBVIEW_VIEWTYPE, {
+      deserializeWebviewPanel(panel, state) {
+        return restoreProblemPanel(
+          context,
+          panel,
+          state as ProblemPanelState | undefined,
+          getProvider,
+          (slug) => getStoredStatus(context.globalState, slug),
+          getWebviewOpts()
+        );
+      },
+    })
+  );
   updateAgentStatusBarVisibility();
   updateGamificationStatusBars(context);
   void grantDailyLoginXpIfNeeded(context.globalState).then(() => updateGamificationStatusBars(context));
   restoreInterviewOnActivate(context);
 
+  context.subscriptions.push(registerProblemPlainTextDocumentProvider(context, getProvider));
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(
       "leetcode-practice.configEditor",
@@ -1018,7 +1057,35 @@ export function activate(context: vscode.ExtensionContext): void {
         const config = getEffectiveConfig(folders);
         const prompt =
           config.agentPromptHint?.trim() ||
-          "Load **lcex-dsa-hint** and follow it. Hint for my current LeetCode problem—no solution.";
+          "Load **lcex-dsa-hint** and follow it. Nudge from the problem only—do not read or review my code. Each `coaching` value: one short line; no solution.";
+        await openChatWithPrompt(prompt);
+      }
+    )
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "leetcode-practice.agentAnalyze",
+      async (args?: { titleSlug?: string; forceAgent?: boolean }) => {
+        if (getInterviewSession(context.globalState)) {
+          vscode.window.showWarningMessage("Analyze is disabled during Interview mode.");
+          return;
+        }
+        if (!shouldAutoApplyTheme()) {
+          vscode.window.showWarningMessage("LeetCode workspace (.leetcode) required. Open a workspace with a .leetcode file.");
+          return;
+        }
+        if (!args?.forceAgent) {
+          const opened = await tryOpenExistingHintFile(context, getProvider, args?.titleSlug);
+          if (opened) {
+            return;
+          }
+        }
+        const folders = vscode.workspace.workspaceFolders ?? [];
+        const config = getEffectiveConfig(folders);
+        const prompt =
+          config.agentPromptAnalyze?.trim() ||
+          "Load **lcex-dsa-analyze** and follow it. Analyze my current LeetCode solution implementation.";
         await openChatWithPrompt(prompt);
       }
     )
@@ -1029,7 +1096,7 @@ export function activate(context: vscode.ExtensionContext): void {
       "leetcode-practice.openHintAnalysis",
       async (args?: { titleSlug?: string }) => {
         if (getInterviewSession(context.globalState)) {
-          vscode.window.showWarningMessage("Hint analysis is disabled during Interview mode.");
+          vscode.window.showWarningMessage("Solution notes are disabled during Interview mode.");
           return;
         }
         if (!shouldAutoApplyTheme()) {
@@ -1754,7 +1821,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
     problemListProvider.invalidate();
     qotdProvider.invalidate();
   }
-  webviewOpts = {
+  webviewOptsHolder.current = {
     onMarkSolved: (titleSlug) => {
       setProblemStatus(globalState, titleSlug, "solved");
       handleProblemSolved(context, titleSlug);
@@ -1766,23 +1833,6 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       await refreshInterviewHubIfOpen(context, getProvider);
     },
   };
-  context.subscriptions.push(
-    vscode.window.registerWebviewPanelSerializer(
-      PROBLEM_WEBVIEW_VIEWTYPE,
-      {
-        deserializeWebviewPanel(panel, state) {
-          return restoreProblemPanel(
-            context,
-            panel,
-            state as ProblemPanelState | undefined,
-            getProvider,
-            getProblemStatus,
-            getWebviewOpts()
-          );
-        },
-      }
-    )
-  );
   qotdView.onDidChangeSelection(async (e) => {
     const item = e.selection[0] as QotdTreeItem | undefined;
     if (!item?.item) return;
@@ -1896,6 +1946,107 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       );
     })
   );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.setCloudUsername", async () => {
+      const cfg = vscode.workspace.getConfiguration("leetcodePractice");
+      const current = cfg.get<string>("leetcodeUsername") ?? "";
+      const value = await vscode.window.showInputBox({
+        prompt: "LeetCode username for Firestore sync (document id)",
+        value: current,
+        validateInput: (s) => {
+          const t = s.trim();
+          if (!t) {
+            return "Enter a non-empty username, or cancel.";
+          }
+          if (!sanitizeCloudUsername(t)) {
+            return "Use only letters, numbers, _, -, . (1–128 characters).";
+          }
+          return undefined;
+        },
+      });
+      if (value === undefined) return;
+      await cfg.update("leetcodeUsername", value.trim(), vscode.ConfigurationTarget.Global);
+      void vscode.window.showInformationMessage(`Cloud username set to "${value.trim()}".`);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.pushCloudStats", async () => {
+      const result = await pushStatsToCloud(context, globalState);
+      if (result.ok) {
+        void vscode.window.showInformationMessage("Stats pushed to cloud.");
+        return;
+      }
+      if (result.reason === "no_username") {
+        void vscode.window.showWarningMessage(
+          'Set a cloud username first (command "LeetCode: Set cloud username").'
+        );
+        return;
+      }
+      if (result.reason === "invalid_username") {
+        void vscode.window.showWarningMessage(
+          "Cloud username is invalid. Use only letters, numbers, _, -, . (1–128 characters)."
+        );
+        return;
+      }
+      if (result.reason === "throttled" && result.nextAllowedAt !== undefined) {
+        void vscode.window.showInformationMessage(formatPushWaitMessage(result.nextAllowedAt));
+        return;
+      }
+      if (result.reason === "firestore") {
+        void vscode.window.showErrorMessage(`Cloud push failed: ${result.message}`);
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.pullCloudStats", async () => {
+      const raw = getConfiguredLeetcodeUsername();
+      const id = sanitizeCloudUsername(raw);
+      if (!raw || !id) {
+        void vscode.window.showWarningMessage(
+          'Set a cloud username first (command "LeetCode: Set cloud username").'
+        );
+        return;
+      }
+      const cloudDoc = await fetchCloudStatsDocument(raw);
+      if (!cloudDoc) {
+        void vscode.window.showInformationMessage("No cloud stats document found for this username.");
+        return;
+      }
+      const choice = await vscode.window.showWarningMessage(
+        "Merge cloud data into this machine? Replaces stored problem progress, timers, XP, interview history, and notes for keys present in the cloud snapshot.",
+        { modal: true },
+        "Merge"
+      );
+      if (choice !== "Merge") return;
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: "Merging cloud stats…",
+        },
+        async () => {
+          await applyCloudStatsMerge(globalState, cloudDoc);
+        }
+      );
+      refreshAllProblemViews();
+      updateGamificationStatusBars(context);
+      await refreshStatsData(context, globalState);
+      void vscode.window.showInformationMessage("Cloud stats merged.");
+    })
+  );
+
+  const cloudPushInterval = setInterval(() => {
+    const u = getConfiguredLeetcodeUsername();
+    if (!sanitizeCloudUsername(u)) return;
+    void pushStatsToCloud(context, globalState).then((r) => {
+      if (!r.ok && r.reason === "firestore") {
+        Logger.logError("Scheduled cloud push failed", new Error(r.message));
+      }
+    });
+  }, PUSH_INTERVAL_MS);
+  context.subscriptions.push({ dispose: () => clearInterval(cloudPushInterval) });
 
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.openRandomProblem", async () => {

@@ -7,12 +7,30 @@ export function parseHintCurrentRating(raw: unknown): HintCurrentRating | undefi
   return raw === "good" || raw === "avg" || raw === "worst" ? raw : undefined;
 }
 
+/** Integer score 1–10 for the Analysis panel (problem-relative). */
+export function parseHintScore(raw: unknown): number | undefined {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return undefined;
+  const n = Math.round(raw);
+  if (n < 1 || n > 10) return undefined;
+  return n;
+}
+
+/** Coaching-only: problem-only nudges (not a review of the user’s code). Prefer one short line per field. */
+export type HintCoaching = {
+  breakdown?: string;
+  thinking?: string;
+  pitfalls?: string;
+  nextFocus?: string;
+};
+
 export type HintEfficiencyAxis = {
   current?: string;
   suggested?: string;
   suggestion?: string;
   /** UI color for **Current** (problem-relative: O(n²) can be `good` on an n×m grid). */
   currentRating?: HintCurrentRating;
+  /** 1–10 vs what this problem rewards for this axis; omit if unknown. */
+  score?: number;
 };
 
 export type HintEfficiency = {
@@ -26,18 +44,25 @@ export type HintApproach = {
   keyIdea?: string;
   /** UI color for **Current** (pattern quality vs problem — not raw big-O). */
   currentRating?: HintCurrentRating;
+  /** 1–10: pattern / correctness of approach for this problem. */
+  score?: number;
 };
 
 export type HintCodeStyle = {
   readability?: string;
   structure?: string;
   suggestions?: string;
+  /** 1–10 */
+  readabilityScore?: number;
+  /** 1–10 */
+  structureScore?: number;
 };
 
 export type LeetcodeHintFileV1 = {
   version: 1;
   titleSlug: string;
   problemTitle?: string;
+  coaching?: HintCoaching;
   approach?: HintApproach;
   efficiency?: HintEfficiency;
   codeStyle?: HintCodeStyle;
@@ -52,17 +77,49 @@ function nonEmpty(s: string | undefined): boolean {
 
 function axisHasContent(a: HintEfficiencyAxis | undefined): boolean {
   if (!a) return false;
-  return nonEmpty(a.current) || nonEmpty(a.suggested) || nonEmpty(a.suggestion);
+  return (
+    nonEmpty(a.current) ||
+    nonEmpty(a.suggested) ||
+    nonEmpty(a.suggestion) ||
+    typeof a.score === "number"
+  );
 }
 
-export function hasStructuredHintContent(d: LeetcodeHintFileV1): boolean {
+function coachingHasContent(c: HintCoaching | undefined): boolean {
+  if (!c) return false;
+  return (
+    nonEmpty(c.breakdown) ||
+    nonEmpty(c.thinking) ||
+    nonEmpty(c.pitfalls) ||
+    nonEmpty(c.nextFocus)
+  );
+}
+
+export function hasCoachingContent(d: LeetcodeHintFileV1): boolean {
+  return coachingHasContent(d.coaching);
+}
+
+export function hasAnalysisContent(d: LeetcodeHintFileV1): boolean {
   const ap = d.approach;
-  if (ap && (nonEmpty(ap.current) || nonEmpty(ap.suggested) || nonEmpty(ap.keyIdea))) return true;
+  if (ap && (nonEmpty(ap.current) || nonEmpty(ap.suggested) || nonEmpty(ap.keyIdea) || typeof ap.score === "number"))
+    return true;
   const ef = d.efficiency;
   if (ef && (axisHasContent(ef.time) || axisHasContent(ef.space))) return true;
   const cs = d.codeStyle;
-  if (cs && (nonEmpty(cs.readability) || nonEmpty(cs.structure) || nonEmpty(cs.suggestions))) return true;
+  if (
+    cs &&
+    (nonEmpty(cs.readability) ||
+      nonEmpty(cs.structure) ||
+      nonEmpty(cs.suggestions) ||
+      typeof cs.readabilityScore === "number" ||
+      typeof cs.structureScore === "number")
+  )
+    return true;
   return false;
+}
+
+export function hasStructuredHintContent(d: LeetcodeHintFileV1): boolean {
+  return hasCoachingContent(d) || hasAnalysisContent(d);
 }
 
 function sliceBetweenHeaders(full: string, start: RegExp, end: RegExp): string {
@@ -207,6 +264,17 @@ export function parseHintFileJson(
       return { ok: false, error: "Missing titleSlug" };
     }
 
+    const readCoaching = (x: unknown): HintCoaching | undefined => {
+      if (!x || typeof x !== "object" || Array.isArray(x)) return undefined;
+      const c = x as Record<string, unknown>;
+      const o: HintCoaching = {};
+      if (typeof c.breakdown === "string") o.breakdown = c.breakdown;
+      if (typeof c.thinking === "string") o.thinking = c.thinking;
+      if (typeof c.pitfalls === "string") o.pitfalls = c.pitfalls;
+      if (typeof c.nextFocus === "string") o.nextFocus = c.nextFocus;
+      return coachingHasContent(o) ? o : undefined;
+    };
+
     const readAxis = (x: unknown): HintEfficiencyAxis | undefined => {
       if (!x || typeof x !== "object" || Array.isArray(x)) return undefined;
       const a = x as Record<string, unknown>;
@@ -216,6 +284,8 @@ export function parseHintFileJson(
       if (typeof a.suggestion === "string") axis.suggestion = a.suggestion;
       const cr = parseHintCurrentRating(a.currentRating);
       if (cr) axis.currentRating = cr;
+      const sc = parseHintScore(a.score);
+      if (sc !== undefined) axis.score = sc;
       return axisHasContent(axis) ? axis : undefined;
     };
 
@@ -237,7 +307,11 @@ export function parseHintFileJson(
       if (typeof a.keyIdea === "string") ap.keyIdea = a.keyIdea;
       const cr = parseHintCurrentRating(a.currentRating);
       if (cr) ap.currentRating = cr;
-      return nonEmpty(ap.current) || nonEmpty(ap.suggested) || nonEmpty(ap.keyIdea) ? ap : undefined;
+      const sc = parseHintScore(a.score);
+      if (sc !== undefined) ap.score = sc;
+      return nonEmpty(ap.current) || nonEmpty(ap.suggested) || nonEmpty(ap.keyIdea) || typeof ap.score === "number"
+        ? ap
+        : undefined;
     };
 
     const readCodeStyle = (x: unknown): HintCodeStyle | undefined => {
@@ -247,13 +321,24 @@ export function parseHintFileJson(
       if (typeof c.readability === "string") cs.readability = c.readability;
       if (typeof c.structure === "string") cs.structure = c.structure;
       if (typeof c.suggestions === "string") cs.suggestions = c.suggestions;
-      return nonEmpty(cs.readability) || nonEmpty(cs.structure) || nonEmpty(cs.suggestions) ? cs : undefined;
+      const rs = parseHintScore(c.readabilityScore);
+      if (rs !== undefined) cs.readabilityScore = rs;
+      const ss = parseHintScore(c.structureScore);
+      if (ss !== undefined) cs.structureScore = ss;
+      return nonEmpty(cs.readability) ||
+        nonEmpty(cs.structure) ||
+        nonEmpty(cs.suggestions) ||
+        typeof cs.readabilityScore === "number" ||
+        typeof cs.structureScore === "number"
+        ? cs
+        : undefined;
     };
 
     const data: LeetcodeHintFileV1 = {
       version: 1,
       titleSlug: o.titleSlug.trim(),
       problemTitle: typeof o.problemTitle === "string" ? o.problemTitle : undefined,
+      coaching: readCoaching(o.coaching),
       approach: readApproach(o.approach),
       efficiency: readEff(o.efficiency),
       codeStyle: readCodeStyle(o.codeStyle),
@@ -266,6 +351,15 @@ export function parseHintFileJson(
   }
 }
 
+function pruneCoaching(c: HintCoaching): HintCoaching | undefined {
+  const o: HintCoaching = {};
+  if (nonEmpty(c.breakdown)) o.breakdown = c.breakdown!.trim();
+  if (nonEmpty(c.thinking)) o.thinking = c.thinking!.trim();
+  if (nonEmpty(c.pitfalls)) o.pitfalls = c.pitfalls!.trim();
+  if (nonEmpty(c.nextFocus)) o.nextFocus = c.nextFocus!.trim();
+  return coachingHasContent(o) ? o : undefined;
+}
+
 function pruneApproach(a: HintApproach): HintApproach | undefined {
   const o: HintApproach = {};
   if (nonEmpty(a.current)) o.current = a.current!.trim();
@@ -273,6 +367,8 @@ function pruneApproach(a: HintApproach): HintApproach | undefined {
   if (nonEmpty(a.keyIdea)) o.keyIdea = a.keyIdea!.trim();
   const cr = parseHintCurrentRating(a.currentRating);
   if (cr) o.currentRating = cr;
+  const sc = parseHintScore(a.score);
+  if (sc !== undefined) o.score = sc;
   return Object.keys(o).length ? o : undefined;
 }
 
@@ -283,6 +379,8 @@ function pruneAxis(a: HintEfficiencyAxis): HintEfficiencyAxis | undefined {
   if (nonEmpty(a.suggestion)) o.suggestion = a.suggestion!.trim();
   const cr = parseHintCurrentRating(a.currentRating);
   if (cr) o.currentRating = cr;
+  const sc = parseHintScore(a.score);
+  if (sc !== undefined) o.score = sc;
   return Object.keys(o).length ? o : undefined;
 }
 
@@ -298,6 +396,10 @@ function pruneCodeStyle(c: HintCodeStyle): HintCodeStyle | undefined {
   if (nonEmpty(c.readability)) o.readability = c.readability!.trim();
   if (nonEmpty(c.structure)) o.structure = c.structure!.trim();
   if (nonEmpty(c.suggestions)) o.suggestions = c.suggestions!.trim();
+  const rs = parseHintScore(c.readabilityScore);
+  if (rs !== undefined) o.readabilityScore = rs;
+  const ss = parseHintScore(c.structureScore);
+  if (ss !== undefined) o.structureScore = ss;
   return Object.keys(o).length ? o : undefined;
 }
 
@@ -310,6 +412,8 @@ export function serializeHintFile(data: LeetcodeHintFileV1): string {
     updatedAt: new Date().toISOString(),
   };
   if (nonEmpty(normalized.problemTitle)) out.problemTitle = normalized.problemTitle!.trim();
+  const co = normalized.coaching ? pruneCoaching(normalized.coaching) : undefined;
+  if (co) out.coaching = co;
   const ap = normalized.approach ? pruneApproach(normalized.approach) : undefined;
   if (ap) out.approach = ap;
   const ef = normalized.efficiency ? pruneEfficiency(normalized.efficiency) : undefined;
@@ -353,6 +457,9 @@ export function mergeHintFromClipboardJson(
         merged.efficiency = { ...(time ? { time } : {}), ...(space ? { space } : {}) };
       }
     }
+    if (parsed.coaching && typeof parsed.coaching === "object" && !Array.isArray(parsed.coaching)) {
+      merged.coaching = { ...merged.coaching, ...(parsed.coaching as HintCoaching) };
+    }
     if (parsed.codeStyle && typeof parsed.codeStyle === "object" && !Array.isArray(parsed.codeStyle)) {
       merged.codeStyle = { ...merged.codeStyle, ...(parsed.codeStyle as HintCodeStyle) };
     }
@@ -365,10 +472,33 @@ export function mergeHintFromClipboardJson(
   }
 }
 
+/** Clears both coaching and scored analysis (slug / title kept). */
 export function emptyHintContentPreserveMeta(base: LeetcodeHintFileV1): LeetcodeHintFileV1 {
   return normalizeHintData({
     version: 1,
     titleSlug: base.titleSlug,
     problemTitle: base.problemTitle,
+  });
+}
+
+/** Clears approach / efficiency / codeStyle only; keeps coaching. */
+export function emptyAnalysisPreserveMeta(base: LeetcodeHintFileV1): LeetcodeHintFileV1 {
+  return normalizeHintData({
+    version: 1,
+    titleSlug: base.titleSlug,
+    problemTitle: base.problemTitle,
+    coaching: base.coaching,
+  });
+}
+
+/** Clears coaching only; keeps analysis. */
+export function emptyCoachingPreserveMeta(base: LeetcodeHintFileV1): LeetcodeHintFileV1 {
+  return normalizeHintData({
+    version: 1,
+    titleSlug: base.titleSlug,
+    problemTitle: base.problemTitle,
+    approach: base.approach,
+    efficiency: base.efficiency,
+    codeStyle: base.codeStyle,
   });
 }

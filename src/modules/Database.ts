@@ -28,7 +28,17 @@ export function getTargetDir(uri: vscode.Uri | undefined): string {
   const folders = vscode.workspace.workspaceFolders ?? [];
   const config = getEffectiveConfig(folders).defaultDirectory ?? ".";
   const workspaceRoot = folders[0]?.uri.fsPath;
-  const base = uri ? path.dirname(uri.fsPath) : workspaceRoot ?? process.cwd();
+  let base: string;
+  if (!uri) {
+    base = workspaceRoot ?? process.cwd();
+  } else {
+    const ws = vscode.workspace.getWorkspaceFolder(uri);
+    if (ws && path.resolve(uri.fsPath) === path.resolve(ws.uri.fsPath)) {
+      base = ws.uri.fsPath;
+    } else {
+      base = path.dirname(uri.fsPath);
+    }
+  }
   if (config === "." || !config) return base;
   if (path.isAbsolute(config)) return config;
   return path.resolve(workspaceRoot ?? base, config);

@@ -67,6 +67,126 @@ export interface ProblemViewState {
 
 const problemViews = new Map<string, ProblemViewState>();
 
+const PROBLEM_PLAIN_DOC_SCHEME = "leetcode-problem-plain";
+
+let plainProblemDocEmitter: vscode.EventEmitter<vscode.Uri> | undefined;
+
+function slugFromPlainProblemUri(uri: vscode.Uri): string {
+  return uri.path.replace(/^\//, "").replace(/\.txt$/i, "");
+}
+
+function problemHtmlToPlainText(html: string): string {
+  let s = html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "");
+  s = s
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<\/div>/gi, "\n")
+    .replace(/<\/tr>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "\n• ");
+  s = s.replace(/<[^>]+>/g, "");
+  s = s
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+  return s.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function formatProblemPlainText(problem: Problem): string {
+  const lines: string[] = [
+    problem.title,
+    `LeetCode #${problem.id} · ${problem.difficulty || "Unknown"}`,
+    "",
+    problemHtmlToPlainText(problem.content || "") || "(No description.)",
+  ];
+  if (problem.sampleTestCase?.trim()) {
+    lines.push("", "Sample test case (stdin):", problem.sampleTestCase.trim());
+  }
+  if (problem.exampleTestCases?.length) {
+    for (const ex of problem.exampleTestCases) {
+      if (ex?.trim()) {
+        lines.push("", "Example:", ex.trim());
+      }
+    }
+  }
+  const snippet = problem.codeSnippet?.trim();
+  if (snippet) {
+    lines.push("", "Default code snippet:", snippet);
+  }
+  return lines.join("\n");
+}
+
+function firePlainProblemDocumentChanged(titleSlug: string): void {
+  if (!plainProblemDocEmitter) return;
+  plainProblemDocEmitter.fire(
+    vscode.Uri.from({ scheme: PROBLEM_PLAIN_DOC_SCHEME, path: `/${titleSlug}.txt` })
+  );
+}
+
+export function registerProblemPlainTextDocumentProvider(
+  context: vscode.ExtensionContext,
+  getProvider: () => IProblemProvider
+): vscode.Disposable {
+  plainProblemDocEmitter = new vscode.EventEmitter<vscode.Uri>();
+  const provider: vscode.TextDocumentContentProvider = {
+    onDidChange: plainProblemDocEmitter.event,
+    provideTextDocumentContent: async (uri: vscode.Uri): Promise<string> => {
+      const slug = slugFromPlainProblemUri(uri);
+      if (!slug) return "";
+      await ensureProblemCacheLoaded(context);
+      let problem = getCachedProblem(slug);
+      if (!problem) {
+        const fetched = await getProvider().getProblem(slug);
+        if (!fetched) return "Could not load problem.";
+        setCachedProblem(slug, fetched, context);
+        problem = fetched;
+      }
+      return formatProblemPlainText(problem);
+    },
+  };
+  const registration = vscode.workspace.registerTextDocumentContentProvider(
+    PROBLEM_PLAIN_DOC_SCHEME,
+    provider
+  );
+  return new vscode.Disposable(() => {
+    registration.dispose();
+    plainProblemDocEmitter?.dispose();
+    plainProblemDocEmitter = undefined;
+  });
+}
+
+async function openProblemAsPlainText(
+  context: vscode.ExtensionContext,
+  item: ProblemListItem,
+  getProvider: () => IProblemProvider,
+  column: vscode.ViewColumn
+): Promise<void> {
+  await ensureProblemCacheLoaded(context);
+  let problem = getCachedProblem(item.titleSlug);
+  if (!problem) {
+    const fetched = await getProvider().getProblem(item.titleSlug);
+    if (!fetched) {
+      vscode.window.showErrorMessage("Could not load problem.");
+      return;
+    }
+    setCachedProblem(item.titleSlug, fetched, context);
+    problem = fetched;
+  }
+  const uri = vscode.Uri.from({
+    scheme: PROBLEM_PLAIN_DOC_SCHEME,
+    path: `/${item.titleSlug}.txt`,
+  });
+  const doc = await vscode.workspace.openTextDocument(uri);
+  await vscode.window.showTextDocument(doc, { viewColumn: column, preview: false });
+}
+
 /** Single stats webview (reused + refresh command target). */
 let statsWebviewPanel: vscode.WebviewPanel | null = null;
 
@@ -349,15 +469,15 @@ export async function openHintFileForProblem(
     vscode.window.showErrorMessage("Could not load problem. Open it from the practice panel or check the slug.");
     return;
   }
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  if (!folder) {
+  if (!vscode.workspace.workspaceFolders?.length) {
     vscode.window.showWarningMessage("Open a workspace folder first.");
     return;
   }
   const solutionBase = interviewSolutionBaseDir(context.globalState);
   const attemptHex = interviewSolutionAttemptHex(context.globalState);
+  const baseUri = vscode.window.activeTextEditor?.document.uri;
   const { path: hintPath, exists } = await Database.resolveHintFilePathForOpen(
-    folder.uri,
+    baseUri,
     problem.id,
     problem.titleSlug,
     solutionBase,
@@ -447,8 +567,7 @@ export async function tryOpenExistingHintFile(
     );
   }
 
-  const folder = vscode.workspace.workspaceFolders?.[0];
-  if (!folder) {
+  if (!vscode.workspace.workspaceFolders?.length) {
     return false;
   }
   const solutionBase = interviewSolutionBaseDir(context.globalState);
@@ -471,8 +590,9 @@ export async function tryOpenExistingHintFile(
     titleSlugStr = s || numId || "";
   }
 
+  const baseUri = vscode.window.activeTextEditor?.document.uri;
   const { path: hintPath, exists } = await Database.resolveHintFilePathForOpen(
-    folder.uri,
+    baseUri,
     problemIdStr,
     titleSlugStr,
     solutionBase,
@@ -501,6 +621,30 @@ const CACHE_FILENAME = "problem-cache.json";
 
 /** Single viewType so we can register one serializer to restore panels after window reload. */
 export const PROBLEM_WEBVIEW_VIEWTYPE = "leetcodeProblem";
+
+/** Avoid hanging forever on network during panel restore after window reload. */
+const RESTORE_FETCH_TIMEOUT_MS = 30_000;
+
+const RESTORE_LOADING_HTML = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:12px;}</style></head>
+<body><p>Loading problem…</p></body></html>`;
+
+async function fetchProblemForRestore(
+  getProvider: () => IProblemProvider,
+  titleSlug: string
+): Promise<Problem | null | undefined> {
+  const pending = getProvider().getProblem(titleSlug);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<undefined>((resolve) => {
+    timeoutId = setTimeout(() => resolve(undefined), RESTORE_FETCH_TIMEOUT_MS);
+  });
+  try {
+    const result = await Promise.race([pending, timeout]);
+    return result;
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  }
+}
 
 const WEBVIEW_OPTIONS: vscode.WebviewPanelOptions & {
   enableScripts?: boolean;
@@ -1431,7 +1575,11 @@ export async function openInterviewAttemptSolutionFile(
     return;
   }
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fp));
-  await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.Two });
+  await vscode.window.showTextDocument(doc, {
+    preview: false,
+    viewColumn: vscode.ViewColumn.Beside,
+    preserveFocus: false,
+  });
 }
 
 function ensureInterviewSetupPanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
@@ -1611,17 +1759,19 @@ async function softReload(
   if (!problem) return;
   setCachedProblem(titleSlug, problem, context);
   const state = problemViews.get(titleSlug);
-  if (!state?.webviewPanel) return;
-  const status = getProblemStatus?.(titleSlug);
-  const isLoggedIn = Database.isLoggedIn(context);
-  state.problem = problem;
-  state.webviewPanel.webview.html = await renderChallengeHtml(
-    context,
-    problem,
-    status,
-    isLoggedIn,
-    state.webviewPanel.webview
-  );
+  if (state?.webviewPanel) {
+    const status = getProblemStatus?.(titleSlug);
+    const isLoggedIn = Database.isLoggedIn(context);
+    state.problem = problem;
+    state.webviewPanel.webview.html = await renderChallengeHtml(
+      context,
+      problem,
+      status,
+      isLoggedIn,
+      state.webviewPanel.webview
+    );
+  }
+  firePlainProblemDocumentChanged(titleSlug);
 }
 
 interface SetupPanelMessageHandlerOpts {
@@ -1724,6 +1874,8 @@ function setupPanelMessageHandler(
         }
       } else if (event === "agentHint") {
         await vscode.commands.executeCommand("leetcode-practice.agentHint", { titleSlug: msgSlug });
+      } else if (event === "agentAnalyze") {
+        await vscode.commands.executeCommand("leetcode-practice.agentAnalyze", { titleSlug: msgSlug });
       } else if (event === "openHintAnalysis") {
         await vscode.commands.executeCommand("leetcode-practice.openHintAnalysis", { titleSlug: msgSlug });
       }
@@ -1748,6 +1900,16 @@ export async function openProblemWebview(
   opts?: OpenProblemWebviewOpts
 ): Promise<void> {
   const col = interviewProblemViewColumn(context);
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (getEffectiveConfig(folders).problemViewMode === "text") {
+    const existingPanel = problemViews.get(item.titleSlug);
+    if (existingPanel) {
+      existingPanel.webviewPanel.dispose();
+    }
+    await openProblemAsPlainText(context, item, getProvider, col);
+    void setInterviewFocusProblem(context.globalState, item.titleSlug);
+    return;
+  }
   const existing = problemViews.get(item.titleSlug);
   if (existing) {
     existing.webviewPanel.reveal(col);
@@ -1855,42 +2017,54 @@ export async function restoreProblemPanel(
     panel.webview.html = "<p>Unable to restore: no problem state.</p>";
     return;
   }
-  await ensureProblemCacheLoaded(context);
-  let problem = getCachedProblem(titleSlug);
-  if (!problem) {
-    problem = (await getProvider().getProblem(titleSlug)) ?? undefined;
-    if (problem) setCachedProblem(titleSlug, problem, context);
+  panel.webview.html = RESTORE_LOADING_HTML;
+  try {
+    await ensureProblemCacheLoaded(context);
+    let problem = getCachedProblem(titleSlug);
+    if (!problem) {
+      const fetched = await fetchProblemForRestore(getProvider, titleSlug);
+      if (fetched === undefined) {
+        panel.webview.html = `<p>Timed out loading this problem (${RESTORE_FETCH_TIMEOUT_MS / 1000}s). Check the network, then close this tab and reopen the problem from the sidebar.</p>`;
+        Logger.logError("restoreProblemPanel: fetch timeout", new Error(titleSlug));
+        return;
+      }
+      problem = fetched ?? undefined;
+      if (problem) setCachedProblem(titleSlug, problem, context);
+    }
+    if (!problem) {
+      panel.webview.html = "<p>Could not load problem. Try opening from the list again.</p>";
+      return;
+    }
+    panel.iconPath = { light: LOGO_URI(context), dark: LOGO_URI(context) };
+    panel.title = problem.title;
+    const status = getProblemStatus?.(titleSlug);
+    const isLoggedIn = Database.isLoggedIn(context);
+    panel.webview.html = await renderChallengeHtml(
+      context,
+      problem,
+      status,
+      isLoggedIn,
+      panel.webview
+    );
+    problemViews.set(titleSlug, { webviewPanel: panel, problem });
+    panel.onDidDispose(() => {
+      getProblemTimer()?.unregisterPanel(titleSlug);
+      const s = problemViews.get(titleSlug);
+      s?.testcasesPanel?.dispose();
+      problemViews.delete(titleSlug);
+    });
+    setupPanelMessageHandler(context, titleSlug, {
+      getProvider,
+      getProblemStatus,
+      onMarkSolved: opts?.onMarkSolved,
+      onMarkInterviewSolved: opts?.onMarkInterviewSolved,
+    });
+    getProblemTimer()?.registerPanel(titleSlug, panel, problem.title, status === "solved");
+    void setInterviewFocusProblem(context.globalState, titleSlug);
+  } catch (e) {
+    Logger.logError("restoreProblemPanel failed", e);
+    panel.webview.html = `<p>Could not restore this problem view. Close the tab and open the problem again from the LeetCode sidebar.</p><p>${e instanceof Error ? e.message : String(e)}</p>`;
   }
-  if (!problem) {
-    panel.webview.html = "<p>Could not load problem. Try opening from the list again.</p>";
-    return;
-  }
-  panel.iconPath = { light: LOGO_URI(context), dark: LOGO_URI(context) };
-  panel.title = problem.title;
-  const status = getProblemStatus?.(titleSlug);
-  const isLoggedIn = Database.isLoggedIn(context);
-  panel.webview.html = await renderChallengeHtml(
-    context,
-    problem,
-    status,
-    isLoggedIn,
-    panel.webview
-  );
-  problemViews.set(titleSlug, { webviewPanel: panel, problem });
-  panel.onDidDispose(() => {
-    getProblemTimer()?.unregisterPanel(titleSlug);
-    const s = problemViews.get(titleSlug);
-    s?.testcasesPanel?.dispose();
-    problemViews.delete(titleSlug);
-  });
-  setupPanelMessageHandler(context, titleSlug, {
-    getProvider,
-    getProblemStatus,
-    onMarkSolved: opts?.onMarkSolved,
-    onMarkInterviewSolved: opts?.onMarkInterviewSolved,
-  });
-  getProblemTimer()?.registerPanel(titleSlug, panel, problem.title, status === "solved");
-  void setInterviewFocusProblem(context.globalState, titleSlug);
 }
 
 export async function openOrCreateSolution(
@@ -1929,7 +2103,10 @@ export async function openOrCreateSolution(
     await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), Buffer.from(content, "utf8"));
   }
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
-  await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Two });
+  await vscode.window.showTextDocument(doc, {
+    viewColumn: vscode.ViewColumn.Beside,
+    preserveFocus: false,
+  });
 }
 
 async function executeCode(

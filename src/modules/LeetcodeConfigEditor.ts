@@ -18,6 +18,7 @@ const DEFAULTS: LeetcodeConfig = {
   showProblemLists: true,
   showQotd: true,
   qotdMonths: 6,
+  problemViewMode: "ui",
 };
 
 function parseConfig(text: string): LeetcodeConfig {
@@ -68,7 +69,11 @@ function parseConfig(text: string): LeetcodeConfig {
     if (typeof parsed.internalApiUrl === "string") config.internalApiUrl = parsed.internalApiUrl;
     if (typeof parsed.agentPromptMakeRunnable === "string") config.agentPromptMakeRunnable = parsed.agentPromptMakeRunnable;
     if (typeof parsed.agentPromptHint === "string") config.agentPromptHint = parsed.agentPromptHint;
+    if (typeof parsed.agentPromptAnalyze === "string") config.agentPromptAnalyze = parsed.agentPromptAnalyze;
     if (typeof parsed.agentPromptExplain === "string") config.agentPromptExplain = parsed.agentPromptExplain;
+    if (parsed.problemViewMode === "ui" || parsed.problemViewMode === "text") {
+      config.problemViewMode = parsed.problemViewMode;
+    }
     return config;
   } catch {
     return { ...DEFAULTS };
@@ -287,8 +292,12 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
       <input type="text" id="agentPromptMakeRunnable" value="${escapeHtml(config.agentPromptMakeRunnable ?? "Make this Runnable, do not give solution.")}" placeholder="Make this Runnable, do not give solution." />
     </div>
     <div class="field">
-      <label>Hint button</label>
-      <input type="text" id="agentPromptHint" value="${escapeHtml(config.agentPromptHint ?? "Load **lcex-dsa-hint** and follow it. Hint for my current LeetCode problem—no solution.")}" placeholder="Load lcex-dsa-hint; hint only, no solution." />
+      <label>Hint button (coaching)</label>
+      <input type="text" id="agentPromptHint" value="${escapeHtml(config.agentPromptHint ?? "Load **lcex-dsa-hint** and follow it. Nudge from the problem only—do not read or review my code. Each `coaching` value: one short line; no solution.")}" placeholder="lcex-dsa-hint; problem-only; no code review; one line per field." />
+    </div>
+    <div class="field">
+      <label>Analyze button (scored review)</label>
+      <input type="text" id="agentPromptAnalyze" value="${escapeHtml(config.agentPromptAnalyze ?? "Load **lcex-dsa-analyze** and follow it. Analyze my current LeetCode solution implementation.")}" placeholder="Load lcex-dsa-analyze; fills Analysis in .hint JSON." />
     </div>
     <div class="field">
       <label>Explain selection (base prompt)</label>
@@ -297,6 +306,13 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
   </div>
   <div class="section">
     <h2>Views</h2>
+    <div class="field">
+      <label>Open problem from sidebar (Problemset / Study plans / Lists / QOTD)</label>
+      <select id="problemViewMode">
+        <option value="ui" ${(config.problemViewMode ?? "ui") === "ui" ? "selected" : ""}>UI — webview (run, submit, notes)</option>
+        <option value="text" ${config.problemViewMode === "text" ? "selected" : ""}>Plain text — statement only (editor tab)</option>
+      </select>
+    </div>
     <div class="toggle-row">
       <label>Show Problemset view</label>
       <input type="checkbox" id="showProblemset" ${config.showProblemset !== false ? "checked" : ""} />
@@ -352,7 +368,9 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
         qotdMonths: Math.max(1, parseInt(document.getElementById('qotdMonths').value, 10) || 6),
         agentPromptMakeRunnable: document.getElementById('agentPromptMakeRunnable').value.trim() || undefined,
         agentPromptHint: document.getElementById('agentPromptHint').value.trim() || undefined,
-        agentPromptExplain: document.getElementById('agentPromptExplain').value.trim() || undefined
+        agentPromptAnalyze: document.getElementById('agentPromptAnalyze').value.trim() || undefined,
+        agentPromptExplain: document.getElementById('agentPromptExplain').value.trim() || undefined,
+        problemViewMode: document.getElementById('problemViewMode').value === 'text' ? 'text' : 'ui'
       };
     }
     function notifyChange() { vscode.postMessage({ type: 'update', config: collectConfig() }); }
@@ -392,6 +410,7 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
     document.getElementById('internalApiUrl').oninput = notifyChange;
     document.getElementById('agentPromptMakeRunnable').oninput = notifyChange;
     document.getElementById('agentPromptHint').oninput = notifyChange;
+    document.getElementById('agentPromptAnalyze').oninput = notifyChange;
     document.getElementById('agentPromptExplain').oninput = notifyChange;
   </script>
 </body>

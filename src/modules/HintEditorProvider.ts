@@ -1,5 +1,11 @@
 import * as vscode from "vscode";
-import { emptyHintContentPreserveMeta, normalizeHintData, parseHintFileJson, serializeHintFile } from "./HintFile";
+import {
+  emptyAnalysisPreserveMeta,
+  emptyCoachingPreserveMeta,
+  normalizeHintData,
+  parseHintFileJson,
+  serializeHintFile,
+} from "./HintFile";
 import { renderHintViewHtml } from "./HintAnalysisHtml";
 
 function escapeHtmlPlain(s: string): string {
@@ -62,9 +68,15 @@ export class HintEditorProvider implements vscode.CustomTextEditorProvider {
       }
       const base = normalizeHintData(parsed.data);
 
-      if (msg.type === "reanalyze") {
-        await replaceDocumentText(document, serializeHintFile(emptyHintContentPreserveMeta(base)));
+      if (msg.type === "refreshCoaching") {
+        await replaceDocumentText(document, serializeHintFile(emptyCoachingPreserveMeta(base)));
         await vscode.commands.executeCommand("leetcode-practice.agentHint", {
+          titleSlug: base.titleSlug,
+          forceAgent: true,
+        });
+      } else if (msg.type === "reanalyze") {
+        await replaceDocumentText(document, serializeHintFile(emptyAnalysisPreserveMeta(base)));
+        await vscode.commands.executeCommand("leetcode-practice.agentAnalyze", {
           titleSlug: base.titleSlug,
           forceAgent: true,
         });
