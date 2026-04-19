@@ -7,6 +7,7 @@ test-output/
 .claude/
 .cursor/
 .DS_Store
+.openvsx
 
 # Firebase local cache and deploy state
 .firebase/
