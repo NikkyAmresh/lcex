@@ -4,6 +4,7 @@ tsconfig.json
 esbuild.config.mjs
 .gitignore
 .vscodeignore
+.openvsx
 
 # Dev artefacts
 .vscode/**

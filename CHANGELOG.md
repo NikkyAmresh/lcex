@@ -2,6 +2,11 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.1.2] — Screenshot refresh
+
+### Changed
+- Refreshed README screenshot assets for the latest extension UI views.
+
 ## [0.1.1] — Cleanup, packaging, and docs polish
 
 ### Changed
