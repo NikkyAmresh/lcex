@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice",
   "description": "Practice LeetCode problems in VS Code: generate TypeScript / JavaScript / Python / C++ templates with example test cases, run examples inline, browse problems & study plans, and track your progress with XP, streaks, and timed interview mode.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"

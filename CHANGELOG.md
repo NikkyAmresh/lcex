@@ -2,6 +2,14 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.1.3] — Release automation and docs polish
+
+### Added
+- GitHub Actions workflow to package the extension and publish to Open VSX on tagged releases, with the VSIX attached to the GitHub Release.
+
+### Changed
+- Rewrote the README with a professional layout, marketplace badges, curated screenshots, and category-grouped command/setting tables.
+
 ## [0.1.2] — Screenshot refresh
 
 ### Changed
