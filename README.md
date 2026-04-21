@@ -6,30 +6,29 @@
 
 **Solve LeetCode in your editor. Track progress. Run timed interviews.**
 
-A VS Code and Cursor extension with problem browsing, template generation, inline example runners, XP/streak tracking, and timed interview workflows — with optional cloud sync.
+A VS Code and Cursor extension with problem browsing, template generation, inline example runners, XP and streak tracking, and timed interview workflows — with optional cloud sync.
 
-[![Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/NikkyAmresh.leetcode-practice?label=VS%20Marketplace&color=007ACC)](https://marketplace.visualstudio.com/items?itemName=NikkyAmresh.leetcode-practice)
-[![Marketplace Installs](https://img.shields.io/visual-studio-marketplace/i/NikkyAmresh.leetcode-practice?color=007ACC)](https://marketplace.visualstudio.com/items?itemName=NikkyAmresh.leetcode-practice)
-[![Marketplace Rating](https://img.shields.io/visual-studio-marketplace/r/NikkyAmresh.leetcode-practice?color=007ACC)](https://marketplace.visualstudio.com/items?itemName=NikkyAmresh.leetcode-practice)
-[![Open VSX Version](https://img.shields.io/open-vsx/v/nikkyamresh/leetcode-practice?label=Open%20VSX&color=A60EE9)](https://open-vsx.org/extension/nikkyamresh/leetcode-practice)
-[![Open VSX Downloads](https://img.shields.io/open-vsx/dt/nikkyamresh/leetcode-practice?color=A60EE9)](https://open-vsx.org/extension/nikkyamresh/leetcode-practice)
+[![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/NikkyAmresh.leetcode-practice?label=VS%20Marketplace&logo=visualstudiocode&color=007ACC)](https://marketplace.visualstudio.com/items?itemName=NikkyAmresh.leetcode-practice)
+[![Open VSX](https://img.shields.io/open-vsx/v/nikkyamresh/leetcode-practice?label=Open%20VSX&logo=eclipseide&color=A60EE9)](https://open-vsx.org/extension/nikkyamresh/leetcode-practice)
+[![Installs](https://img.shields.io/visual-studio-marketplace/i/NikkyAmresh.leetcode-practice?label=installs&color=informational)](https://marketplace.visualstudio.com/items?itemName=NikkyAmresh.leetcode-practice)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+<br/>
+
+<!-- TODO: replace with a short demo GIF showing: open sidebar → pick problem → generate file → run examples → mark solved -->
+<img src="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/02-problem-view-run-terminal.png" alt="Problem view with inline run in terminal" width="900" />
+
 </div>
-
-<!-- TODO: replace the hero screenshot below with a short demo GIF showing: open sidebar → pick problem → generate file → run examples → mark solved -->
-
-![Problem view with inline run in terminal](https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/02-problem-view-run-terminal.png)
 
 ---
 
 ## Install
 
-- **VS Code** — [Install from Marketplace](https://marketplace.visualstudio.com/items?itemName=NikkyAmresh.leetcode-practice), or run in the command palette:
+- **VS Code** — [Install from Marketplace](https://marketplace.visualstudio.com/items?itemName=NikkyAmresh.leetcode-practice), or in the command palette:
   ```
   ext install NikkyAmresh.leetcode-practice
   ```
-- **Cursor / VSCodium / other OSS editors** — [Install from Open VSX](https://open-vsx.org/extension/nikkyamresh/leetcode-practice)
+- **Cursor, VSCodium, and other OSS editors** — [Install from Open VSX](https://open-vsx.org/extension/nikkyamresh/leetcode-practice)
 
 The extension activates automatically when a workspace contains a `.leetcode` file.
 
@@ -39,41 +38,62 @@ The extension activates automatically when a workspace contains a `.leetcode` fi
 2. Create a `.leetcode` file in the workspace root (an empty `{}` is enough).
 3. Run **LeetCode: Sign In** from the command palette.
 4. Open the **LeetCode** sidebar and pick a problem.
-5. Click **Create File**, solve, then run with **LeetCode: Run Examples** or `Ctrl/Cmd+Shift+R`.
+5. Click **Create File**, solve, then run with **LeetCode: Run Examples** or <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>.
 
 ## Features
 
-### Browse and solve
+- **Browse and solve** — Full problemset, study plans, curated problem lists, and Question of the Day in sidebar views. Rich problem webview with "Create File" in TypeScript, JavaScript, Python, or C++.
+- **Inline runner** — Parse `// Expected:` comments and diff against `console.log`/`print` output; or run the full solution in an integrated terminal.
+- **Progress tracking** — Solved / attempting / cleared states, daily streaks, XP and levels, daily goals, and a stats dashboard with trends.
+- **Interview mode** — Ad-hoc timed sessions (45 / 60 / 180 min) or planned `.lcInterview` mocks. Focus layout hides hints; each attempt produces a `.lcireport` snapshot.
+- **Solution notes and agent actions** — Capture notes in `.hint` files; trigger **Make Runnable**, **Hint**, and **Explain My Code** from the editor.
+- **Workspace config editor** — Custom editor for `.leetcode` files makes study plan, problem list, language, and file-naming overrides a UI action.
+- **Cloud sync (optional)** — Sign in with Google to push and pull stats across machines via Firebase. Fully optional; the extension works offline without it.
 
-Browse the full problemset, study plans, curated problem lists, and Question of the Day from the sidebar. Open any problem in a rich webview, generate a solution file in TypeScript, JavaScript, Python, or C++, and run examples inline or in the terminal.
+## Screenshots
 
-### Track progress
-
-Solved / attempting / cleared states per problem, daily streaks, XP and levels, daily goals for problems and minutes, and a stats dashboard with trends.
-
-![Stats overview](https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/05-stats-overview.png)
-
-### Interview mode
-
-Run ad-hoc timed sessions (45 / 60 / 180 min) or plan structured mocks with `.lcInterview` files. Focus layout hides hints and distractions; per-problem timing and a generated `.lcireport` snapshot capture each attempt.
-
-![Interview report](https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/04-lcinterview-report.png)
-
-### Solution notes and agent actions
-
-Capture notes in `.hint` files next to each solution, and trigger agent actions from the editor: **Make Runnable**, **Hint**, and **Explain My Code**.
-
-![Solution notes with hint and analyze actions](https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/08-solution-notes-hint-analyze.png)
-
-### Workspace config editor
-
-A custom editor for `.leetcode` makes it easy to configure study plans, problem lists, language, and file-naming conventions per workspace.
-
-![.leetcode config editor](https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/01-config-editor.png)
-
-### Cloud sync (optional)
-
-Sign in with Google to push and pull your stats across machines via Firebase. Fully optional — the extension works entirely offline without it.
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/01-config-editor.png"><img src="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/01-config-editor.png" alt="Config editor" /></a>
+      <br/><sub><b>.leetcode config editor</b></sub>
+    </td>
+    <td align="center" width="50%">
+      <a href="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/02-problem-view-run-terminal.png"><img src="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/02-problem-view-run-terminal.png" alt="Problem view with run in terminal" /></a>
+      <br/><sub><b>Problem view + run in terminal</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/03-lcinterview-plan-editor.png"><img src="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/03-lcinterview-plan-editor.png" alt="LC Interview plan editor" /></a>
+      <br/><sub><b>.lcInterview plan editor</b></sub>
+    </td>
+    <td align="center">
+      <a href="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/04-lcinterview-report.png"><img src="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/04-lcinterview-report.png" alt="LC Interview report" /></a>
+      <br/><sub><b>.lcireport interview report</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/05-stats-overview.png"><img src="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/05-stats-overview.png" alt="Stats overview" /></a>
+      <br/><sub><b>Stats overview</b></sub>
+    </td>
+    <td align="center">
+      <a href="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/06-stats-charts.png"><img src="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/06-stats-charts.png" alt="Stats charts" /></a>
+      <br/><sub><b>Minutes and solved trends</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/07-time-solved-breakdown.png"><img src="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/07-time-solved-breakdown.png" alt="Time and solved breakdown" /></a>
+      <br/><sub><b>Daily time and solved breakdown</b></sub>
+    </td>
+    <td align="center">
+      <a href="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/08-solution-notes-hint-analyze.png"><img src="https://raw.githubusercontent.com/NikkyAmresh/lcex/main/screenshots/08-solution-notes-hint-analyze.png" alt="Solution notes, hint, analyze" /></a>
+      <br/><sub><b>Solution notes with hint and analyze</b></sub>
+    </td>
+  </tr>
+</table>
 
 ## Commands
 
@@ -93,7 +113,7 @@ All commands are available under the **LeetCode** category in the command palett
 | Command | Shortcut | Description |
 | --- | --- | --- |
 | `LeetCode: Run Examples` | — | Parse `// Expected:` comments and diff results |
-| `LeetCode: Run in Terminal` | `Ctrl/Cmd+Shift+R` | Execute the current solution file |
+| `LeetCode: Run in Terminal` | <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> | Execute the current solution file |
 
 ### Interview
 
