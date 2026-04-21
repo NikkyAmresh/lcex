@@ -9,8 +9,8 @@
 A VS Code and Cursor extension with problem browsing, template generation, inline example runners, XP and streak tracking, and timed interview workflows — with optional cloud sync.
 
 [![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/NikkyAmresh.leetcode-practice?label=VS%20Marketplace&logo=visualstudiocode&color=007ACC)](https://marketplace.visualstudio.com/items?itemName=NikkyAmresh.leetcode-practice)
-[![Open VSX](https://img.shields.io/open-vsx/v/nikkyamresh/leetcode-practice?label=Open%20VSX&logo=eclipseide&color=A60EE9)](https://open-vsx.org/extension/nikkyamresh/leetcode-practice)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/NikkyAmresh.leetcode-practice?label=installs&color=informational)](https://marketplace.visualstudio.com/items?itemName=NikkyAmresh.leetcode-practice)
+[![Open VSX Version](https://img.shields.io/open-vsx/v/nikkyamresh/leetcode-practice?label=Open%20VSX&logo=eclipseide&color=A60EE9)](https://open-vsx.org/extension/nikkyamresh/leetcode-practice)
+[![Open VSX Downloads](https://img.shields.io/open-vsx/dt/nikkyamresh/leetcode-practice?label=downloads&color=blueviolet)](https://open-vsx.org/extension/nikkyamresh/leetcode-practice)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 <br/>

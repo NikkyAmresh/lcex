@@ -2,6 +2,11 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.1.5] — README refresh
+
+### Changed
+- Professional README layout with non-duplicated badges, hero screenshot, and a two-column captioned screenshot grid covering all views.
+
 ## [0.1.4] — CI pipeline smoke-test
 
 ### Changed
