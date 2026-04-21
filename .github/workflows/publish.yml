@@ -18,6 +18,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
 
     steps:
       - name: Checkout
@@ -60,15 +63,15 @@ jobs:
           if-no-files-found: error
 
       - name: Publish to VS Code Marketplace
-        if: ${{ !inputs.dry_run }}
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        if: ${{ !inputs.dry_run && env.VSCE_PAT != '' }}
         run: npx --yes @vscode/vsce publish --packagePath "leetcode-practice-${{ steps.pkg.outputs.version }}.vsix"
 
+      - name: Skip VS Code Marketplace (no VSCE_PAT secret)
+        if: ${{ !inputs.dry_run && env.VSCE_PAT == '' }}
+        run: echo "::notice::VSCE_PAT secret is not set — skipping VS Code Marketplace publish. Upload the VSIX manually at https://marketplace.visualstudio.com/manage"
+
       - name: Publish to Open VSX
-        if: ${{ !inputs.dry_run }}
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        if: ${{ !inputs.dry_run && env.OVSX_PAT != '' }}
         run: npx --yes ovsx publish "leetcode-practice-${{ steps.pkg.outputs.version }}.vsix" -p "$OVSX_PAT"
 
       - name: Create GitHub Release
