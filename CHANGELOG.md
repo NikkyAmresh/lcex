@@ -2,6 +2,11 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.1.4] — GitHub Packages publishing
+
+### Added
+- Release workflow also publishes the extension to the GitHub Packages npm registry as `@nikkyamresh/leetcode-practice`, so the repository's Packages index stays in sync with each release.
+
 ## [0.1.3] — Release automation and docs polish
 
 ### Added
