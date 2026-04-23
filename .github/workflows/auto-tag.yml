@@ -1,0 +1,74 @@
+name: Auto tag on version bump
+
+# When package.json version changes on main, create a matching v<version> tag.
+# That tag then triggers publish.yml.
+#
+# Caveat: tags pushed using the default GITHUB_TOKEN do NOT fire downstream
+# workflow runs (GitHub prevents workflow recursion). To make publish.yml
+# auto-run after the tag is created, add a fine-grained PAT (Contents:RW on
+# this repo) as a secret named RELEASE_PAT. Without it, the tag is still
+# created but publish.yml must be kicked off manually (workflow_dispatch).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+
+permissions:
+  contents: write
+
+jobs:
+  auto-tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+
+      - name: Detect version change
+        id: check
+        run: |
+          NEW=$(node -p "require('./package.json').version")
+          OLD=$(git show HEAD^:package.json 2>/dev/null | node -p "try { JSON.parse(require('fs').readFileSync(0,'utf8')).version } catch (e) { '' }" || true)
+          echo "new=$NEW"  >> "$GITHUB_OUTPUT"
+          echo "old=$OLD"  >> "$GITHUB_OUTPUT"
+          if [ -z "$NEW" ]; then
+            echo "::error::Could not read version from package.json"
+            exit 1
+          fi
+          if [ "$NEW" = "$OLD" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::package.json version unchanged ($NEW). Nothing to tag."
+          else
+            echo "changed=true"  >> "$GITHUB_OUTPUT"
+            echo "::notice::Version changed: ${OLD:-<none>} -> $NEW"
+          fi
+
+      - name: Check tag existence
+        if: steps.check.outputs.changed == 'true'
+        id: tag_exists
+        run: |
+          TAG="v${{ steps.check.outputs.new }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Tag $TAG already exists on origin. Skipping."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create & push tag
+        if: steps.check.outputs.changed == 'true' && steps.tag_exists.outputs.exists == 'false'
+        run: |
+          TAG="v${{ steps.check.outputs.new }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
+          echo "::notice::Pushed $TAG."
+          if [ -z "${{ secrets.RELEASE_PAT }}" ]; then
+            echo "::warning::RELEASE_PAT not set — publish.yml will NOT auto-run. Trigger it manually via workflow_dispatch, or add a fine-grained PAT as RELEASE_PAT."
+          fi
