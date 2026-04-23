@@ -1,14 +1,15 @@
 {
   "name": "leetcode-practice",
-  "displayName": "LeetCode Practice",
-  "description": "Practice LeetCode problems in VS Code: generate TypeScript / JavaScript / Python / C++ templates with example test cases, run examples inline, browse problems & study plans, and track your progress with XP, streaks, and timed interview mode.",
-  "version": "0.1.7",
+  "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
+  "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ templates, run examples inline, track XP & streaks, and run timed mock interviews.",
+  "version": "0.1.8",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
     "Education",
+    "Snippets",
     "Programming Languages",
     "Other"
   ],
@@ -34,13 +35,30 @@
   },
   "keywords": [
     "leetcode",
+    "leet code",
+    "leetcode practice",
+    "leetcode problems",
+    "leetcode solutions",
     "practice",
     "algorithm",
+    "algorithms",
+    "data structures",
+    "dsa",
     "coding",
+    "coding interview",
     "interview",
+    "interview prep",
+    "mock interview",
     "typescript",
+    "javascript",
     "python",
-    "study-plan"
+    "cpp",
+    "c++",
+    "study-plan",
+    "top interview 150",
+    "blind 75",
+    "question of the day",
+    "qotd"
   ],
   "contributes": {
     "commands": [

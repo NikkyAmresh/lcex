@@ -2,6 +2,15 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.1.8] — Marketplace discoverability
+
+### Changed
+- Refined marketplace metadata for better search ranking and category listings on VS Code Marketplace and Open VSX:
+  - `displayName` expanded to "LeetCode Practice — Problems, Study Plans & Interview Mode".
+  - `description` reworked to front-load high-intent terms (Top Interview 150, Blind 75, mock interview).
+  - `categories` realigned with top-ranked peers: `Education`, `Snippets`, `Programming Languages`, `Other` (added `Snippets`, which is the category the highest-install peer publishes under).
+  - `keywords` expanded to cover long-tail queries (DSA, coding interview, mock interview, Blind 75, QOTD, etc.).
+
 ## [0.1.7] — Open VSX publish fix
 
 ### Changed
