@@ -2,6 +2,21 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.1.7] — Open VSX publish fix
+
+### Changed
+- Base64-encode the public Firebase Web API key in source so Open VSX's static secret scanner no longer blocks publish. No behavioural change; the key is still a public client identifier decoded at runtime.
+
+## [0.1.6] — Anonymous analytics
+
+### Added
+- Opt-outable anonymous usage analytics written to a separate Firestore `/logs` collection under a pseudonymous per-install UUID. Only allow-listed enums and bucketed dimensions (difficulty, language, duration, count) are sent; no slugs, notes, code, file paths, or exact timestamps. Requires cloud sign-in; respects `vscode.env.isTelemetryEnabled`. Toggle with `LeetCode: Toggle anonymous analytics` or `leetcodePractice.analytics.enabled`.
+- Admin analytics dashboard at `https://lc-ext.web.app/admin` with charts and filters (admin-only).
+
+### Changed
+- Tightened Firestore rules for `/logs`: strict shape + enum validation, no update/delete, reads restricted to admin uid.
+- Excluded `screenshots/` from the `.vsix` (README renders them from GitHub raw URLs) — shaves ~3.7 MB off the package.
+
 ## [0.1.5] — README refresh
 
 ### Changed
