@@ -31,6 +31,11 @@ import { LeetCodeProvider } from "./LeetCode";
 import { generateTemplate } from "./TemplateEngine";
 import { pollRunStatus, pollSubmitStatus } from "../utils/apiPoller";
 import * as Logger from "./Logger";
+import {
+  bucketDifficulty,
+  bucketLanguage,
+  track as trackAnalytics,
+} from "./cloud/analytics";
 import { createDefaultHintFileJson } from "./HintFile";
 import { getProblemTimer, TIMER_BY_DAY_KEY, TIMER_ELAPSED_KEY, type TimerByDay } from "./ProblemTimer";
 import {
@@ -1831,6 +1836,9 @@ function setupPanelMessageHandler(
       } else if (event === "run") {
         const uri = vscode.window.activeTextEditor?.document.uri;
         const lang = getEffectiveChallengePanelLanguage(context);
+        trackAnalytics("run_in_terminal", "webview", "run_in_terminal", {
+          language: bucketLanguage(lang),
+        });
         const { path: filePath } = await Database.resolveSolutionFilePathForOpen(
           uri,
           s.problem.id,
@@ -1845,6 +1853,9 @@ function setupPanelMessageHandler(
       } else if (event === "submit") {
         await executeCode(context, s.problem, "submit");
       } else if (event === "markAsSolved") {
+        trackAnalytics("command_invoked", "webview", "mark_solved", {
+          difficulty: bucketDifficulty(s.problem.difficulty),
+        });
         getProblemTimer()?.handlePause(msgSlug);
         if (opts?.onMarkSolved) {
           opts.onMarkSolved(msgSlug);
@@ -1855,6 +1866,9 @@ function setupPanelMessageHandler(
           await softReload(context, msgSlug, opts.getProvider, opts.getProblemStatus);
         }
       } else if (event === "markInterviewSolved") {
+        trackAnalytics("command_invoked", "webview", "mark_interview_solved", {
+          difficulty: bucketDifficulty(s.problem.difficulty),
+        });
         if (opts?.onMarkInterviewSolved) {
           await Promise.resolve(opts.onMarkInterviewSolved(msgSlug));
         }
@@ -1862,6 +1876,7 @@ function setupPanelMessageHandler(
           await softReload(context, msgSlug, opts.getProvider, opts.getProblemStatus);
         }
       } else if (event === "saveNote" && msgSlug && note !== undefined) {
+        trackAnalytics("command_invoked", "webview", "save_note");
         const notesMap = context.globalState.get<Record<string, string>>("leetcode-practice.problemNotes") ?? {};
         await context.globalState.update("leetcode-practice.problemNotes", { ...notesMap, [msgSlug]: note });
       } else if (event === "toggleFocusMode") {
@@ -1899,6 +1914,9 @@ export async function openProblemWebview(
   getProblemStatus?: (titleSlug: string) => ProblemStatus | undefined,
   opts?: OpenProblemWebviewOpts
 ): Promise<void> {
+  trackAnalytics("problem_opened", "webview", "open_problem", {
+    difficulty: bucketDifficulty(item.difficulty),
+  });
   const col = interviewProblemViewColumn(context);
   const folders = vscode.workspace.workspaceFolders ?? [];
   if (getEffectiveConfig(folders).problemViewMode === "text") {

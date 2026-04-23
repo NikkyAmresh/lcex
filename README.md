@@ -138,6 +138,12 @@ All commands are available under the **LeetCode** category in the command palett
 | `LeetCode: Set LeetCode username` | Link your LeetCode handle |
 | `LeetCode: Push stats to cloud now` / `Pull stats from cloud` | Manual sync |
 
+### Privacy
+
+| Command | Description |
+| --- | --- |
+| `LeetCode: Toggle anonymous analytics` | Opt in or out of anonymous usage analytics |
+
 ## Extension Settings
 
 | Setting | Description |
@@ -155,6 +161,40 @@ All commands are available under the **LeetCode** category in the command palett
 | `leetcodePractice.problemLists` | Curated problem lists to show in the sidebar |
 | `leetcodePractice.showProblemLists` | Toggle the problem lists view |
 | `leetcodePractice.leetcodeUsername` | LeetCode username for cloud sync |
+| `leetcodePractice.analytics.enabled` | Send anonymous usage analytics (default: on) |
+
+## Privacy & anonymous analytics
+
+The extension can send **anonymous, bucketed usage analytics** to Firebase to
+help prioritise which features to improve. This is opt-outable at any time.
+
+**What is sent:**
+- A pseudonymous per-install UUID (generated on first launch, never linked to your identity).
+- Which feature you used (e.g. `run_examples`, `interview_start`, `agent_hint`).
+- Where it was triggered (command palette, sidebar, webview…).
+- Coarse dimensions: language bucket (`ts`/`js`/`py`/`cpp`), difficulty bucket (`E`/`M`/`H`),
+  duration bucket (`0_5m` / `5_15m` / `15_60m` / `60m+`), count bucket.
+- Extension version, VS Code version, OS platform, locale, local hour of day.
+
+**What is never sent:**
+- Your uid, email, LeetCode username, or session cookie.
+- Problem slugs, titles, descriptions, notes, or any code.
+- File paths, workspace names, or folder names.
+- Exact timestamps, error messages, stack traces.
+
+**How it's protected:**
+- Analytics events live in a separate Firestore collection (`/logs`).
+  Security rules restrict reads to a single admin uid — **no user, including you,
+  can read logs back**. Writes are strictly schema-validated: only enum values
+  from an allow-list are accepted.
+- Requires sign-in to cloud sync. If you're not signed in, nothing is sent.
+- Respects the VS Code `telemetry.telemetryLevel` setting. If VS Code telemetry
+  is off, analytics is off too.
+
+**Opt out:**
+- Run `LeetCode: Toggle anonymous analytics`, or
+- Set `leetcodePractice.analytics.enabled` to `false` in settings, or
+- Set VS Code's `telemetry.telemetryLevel` to `off`.
 
 ## Workspace Config (`.leetcode`)
 

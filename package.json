@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice",
   "description": "Practice LeetCode problems in VS Code: generate TypeScript / JavaScript / Python / C++ templates with example test cases, run examples inline, browse problems & study plans, and track your progress with XP, streaks, and timed interview mode.",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -208,6 +208,11 @@
       {
         "command": "leetcode-practice.openLcInterviewReportFile",
         "title": "LeetCode: Open LC Interview Report…",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.toggleAnalytics",
+        "title": "LeetCode: Toggle anonymous analytics",
         "category": "LeetCode"
       }
     ],
@@ -546,6 +551,11 @@
           "type": "string",
           "default": "",
           "description": "LeetCode handle used as the per-account document id for cloud stats. Cloud path: users/<your-firebase-uid>/stats/<username>. Sign in with 'LeetCode: Sign in to Cloud Sync' first."
+        },
+        "leetcodePractice.analytics.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Send anonymous usage analytics (which features are used, bucketed durations, language, coarse timestamps). No problem slugs, notes, file paths, or identifying info are ever sent. Only an opaque per-install UUID identifies the sender. Requires cloud sign-in. Also disabled automatically if VS Code telemetry is off."
         }
       }
     },

@@ -34,6 +34,10 @@ chrome-extension.crx
 chrome-extension.pem
 *.pem
 
+# Screenshots — README references them via raw.githubusercontent.com, so they
+# don't need to ship inside the .vsix. Saves ~3.7 MB.
+screenshots/**
+
 # Personal solution files / interview plans / hint notes that should never ship
 *.ts
 *.tsx

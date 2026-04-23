@@ -2,9 +2,49 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Pseudonymous analytics events (schema v1).
+    // - Create requires a signed-in user (any uid), but we never store uid.
+    // - All fields are strictly shaped + allow-listed to prevent garbage writes.
+    // - Only the admin uid can read. No update/delete by anyone.
     match /logs/{docId} {
-      allow create: if true;
-      allow read: if request.auth != null && request.auth.uid == 'ZzoFamfai2NiUXzmYOub8aWvlpi1';
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly([
+          'schemaVersion', 'ts', 'installId', 'extVersion', 'vscodeVersion',
+          'platform', 'locale', 'hourBucket', 'event', 'surface', 'feature', 'props'
+        ])
+        && request.resource.data.keys().hasAll([
+          'schemaVersion', 'ts', 'installId', 'extVersion', 'vscodeVersion',
+          'platform', 'locale', 'hourBucket', 'event', 'surface', 'feature', 'props'
+        ])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.ts is int
+        && request.resource.data.hourBucket is int
+        && request.resource.data.hourBucket >= 0
+        && request.resource.data.hourBucket <= 23
+        && request.resource.data.installId is string
+        && request.resource.data.installId.size() == 36
+        && request.resource.data.installId.matches('[0-9a-fA-F-]+')
+        && request.resource.data.extVersion is string
+        && request.resource.data.extVersion.size() <= 32
+        && request.resource.data.vscodeVersion is string
+        && request.resource.data.vscodeVersion.size() <= 32
+        && request.resource.data.locale is string
+        && request.resource.data.locale.size() <= 10
+        && request.resource.data.platform in ['darwin', 'linux', 'win32', 'other']
+        && request.resource.data.event in [
+          'activation', 'command_invoked', 'problem_opened', 'example_run',
+          'run_in_terminal', 'agent_action', 'interview_started', 'interview_ended',
+          'cloud_sync', 'opt_in_change', 'daily_login', 'focus_mode'
+        ]
+        && request.resource.data.surface in [
+          'command_palette', 'sidebar', 'webview', 'uri_handler',
+          'status_bar', 'context_menu', 'auto'
+        ]
+        && request.resource.data.feature is string
+        && request.resource.data.feature.size() <= 32
+        && request.resource.data.props is map
+        && request.resource.data.props.size() <= 6;
+      allow read: if request.auth != null && request.auth.uid == 'DLtoYwNBJaRK2iE7se5HmP1d6Q23';
       allow update, delete: if false;
     }
 
