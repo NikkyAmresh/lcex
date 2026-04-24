@@ -1,7 +1,7 @@
 import * as crypto from "crypto";
 import * as vscode from "vscode";
 import * as Logger from "../Logger";
-import { FIREBASE_CONFIG, getCloudIdentity, getFreshIdToken } from "./firebaseApp";
+import { FIREBASE_CONFIG, getFreshAnonIdToken, getFreshIdToken } from "./firebaseApp";
 
 /**
  * Safe analytics for the LeetCode Practice extension.
@@ -11,9 +11,11 @@ import { FIREBASE_CONFIG, getCloudIdentity, getFreshIdToken } from "./firebaseAp
  *    Only a pseudonymous per-install UUID identifies the sender.
  *  - Every string field is drawn from a compile-time allow-list (AnalyticsEvent,
  *    AnalyticsSurface, AnalyticsFeature) and enforced again by Firestore rules.
- *  - Writes are gated on (a) signed-in cloud identity, (b) user setting
- *    `leetcodePractice.analytics.enabled`, and (c) `vscode.env.isTelemetryEnabled`.
- *    If any of these is false, track() is a silent no-op.
+ *  - Writes are gated on (a) user setting `leetcodePractice.analytics.enabled`
+ *    and (b) `vscode.env.isTelemetryEnabled`. If either is false, track() is a
+ *    silent no-op. Sign-in is NOT required: if the user has a signed-in cloud
+ *    identity it's used, otherwise a per-install anonymous Firebase identity
+ *    is minted on first flush.
  *  - Events are buffered in memory and batched to Firestore via the `:commit`
  *    REST endpoint. No per-event network call. Failures are swallowed.
  *  - Per-install daily cap of MAX_EVENTS_PER_DAY drops excess events locally.
@@ -349,10 +351,12 @@ export async function flushAnalytics(): Promise<void> {
     buffer.length = 0;
     return;
   }
-  const identity = getCloudIdentity(moduleContext.globalState);
-  if (!identity) return; // v1: signed-in only.
-
-  const idToken = await getFreshIdToken(moduleContext);
+  // Prefer the signed-in (Google) identity if the user has cloud sync set up.
+  // Otherwise mint/reuse an anonymous Firebase identity so analytics works
+  // without sign-in. Either path satisfies the `request.auth != null` rule
+  // on /logs.
+  const idToken =
+    (await getFreshIdToken(moduleContext)) ?? (await getFreshAnonIdToken(moduleContext));
   if (!idToken) return;
 
   flushInFlight = true;

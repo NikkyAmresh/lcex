@@ -30,9 +30,11 @@ export const AUTH_PAGE_URL = "https://lc-ext.web.app/";
 
 /** Secrets-storage keys. */
 const SECRET_REFRESH_TOKEN = "leetcode-practice.cloud.refreshToken";
+const SECRET_ANON_REFRESH_TOKEN = "leetcode-practice.cloud.anonRefreshToken";
 /** Memento keys for the (non-secret) profile shape. */
 const STATE_UID = "leetcode-practice.cloud.uid";
 const STATE_EMAIL = "leetcode-practice.cloud.email";
+const STATE_ANON_UID = "leetcode-practice.cloud.anonUid";
 
 export interface CloudIdentity {
   uid: string;
@@ -45,6 +47,7 @@ interface CachedToken {
 }
 
 let cachedToken: CachedToken | null = null;
+let cachedAnonToken: CachedToken | null = null;
 
 export function getCloudIdentity(globalState: vscode.Memento): CloudIdentity | null {
   const uid = globalState.get<string>(STATE_UID);
@@ -116,6 +119,128 @@ export async function getFreshIdToken(
     return json.id_token;
   } catch (e) {
     Logger.logError("Token refresh threw", e);
+    return null;
+  }
+}
+
+/**
+ * Mints (or reuses) an anonymous Firebase identity for this install and returns
+ * a fresh ID token. Used by analytics so events can be written without
+ * requiring the user to perform Google sign-in.
+ *
+ * Anonymous auth must be enabled in the Firebase console
+ * (Authentication → Sign-in method → Anonymous).
+ *
+ * The anonymous identity is stored separately from the signed-in (Google)
+ * identity, so the two coexist without interference.
+ */
+export async function getFreshAnonIdToken(
+  context: vscode.ExtensionContext
+): Promise<string | null> {
+  if (cachedAnonToken && cachedAnonToken.expiresAt > Date.now() + 60_000) {
+    return cachedAnonToken.idToken;
+  }
+  let refresh = (await context.secrets.get(SECRET_ANON_REFRESH_TOKEN)) ?? null;
+  let idToken: string | null = null;
+  let expiresIn = 3600;
+
+  if (!refresh) {
+    const minted = await mintAnonymousIdentity(context);
+    if (!minted) return null;
+    refresh = minted.refreshToken;
+    idToken = minted.idToken;
+    expiresIn = minted.expiresIn;
+  } else {
+    const exchanged = await exchangeRefreshToken(refresh);
+    if (!exchanged) {
+      // Refresh token revoked — clear and re-mint once.
+      await context.secrets.delete(SECRET_ANON_REFRESH_TOKEN);
+      await context.globalState.update(STATE_ANON_UID, undefined);
+      const minted = await mintAnonymousIdentity(context);
+      if (!minted) return null;
+      refresh = minted.refreshToken;
+      idToken = minted.idToken;
+      expiresIn = minted.expiresIn;
+    } else {
+      idToken = exchanged.idToken;
+      expiresIn = exchanged.expiresIn;
+      if (exchanged.refreshToken && exchanged.refreshToken !== refresh) {
+        refresh = exchanged.refreshToken;
+        await context.secrets.store(SECRET_ANON_REFRESH_TOKEN, refresh);
+      }
+    }
+  }
+
+  cachedAnonToken = { idToken, expiresAt: Date.now() + expiresIn * 1000 };
+  return idToken;
+}
+
+interface MintedIdentity {
+  uid: string;
+  idToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+async function mintAnonymousIdentity(
+  context: vscode.ExtensionContext
+): Promise<MintedIdentity | null> {
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(FIREBASE_CONFIG.apiKey)}`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ returnSecureToken: true }),
+    });
+    if (!res.ok) {
+      Logger.logError(`Anonymous sign-up failed: ${res.status}`, await res.text().catch(() => ""));
+      return null;
+    }
+    const json = (await res.json()) as {
+      idToken?: string;
+      refreshToken?: string;
+      localId?: string;
+      expiresIn?: string;
+    };
+    if (!json.idToken || !json.refreshToken || !json.localId) return null;
+    await context.secrets.store(SECRET_ANON_REFRESH_TOKEN, json.refreshToken);
+    await context.globalState.update(STATE_ANON_UID, json.localId);
+    return {
+      uid: json.localId,
+      idToken: json.idToken,
+      refreshToken: json.refreshToken,
+      expiresIn: Number(json.expiresIn ?? "3600"),
+    };
+  } catch (e) {
+    Logger.logError("Anonymous sign-up threw", e);
+    return null;
+  }
+}
+
+interface ExchangedToken {
+  idToken: string;
+  refreshToken: string | null;
+  expiresIn: number;
+}
+
+async function exchangeRefreshToken(refreshToken: string): Promise<ExchangedToken | null> {
+  const url = `https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(FIREBASE_CONFIG.apiKey)}`;
+  const body = new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken });
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { id_token?: string; refresh_token?: string; expires_in?: string };
+    if (!json.id_token) return null;
+    return {
+      idToken: json.id_token,
+      refreshToken: json.refresh_token ?? null,
+      expiresIn: Number(json.expires_in ?? "3600"),
+    };
+  } catch {
     return null;
   }
 }

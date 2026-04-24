@@ -2,6 +2,11 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.1.9] — Analytics works without sign-in
+
+### Changed
+- Anonymous analytics no longer requires cloud sign-in. On first send, the extension mints a per-install anonymous Firebase identity (separate from any Google sign-in used for stats sync) and uses it to write events. Privacy posture is unchanged — only an opaque per-install UUID identifies the sender, all values remain enum-validated, and `vscode.env.isTelemetryEnabled` + the `leetcodePractice.analytics.enabled` setting still gate everything.
+
 ## [0.1.8] — Marketplace discoverability
 
 ### Changed

@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
   "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -573,7 +573,7 @@
         "leetcodePractice.analytics.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Send anonymous usage analytics (which features are used, bucketed durations, language, coarse timestamps). No problem slugs, notes, file paths, or identifying info are ever sent. Only an opaque per-install UUID identifies the sender. Requires cloud sign-in. Also disabled automatically if VS Code telemetry is off."
+          "description": "Send anonymous usage analytics (which features are used, bucketed durations, language, coarse timestamps). No problem slugs, notes, file paths, or identifying info are ever sent. Only an opaque per-install UUID identifies the sender. Works without sign-in (a per-install anonymous Firebase identity is minted on first send). Disabled automatically if VS Code telemetry is off."
         }
       }
     },
