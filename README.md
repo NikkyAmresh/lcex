@@ -8,6 +8,8 @@
 
 A VS Code and Cursor extension with problem browsing, template generation, inline example runners, XP and streak tracking, and timed interview workflows — with optional cloud sync.
 
+Every save now surfaces four layers of inline feedback as ghost text on the relevant line: interview anti-pattern lint, a constraint-aware complexity budget (🟢/🟡/🔴), adversarial edge-case probes, and live example results. No popups; hover any decoration to read details or click "turn off" for that feature.
+
 [![VS Marketplace](https://img.shields.io/visual-studio-marketplace/v/NikkyAmresh.leetcode-practice?label=VS%20Marketplace&logo=visualstudiocode&color=007ACC)](https://marketplace.visualstudio.com/items?itemName=NikkyAmresh.leetcode-practice)
 [![Open VSX Version](https://img.shields.io/open-vsx/v/nikkyamresh/leetcode-practice?label=Open%20VSX&logo=eclipseide&color=A60EE9)](https://open-vsx.org/extension/nikkyamresh/leetcode-practice)
 [![Open VSX Downloads](https://img.shields.io/open-vsx/dt/nikkyamresh/leetcode-practice?label=downloads&color=blueviolet)](https://open-vsx.org/extension/nikkyamresh/leetcode-practice)
@@ -43,7 +45,12 @@ The extension activates automatically when a workspace contains a `.leetcode` fi
 ## Features
 
 - **Browse and solve** — Full problemset, study plans, curated problem lists, and Question of the Day in sidebar views. Rich problem webview with "Create File" in TypeScript, JavaScript, Python, or C++.
-- **Inline runner** — Parse `// Expected:` comments and diff against `console.log`/`print` output; or run the full solution in an integrated terminal.
+- **Inline feedback on save** — Every save runs all enabled features at once, rendered as ghost text on the relevant line with a trusted-markdown hover and a one-click "turn off" link per feature. No popups.
+  - **Interview anti-pattern lint** — flags `mutate-input`, built-in `.sort()` on sorting problems, magic numbers (`26` / `128` / `1000000007`), and indented debug `print`/`console.log` across py/ts/js/cpp. Emits a real VS Code diagnostic (squiggle + Problems panel) and an inline hint. Suppressible per line with `// lcex-lint-ignore: <rule>`.
+  - **Complexity budget** — parses the problem's `Constraints:` section, derives a target Big-O from the largest size cap, estimates loop nesting by indent, and paints 🟢 / 🟡 / 🔴 on the function signature plus a `nest k× → O(nᵏ)` badge on each loop.
+  - **Adversarial edge-case probes** — turns parsed constraints into candidate edge cases (empty, single, max-size, boundary values, negatives, zeros, charset / sorted / distinct flags) and surfaces them inline on the signature. Advisory in this release.
+  - **Run examples on save** — parses `// Expected:` / `# expected:` comments and diffs against `console.log` / `print` output; results render inline as `✓` or `✗ expected X · got Y` with a dedicated timeout message for >15s runs. Also available on-demand.
+- **Run in terminal** — Execute the current solution file end-to-end in the integrated terminal.
 - **Progress tracking** — Solved / attempting / cleared states, daily streaks, XP and levels, daily goals, and a stats dashboard with trends.
 - **Interview mode** — Ad-hoc timed sessions (45 / 60 / 180 min) or planned `.lcInterview` mocks. Focus layout hides hints; each attempt produces a `.lcireport` snapshot.
 - **Solution notes and agent actions** — Capture notes in `.hint` files; trigger **Make Runnable**, **Hint**, and **Explain My Code** from the editor.
@@ -112,8 +119,22 @@ All commands are available under the **LeetCode** category in the command palett
 
 | Command | Shortcut | Description |
 | --- | --- | --- |
-| `LeetCode: Run Examples` | — | Parse `// Expected:` comments and diff results |
+| `LeetCode: Run Examples` | — | Parse `// Expected:` comments and diff results inline |
 | `LeetCode: Run in Terminal` | <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> | Execute the current solution file |
+
+### Inline feedback
+
+| Command | Shortcut | Description |
+| --- | --- | --- |
+| `LeetCode: Lint Solution for Interview Anti-Patterns` | — | Run the lint rules on demand |
+| `LeetCode: Show Complexity Budget vs. Estimate` | — | Parse constraints, estimate your Big-O, paint the verdict |
+| `LeetCode: Surface Adversarial Edge Cases` | — | Inline hint with candidate edge cases |
+| `LeetCode: Clear Inline Decorations` | <kbd>Ctrl/Cmd</kbd>+<kbd>K</kbd> <kbd>Ctrl/Cmd</kbd>+<kbd>L</kbd> | Wipe all lcex ghost text from the active editor |
+| `LeetCode: Toggle Interview Lint on Save` | — | Flip `leetcodePractice.lint.enabled` |
+| `LeetCode: Toggle Complexity Budget on Save` | — | Flip `leetcodePractice.complexityBudget.enabled` |
+| `LeetCode: Toggle Edge-Case Probes on Save` | — | Flip `leetcodePractice.adversarialTests.enabled` |
+| `LeetCode: Toggle Run Examples on Save` | — | Flip `leetcodePractice.runExamplesOnSave.enabled` |
+| `LeetCode: Toggle All Inline Decorations` | — | Master kill switch for every lcex decoration |
 
 ### Interview
 
@@ -162,6 +183,11 @@ All commands are available under the **LeetCode** category in the command palett
 | `leetcodePractice.showProblemLists` | Toggle the problem lists view |
 | `leetcodePractice.leetcodeUsername` | LeetCode username for cloud sync |
 | `leetcodePractice.analytics.enabled` | Send anonymous usage analytics (default: on) |
+| `leetcodePractice.inlineDecorations.enabled` | Master switch for all lcex inline ghost text (default: on) |
+| `leetcodePractice.lint.enabled` | Run interview anti-pattern lint on save (default: on) |
+| `leetcodePractice.complexityBudget.enabled` | Derive target Big-O from constraints and paint 🟢/🟡/🔴 on save (default: on) |
+| `leetcodePractice.adversarialTests.enabled` | Surface edge-case probes on save (default: on) |
+| `leetcodePractice.runExamplesOnSave.enabled` | Run example lines automatically on save (default: on) |
 
 ## Privacy & anonymous analytics
 

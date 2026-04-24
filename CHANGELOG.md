@@ -2,6 +2,11 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.2.1] — README: document the 0.2.0 inline-feedback suite
+
+### Changed
+- README and marketplace copy updated to cover lint / complexity budget / edge-case probes / on-save example results and their settings + commands. No runtime changes.
+
 ## [0.2.0] — Inline feedback suite
 
 ### Added
