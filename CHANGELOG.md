@@ -2,6 +2,22 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.2.0] — Inline feedback suite
+
+### Added
+- **On-save inline feedback.** Saving a solution file now runs every enabled feature at once: interview lint, complexity budget, edge-case probes, and example results — all shown as ghost-text on the relevant lines, with a trusted-markdown hover for details and a one-click "turn off" link per feature.
+- **Interview anti-pattern lint** (`leetcodePractice.lint.enabled`, default on): flags `mutate-input`, `builtin-sort`, `magic-number`, and indented `debug-print` across Python / TypeScript / JavaScript / C++. Emits both a `Diagnostic` (squiggle + Problems panel) and an inline hint per line. Suppressible with `// lcex-lint-ignore: <rule>` or `// lcex-lint-ignore: all`.
+- **Complexity budget** (`leetcodePractice.complexityBudget.enabled`, default on): parses the problem's `Constraints:` section, derives a target complexity from the largest size cap, runs an indent-based loop-nesting estimator on your code, and paints 🟢 / 🟡 / 🔴 on the signature + each nested loop with the depth in superscript.
+- **Adversarial edge-case probes** (`leetcodePractice.adversarialTests.enabled`, default on): turns parsed constraints into candidate edge cases (empty, single, max-size, boundary values, negatives, zeros, duplicate/sorted flags, charset mismatches) and surfaces them as an inline warning on the function signature. Advisory-only in this release.
+- **Run examples on save** (`leetcodePractice.runExamplesOnSave.enabled`, default on): runs example lines automatically on save, with inline pass/fail per call and a dedicated timeout message for >15s runs. The on-demand command now also saves the document before running so line numbers and output stay in sync.
+- **Master kill switch** (`leetcodePractice.inlineDecorations.enabled`) and `LeetCode: Clear Inline Decorations` command (`Cmd+K Cmd+L` / `Ctrl+K Ctrl+L`).
+- Five toggle commands (`LeetCode: Toggle …`) for lint, complexity budget, edge-case probes, run-examples-on-save, and all inline decorations. Each is also reachable via the "turn off" link in a hover.
+
+### Changed
+- `Run Examples` now renders results inline as ghost-text next to each call line (`✓` / `✗ expected X · got Y`) instead of as a popup notification. Status bar shows the summary. Runtime errors and timeouts surface inline with a hover-for-details message.
+- Editing a solution file now auto-clears stale inline decorations and `lcex-lint` diagnostics until the next save.
+- Problem fetches for the new features share a 5-minute in-memory cache keyed by slug, so save-heavy workflows don't re-hit the LeetCode API.
+
 ## [0.1.9] — Analytics works without sign-in
 
 ### Changed

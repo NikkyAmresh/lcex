@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
   "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -75,6 +75,51 @@
       {
         "command": "leetcode-practice.runExamples",
         "title": "LeetCode: Run Examples",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.clearInlineDecorations",
+        "title": "LeetCode: Clear Inline Decorations",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.runAdversarialTests",
+        "title": "LeetCode: Surface Adversarial Edge Cases",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.complexityBudget",
+        "title": "LeetCode: Show Complexity Budget vs. Estimate",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.lint",
+        "title": "LeetCode: Lint Solution for Interview Anti-Patterns",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.toggleLint",
+        "title": "LeetCode: Toggle Interview Lint on Save",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.toggleComplexityBudget",
+        "title": "LeetCode: Toggle Complexity Budget on Save",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.toggleAdversarialTests",
+        "title": "LeetCode: Toggle Edge-Case Probes on Save",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.toggleRunExamplesOnSave",
+        "title": "LeetCode: Toggle Run Examples on Save",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.toggleInlineDecorations",
+        "title": "LeetCode: Toggle All Inline Decorations",
         "category": "LeetCode"
       },
       {
@@ -370,6 +415,12 @@
         "key": "ctrl+shift+r",
         "mac": "cmd+shift+r",
         "when": "leetcodePractice.hasMarker && leetcodePractice.isSolutionFile && editorTextFocus"
+      },
+      {
+        "command": "leetcode-practice.clearInlineDecorations",
+        "key": "ctrl+k ctrl+l",
+        "mac": "cmd+k cmd+l",
+        "when": "leetcodePractice.hasMarker && editorTextFocus"
       }
     ],
     "viewsWelcome": [
@@ -574,6 +625,31 @@
           "type": "boolean",
           "default": true,
           "description": "Send anonymous usage analytics (which features are used, bucketed durations, language, coarse timestamps). No problem slugs, notes, file paths, or identifying info are ever sent. Only an opaque per-install UUID identifies the sender. Works without sign-in (a per-install anonymous Firebase identity is minted on first send). Disabled automatically if VS Code telemetry is off."
+        },
+        "leetcodePractice.inlineDecorations.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Master switch for all lcex inline ghost-text decorations (lint, complexity budget, edge-case probes, example results). Turn off for clean screenshots or distraction-free mode."
+        },
+        "leetcodePractice.lint.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the interview anti-pattern linter on save (mutate-input, built-in sort, magic numbers, debug prints). Inline + Problems panel."
+        },
+        "leetcodePractice.complexityBudget.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "On save, derive a complexity budget from the problem's size constraints and compare against your solution's estimated loop nesting. Shows 🟢/🟡/🔴 on the signature and per-loop badges."
+        },
+        "leetcodePractice.adversarialTests.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "On save, surface edge-case probes derived from parsed constraints (empty, max-size, boundary, negatives) as an inline hint on the function signature."
+        },
+        "leetcodePractice.runExamplesOnSave.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "On save, run the solution's example lines automatically and show results inline. Spawns a language process per save — disable if iteration feels sluggish."
         }
       }
     },

@@ -35,10 +35,34 @@ import {
   tryOpenExistingHintFile,
 } from "./modules/ProblemView";
 import { HintEditorProvider } from "./modules/HintEditorProvider";
-import { runExamples as runExamplesImpl } from "./modules/ExampleRunner";
+import { runExamples as runExamplesImpl, parseExampleBlocks } from "./modules/ExampleRunner";
 import {
   SOLUTION_FILE_EXTENSIONS,
+  languageFromFileExtension,
 } from "./modules/language/LanguageStrategy";
+import {
+  applyInlineDecorations,
+  clearInlineDecorations,
+  clearAllInlineDecorations,
+  disposeInlineDecorationTypes,
+  type InlineItem,
+} from "./modules/InlineDecorations";
+import {
+  buildAdversarialSummary,
+  findSignatureLine,
+} from "./modules/AdversarialTests";
+import {
+  lintSolutionSource,
+  firstFindingPerLine,
+  type LintFinding,
+} from "./modules/InterviewLint";
+import { parseProblemConstraints } from "./modules/ConstraintParser";
+import {
+  deriveBudget,
+  estimateLoopNesting,
+  buildComplexityInlineItems,
+  compareToBudget,
+} from "./modules/ComplexityBudget";
 import * as Logger from "./modules/Logger";
 import {
   bucketCount,
@@ -1609,53 +1633,449 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const editor = vscode.window.activeTextEditor;
       const uri = editor?.document.uri;
       const ext = uri ? path.extname(uri.fsPath) : "";
-      if (!uri || !SOLUTION_FILE_EXTENSIONS.includes(ext.toLowerCase())) {
-        vscode.window.showWarningMessage(
-          "Open a supported solution file (.ts, .js, .py, .cpp) with example output lines to run examples."
+      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext.toLowerCase())) {
+        vscode.window.setStatusBarMessage(
+          "lcex: open a .ts/.js/.py/.cpp solution file to run examples",
+          5000
         );
         return;
       }
       const lang = bucketLanguage(ext.replace(".", ""));
 
+      clearInlineDecorations(editor, "lcex.runExamples");
+
+      if (editor.document.isDirty) {
+        await editor.document.save();
+      }
+
       try {
         const results = await vscode.window.withProgress(
           {
-            location: vscode.ProgressLocation.Notification,
-            title: "Running examples...",
+            location: vscode.ProgressLocation.Window,
+            title: "lcex: running examples…",
           },
           () => runExamplesImpl(uri)
         );
         if (results.length === 0) {
           trackAnalytics("example_run", "command_palette", "run_examples", { language: lang, result: "ok" });
-          vscode.window.showInformationMessage("No example output lines found in this file.");
+          vscode.window.setStatusBarMessage(
+            "lcex: no example output lines found in this file",
+            5000
+          );
           return;
         }
+
+        const exampleToggleFooter =
+          "\n\n[turn off on-save runs](command:leetcode-practice.toggleRunExamplesOnSave) · [hide all](command:leetcode-practice.toggleInlineDecorations)";
+        const items: InlineItem[] = results.map((r) => {
+          const line = Math.max(0, r.lineIndex - 1);
+          if (r.pass) {
+            const tail = r.expected === null ? ` → ${r.actual}` : "  ✓";
+            return {
+              line,
+              text: tail,
+              severity: r.expected === null ? "muted" : "success",
+              hoverMarkdown:
+                `**lcex: example passed**\n\n- actual: \`${r.actual || "(empty)"}\`${r.expected !== null ? `\n- expected: \`${r.expected}\`` : ""}` +
+                exampleToggleFooter,
+            };
+          }
+          const exp = r.expected ?? "?";
+          return {
+            line,
+            text: `  ✗ expected ${exp} · got ${r.actual || "∅"}`,
+            severity: "error",
+            hoverMarkdown:
+              `**lcex example failed**\n\n- expected: \`${exp}\`\n- got: \`${r.actual || "(empty)"}\`` +
+              exampleToggleFooter,
+          };
+        });
+        applyInlineDecorations(editor, "lcex.runExamples", items);
+
         const passed = results.filter((r) => r.pass).length;
-        const failed = results.filter((r) => !r.pass);
-        if (failed.length === 0) {
-          trackAnalytics("example_run", "command_palette", "run_examples", { language: lang, result: "ok" });
-          vscode.window.showInformationMessage(
-            `All ${passed} example(s) passed.`
-          );
-        } else {
-          trackAnalytics("example_run", "command_palette", "run_examples", { language: lang, result: "err" });
-          const msg = failed
-            .map(
-              (f) =>
-                `Line ${f.lineIndex}: expected ${f.expected ?? "?"}, got ${f.actual}`
-            )
-            .join("\n");
-          vscode.window.showErrorMessage(
-            `${passed}/${results.length} passed.\n${msg}`
-          );
-        }
+        const total = results.length;
+        const summary =
+          passed === total
+            ? `lcex: ${passed}/${total} examples passed ✓`
+            : `lcex: ${passed}/${total} passed · ${total - passed} failed ✗`;
+        vscode.window.setStatusBarMessage(summary, 6000);
+        trackAnalytics(
+          "example_run",
+          "command_palette",
+          "run_examples",
+          { language: lang, result: passed === total ? "ok" : "err" }
+        );
       } catch (e) {
-        vscode.window.showErrorMessage(
-          e instanceof Error ? e.message : String(e)
+        const msg = e instanceof Error ? e.message : String(e);
+        const isTimeout = /\b(ETIMEDOUT|SIGTERM|SIGKILL|timeout|timed out|killed)\b/i.test(msg);
+        const blocks = parseExampleBlocks(editor.document.getText(), languageFromFileExtension(ext) ?? "typescript");
+        const firstBlockLine = blocks[0]?.callLine ? blocks[0].callLine - 1 : 0;
+        const label = isTimeout ? "✗ timeout (>15s)" : "✗ runtime error";
+        applyInlineDecorations(editor, "lcex.runExamples", [
+          {
+            line: firstBlockLine,
+            text: `  ${label} — hover for details`,
+            severity: "error",
+            hoverMarkdown:
+              (isTimeout
+                ? `**lcex: execution timed out**\n\nThe solution ran longer than 15 seconds and was terminated.\n\n\`\`\`\n${msg}\n\`\`\``
+                : `**lcex: execution failed**\n\n\`\`\`\n${msg}\n\`\`\``) +
+              "\n\n[turn off on-save runs](command:leetcode-practice.toggleRunExamplesOnSave) · [hide all](command:leetcode-practice.toggleInlineDecorations)",
+          },
+        ]);
+        vscode.window.setStatusBarMessage(
+          isTimeout ? "lcex: example run timed out (>15s)" : "lcex: example run failed (hover for details)",
+          6000
         );
       }
     })
   );
+
+  // ─── lcex decoration orchestrator ─────────────────────────────────────
+  const lintDiagnostics = vscode.languages.createDiagnosticCollection("lcex-lint");
+  context.subscriptions.push(lintDiagnostics);
+
+  const cfg = (key: string, def: boolean): boolean =>
+    vscode.workspace.getConfiguration("leetcodePractice").get<boolean>(key, def);
+  const setCfg = async (key: string, val: boolean): Promise<void> => {
+    await vscode.workspace
+      .getConfiguration("leetcodePractice")
+      .update(key, val, vscode.ConfigurationTarget.Global);
+  };
+  const isInlineEnabled = () => cfg("inlineDecorations.enabled", true);
+  const isLintEnabled = () => cfg("lint.enabled", true);
+  const isComplexityEnabled = () => cfg("complexityBudget.enabled", true);
+  const isAdversarialEnabled = () => cfg("adversarialTests.enabled", true);
+  const isRunExamplesOnSaveEnabled = () => cfg("runExamplesOnSave.enabled", true);
+
+  type CachedProblem = Awaited<ReturnType<ReturnType<typeof getProvider>["getProblem"]>>;
+  const problemCache = new Map<string, { p: CachedProblem; at: number }>();
+  const PROBLEM_TTL_MS = 5 * 60 * 1000;
+  const getCachedProblem = async (slug: string): Promise<CachedProblem> => {
+    const hit = problemCache.get(slug);
+    if (hit && Date.now() - hit.at < PROBLEM_TTL_MS) return hit.p;
+    const fresh = await getProvider().getProblem(slug).catch(() => null);
+    problemCache.set(slug, { p: fresh, at: Date.now() });
+    return fresh;
+  };
+  const resolveSlugForUri = (uri: vscode.Uri): string => {
+    const ext = path.extname(uri.fsPath);
+    return getTitleSlugForActiveSolutionFile(context) ?? path.basename(uri.fsPath, ext);
+  };
+
+  const FEATURE_FOOTER = (label: string, toggleCmd: string) =>
+    `\n\n[turn off ${label}](command:${toggleCmd}) · [hide all](command:leetcode-practice.toggleInlineDecorations)`;
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.clearInlineDecorations", () => {
+      const editor = vscode.window.activeTextEditor;
+      if (editor) {
+        clearInlineDecorations(editor);
+      } else {
+        clearAllInlineDecorations();
+      }
+      lintDiagnostics.clear();
+      vscode.window.setStatusBarMessage("lcex: inline decorations cleared", 2500);
+    })
+  );
+
+  const severityToDiagnostic = (s: "warning" | "info"): vscode.DiagnosticSeverity =>
+    s === "warning" ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Information;
+
+  const runLintOn = (doc: vscode.TextDocument): LintFinding[] => {
+    const ext = path.extname(doc.uri.fsPath).toLowerCase();
+    if (!SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+      lintDiagnostics.delete(doc.uri);
+      return [];
+    }
+    const lang = languageFromFileExtension(ext) ?? "typescript";
+    const findings = lintSolutionSource(doc.getText(), lang);
+    const diags = findings.map((f) => {
+      const d = new vscode.Diagnostic(
+        new vscode.Range(f.line, f.column, f.line, f.endColumn),
+        f.message,
+        severityToDiagnostic(f.severity)
+      );
+      d.source = "lcex-lint";
+      d.code = f.rule;
+      return d;
+    });
+    lintDiagnostics.set(doc.uri, diags);
+    const editor = vscode.window.visibleTextEditors.find(
+      (e) => e.document.uri.toString() === doc.uri.toString()
+    );
+    if (editor) {
+      const items: InlineItem[] = firstFindingPerLine(findings).map((f) => ({
+        line: f.line,
+        text: `  ${f.inlineHint}`,
+        severity: f.severity === "warning" ? "warning" : "info",
+        hoverMarkdown:
+          `**lcex-lint:${f.rule}**\n\n${f.message}\n\n_Suppress inline with \`// lcex-lint-ignore: ${f.rule}\`._` +
+          FEATURE_FOOTER("lint", "leetcode-practice.toggleLint"),
+      }));
+      applyInlineDecorations(editor, "lcex.lint", items);
+    }
+    return findings;
+  };
+
+  const runComplexityOn = async (
+    doc: vscode.TextDocument,
+    editor: vscode.TextEditor,
+    preFetched: CachedProblem
+  ): Promise<void> => {
+    const ext = path.extname(doc.uri.fsPath).toLowerCase();
+    const lang = languageFromFileExtension(ext) ?? "typescript";
+    const source = doc.getText();
+    const estimate = estimateLoopNesting(source, lang);
+    const sigLine = findSignatureLine(source, lang);
+    const problem = preFetched ?? (await getCachedProblem(resolveSlugForUri(doc.uri)));
+    const budget = problem ? deriveBudget(parseProblemConstraints(problem.content ?? "")) : null;
+    const items: InlineItem[] = buildComplexityInlineItems(sigLine, estimate, budget).map((i) => ({
+      line: i.line,
+      text: i.text,
+      severity: i.severity,
+      hoverMarkdown:
+        (i.hoverMarkdown ?? "") +
+        FEATURE_FOOTER("complexity budget", "leetcode-practice.toggleComplexityBudget"),
+    }));
+    applyInlineDecorations(editor, "lcex.complexity", items);
+  };
+
+  const runAdversarialOn = async (
+    doc: vscode.TextDocument,
+    editor: vscode.TextEditor,
+    preFetched: CachedProblem
+  ): Promise<void> => {
+    const ext = path.extname(doc.uri.fsPath).toLowerCase();
+    const lang = languageFromFileExtension(ext) ?? "typescript";
+    const problem = preFetched ?? (await getCachedProblem(resolveSlugForUri(doc.uri)));
+    if (!problem) {
+      applyInlineDecorations(editor, "lcex.adversarial", [
+        {
+          line: 0,
+          text: "  ⓘ could not resolve problem — open it from the sidebar first",
+          severity: "warning",
+          hoverMarkdown:
+            "lcex: could not fetch problem to parse constraints. Open the problem from the sidebar first so the URI mapping is cached." +
+            FEATURE_FOOTER("edge-case probes", "leetcode-practice.toggleAdversarialTests"),
+        },
+      ]);
+      return;
+    }
+    const sigLine = findSignatureLine(doc.getText(), lang);
+    const summary = buildAdversarialSummary(problem.content ?? "");
+    applyInlineDecorations(editor, "lcex.adversarial", [
+      {
+        line: sigLine,
+        text: summary.signatureLine,
+        severity: summary.perCase.length === 0 ? "muted" : "warning",
+        hoverMarkdown:
+          summary.signatureHover +
+          FEATURE_FOOTER("edge-case probes", "leetcode-practice.toggleAdversarialTests"),
+      },
+    ]);
+  };
+
+  const runExamplesOn = async (
+    doc: vscode.TextDocument,
+    editor: vscode.TextEditor
+  ): Promise<void> => {
+    const ext = path.extname(doc.uri.fsPath).toLowerCase();
+    const lang = languageFromFileExtension(ext) ?? "typescript";
+    clearInlineDecorations(editor, "lcex.runExamples");
+    const footer = FEATURE_FOOTER("on-save runs", "leetcode-practice.toggleRunExamplesOnSave");
+    try {
+      const results = await runExamplesImpl(doc.uri);
+      if (results.length === 0) return;
+      const items: InlineItem[] = results.map((r) => {
+        const line = Math.max(0, r.lineIndex - 1);
+        if (r.pass) {
+          const tail = r.expected === null ? ` → ${r.actual}` : "  ✓";
+          return {
+            line,
+            text: tail,
+            severity: r.expected === null ? "muted" : "success",
+            hoverMarkdown:
+              `**lcex: example passed**\n\n- actual: \`${r.actual || "(empty)"}\`${r.expected !== null ? `\n- expected: \`${r.expected}\`` : ""}` +
+              footer,
+          };
+        }
+        return {
+          line,
+          text: `  ✗ expected ${r.expected ?? "?"} · got ${r.actual || "∅"}`,
+          severity: "error",
+          hoverMarkdown:
+            `**lcex example failed**\n\n- expected: \`${r.expected ?? "?"}\`\n- got: \`${r.actual || "(empty)"}\`` +
+            footer,
+        };
+      });
+      applyInlineDecorations(editor, "lcex.runExamples", items);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const isTimeout = /\b(ETIMEDOUT|SIGTERM|SIGKILL|timeout|timed out|killed)\b/i.test(msg);
+      const blocks = parseExampleBlocks(doc.getText(), lang);
+      const firstBlockLine = blocks[0]?.callLine ? blocks[0].callLine - 1 : 0;
+      const label = isTimeout ? "✗ timeout (>15s)" : "✗ runtime error";
+      applyInlineDecorations(editor, "lcex.runExamples", [
+        {
+          line: firstBlockLine,
+          text: `  ${label} — hover for details`,
+          severity: "error",
+          hoverMarkdown:
+            (isTimeout
+              ? `**lcex: execution timed out**\n\nExceeded 15 seconds.\n\n\`\`\`\n${msg}\n\`\`\``
+              : `**lcex: execution failed**\n\n\`\`\`\n${msg}\n\`\`\``) +
+            footer,
+        },
+      ]);
+    }
+  };
+
+  const runAllFeaturesOn = async (doc: vscode.TextDocument): Promise<void> => {
+    if (!isInlineEnabled()) return;
+    const ext = path.extname(doc.uri.fsPath).toLowerCase();
+    if (!SOLUTION_FILE_EXTENSIONS.includes(ext)) return;
+    const editor = vscode.window.visibleTextEditors.find(
+      (v) => v.document.uri.toString() === doc.uri.toString()
+    );
+    if (!editor) return;
+
+    const needsProblem = isComplexityEnabled() || isAdversarialEnabled();
+    const problem: CachedProblem = needsProblem
+      ? await getCachedProblem(resolveSlugForUri(doc.uri))
+      : null;
+
+    if (isLintEnabled()) runLintOn(doc);
+    if (isComplexityEnabled()) await runComplexityOn(doc, editor, problem);
+    if (isAdversarialEnabled()) await runAdversarialOn(doc, editor, problem);
+    if (isRunExamplesOnSaveEnabled()) void runExamplesOn(doc, editor);
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.complexityBudget", async () => {
+      const editor = vscode.window.activeTextEditor;
+      const uri = editor?.document.uri;
+      const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
+      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+        vscode.window.setStatusBarMessage(
+          "lcex: open a .ts/.js/.py/.cpp solution file for a complexity budget",
+          5000
+        );
+        return;
+      }
+      await runComplexityOn(editor.document, editor, null);
+    }),
+    vscode.commands.registerCommand("leetcode-practice.runAdversarialTests", async () => {
+      const editor = vscode.window.activeTextEditor;
+      const uri = editor?.document.uri;
+      const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
+      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+        vscode.window.setStatusBarMessage(
+          "lcex: open a .ts/.js/.py/.cpp solution file for adversarial probes",
+          5000
+        );
+        return;
+      }
+      await runAdversarialOn(editor.document, editor, null);
+    }),
+    vscode.commands.registerCommand("leetcode-practice.lint", () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.setStatusBarMessage("lcex: no active editor to lint", 4000);
+        return;
+      }
+      const findings = runLintOn(editor.document);
+      vscode.window.setStatusBarMessage(
+        findings.length === 0
+          ? "lcex: lint — no issues ✓"
+          : `lcex: lint — ${findings.length} issue${findings.length === 1 ? "" : "s"}`,
+        6000
+      );
+    })
+  );
+
+  const makeToggle = (
+    configKey: string,
+    label: string,
+    decorationId: string,
+    defaultValue: boolean,
+    clearDiagsToo: boolean = false
+  ) => async () => {
+    const current = cfg(configKey, defaultValue);
+    await setCfg(configKey, !current);
+    if (current) {
+      for (const ed of vscode.window.visibleTextEditors) {
+        clearInlineDecorations(ed, decorationId);
+      }
+      if (clearDiagsToo) lintDiagnostics.clear();
+    } else if (vscode.window.activeTextEditor) {
+      void runAllFeaturesOn(vscode.window.activeTextEditor.document);
+    }
+    vscode.window.setStatusBarMessage(`lcex: ${label} ${!current ? "enabled" : "disabled"}`, 4000);
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "leetcode-practice.toggleLint",
+      makeToggle("lint.enabled", "lint", "lcex.lint", true, true)
+    ),
+    vscode.commands.registerCommand(
+      "leetcode-practice.toggleComplexityBudget",
+      makeToggle("complexityBudget.enabled", "complexity budget", "lcex.complexity", true)
+    ),
+    vscode.commands.registerCommand(
+      "leetcode-practice.toggleAdversarialTests",
+      makeToggle("adversarialTests.enabled", "edge-case probes", "lcex.adversarial", true)
+    ),
+    vscode.commands.registerCommand(
+      "leetcode-practice.toggleRunExamplesOnSave",
+      makeToggle("runExamplesOnSave.enabled", "run examples on save", "lcex.runExamples", true)
+    ),
+    vscode.commands.registerCommand("leetcode-practice.toggleInlineDecorations", async () => {
+      const current = isInlineEnabled();
+      await setCfg("inlineDecorations.enabled", !current);
+      if (current) {
+        for (const ed of vscode.window.visibleTextEditors) {
+          clearInlineDecorations(ed);
+        }
+        lintDiagnostics.clear();
+      } else if (vscode.window.activeTextEditor) {
+        void runAllFeaturesOn(vscode.window.activeTextEditor.document);
+      }
+      vscode.window.setStatusBarMessage(
+        `lcex: inline decorations ${!current ? "enabled" : "disabled"}`,
+        4000
+      );
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.workspace.onDidSaveTextDocument((doc) => {
+      void runAllFeaturesOn(doc);
+    }),
+    vscode.workspace.onDidCloseTextDocument((doc) => {
+      lintDiagnostics.delete(doc.uri);
+      problemCache.delete(resolveSlugForUri(doc.uri));
+    }),
+    vscode.workspace.onDidChangeTextDocument((e) => {
+      const ext = path.extname(e.document.uri.fsPath).toLowerCase();
+      if (!SOLUTION_FILE_EXTENSIONS.includes(ext)) return;
+      lintDiagnostics.delete(e.document.uri);
+      const ed = vscode.window.visibleTextEditors.find(
+        (v) => v.document.uri.toString() === e.document.uri.toString()
+      );
+      if (ed) {
+        clearInlineDecorations(ed, "lcex.lint");
+        clearInlineDecorations(ed, "lcex.runExamples");
+        clearInlineDecorations(ed, "lcex.complexity");
+        clearInlineDecorations(ed, "lcex.adversarial");
+      }
+    })
+  );
+
+  if (vscode.window.activeTextEditor) {
+    void runAllFeaturesOn(vscode.window.activeTextEditor.document);
+  }
 
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.runInTerminal", () => {
@@ -2246,5 +2666,6 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
 }
 
 export function deactivate(): Thenable<void> {
+  disposeInlineDecorationTypes();
   return Promise.resolve(flushAnalytics()).catch(() => {});
 }
