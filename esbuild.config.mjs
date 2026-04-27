@@ -32,7 +32,15 @@ async function copyTemplates() {
   );
 }
 
+async function copyData() {
+  const srcDir = join(__dirname, "data");
+  const outDir = join(__dirname, "out/data");
+  await mkdir(outDir, { recursive: true });
+  await copyFile(join(srcDir, "companies.json"), join(outDir, "companies.json"));
+}
+
 await copyTemplates();
+await copyData();
 
 if (watch) {
   const ctx = await context(buildOpts);

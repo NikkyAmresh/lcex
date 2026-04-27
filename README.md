@@ -45,6 +45,7 @@ The extension activates automatically when a workspace contains a `.leetcode` fi
 ## Features
 
 - **Browse and solve** — Full problemset, study plans, curated problem lists, and Question of the Day in sidebar views. Rich problem webview with "Create File" in TypeScript, JavaScript, Python, or C++.
+- **Companies sidebar** — Browse problems grouped by 463 companies with per-company **frequency**, global **acceptance rate**, color-coded difficulty dots, and topics in the row tooltip. Click to open in the editor. Topics + companies are also surfaced inside the problem webview as collapsible chips. Toggle via `leetcodePractice.showCompanies`.
 - **Inline feedback on save** — Every save runs all enabled features at once, rendered as ghost text on the relevant line with a trusted-markdown hover and a one-click "turn off" link per feature. No popups.
   - **Interview anti-pattern lint** — flags `mutate-input`, built-in `.sort()` on sorting problems, magic numbers (`26` / `128` / `1000000007`), and indented debug `print`/`console.log` across py/ts/js/cpp. Emits a real VS Code diagnostic (squiggle + Problems panel) and an inline hint. Suppressible per line with `// lcex-lint-ignore: <rule>`.
   - **Complexity budget** — parses the problem's `Constraints:` section, derives a target Big-O from the largest size cap, estimates loop nesting by indent, and paints 🟢 / 🟡 / 🔴 on the function signature plus a `nest k× → O(nᵏ)` badge on each loop.
@@ -113,6 +114,9 @@ All commands are available under the **LeetCode** category in the command palett
 | `LeetCode: Open/Create Problem` | Open a problem and create its solution file |
 | `LeetCode: Open Question of the Day` | Jump straight to today's QOTD |
 | `LeetCode: Refresh Problems` | Re-fetch the problemset cache |
+| `LeetCode: Search Companies` | Filter the Companies view by company / problem / topic |
+| `LeetCode: Filter Companies by Difficulty` | Restrict the Companies view to Easy / Medium / Hard |
+| `LeetCode: Refresh Companies` | Reload the bundled companies dataset |
 | `LeetCode: Sign In` / `Sign Out` | Manage the LeetCode session cookie |
 
 ### Running
@@ -181,6 +185,8 @@ All commands are available under the **LeetCode** category in the command palett
 | `leetcodePractice.studyPlans` | Study plans to show in the sidebar |
 | `leetcodePractice.problemLists` | Curated problem lists to show in the sidebar |
 | `leetcodePractice.showProblemLists` | Toggle the problem lists view |
+| `leetcodePractice.showContests` | Toggle the Practice Past Contests view |
+| `leetcodePractice.showCompanies` | Toggle the Companies view (default: on) |
 | `leetcodePractice.leetcodeUsername` | LeetCode username for cloud sync |
 | `leetcodePractice.analytics.enabled` | Send anonymous usage analytics (default: on) |
 | `leetcodePractice.inlineDecorations.enabled` | Master switch for all lcex inline ghost text (default: on) |
@@ -264,3 +270,10 @@ See [`CHANGELOG.md`](CHANGELOG.md) for release notes.
 ## License
 
 [MIT](LICENSE)
+
+## Credits
+
+The Companies sidebar uses problem-frequency / acceptance / topic data sourced
+from [`liquidslr/interview-company-wise-problems`](https://github.com/liquidslr/interview-company-wise-problems)
+(snapshot dated 1 June 2025). Many thanks to the upstream maintainers for
+curating and publishing that dataset.

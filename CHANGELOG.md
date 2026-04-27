@@ -2,6 +2,17 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.3.0] — Companies sidebar
+
+### Added
+- **Companies view.** New sidebar panel listing 463 companies and the ~100 LeetCode problems each one asks, with frequency, acceptance rate, difficulty (color-coded green/yellow/red dots), and topics (in the row tooltip). Click a problem to open it in the existing problem webview. Toggle the panel via `leetcodePractice.showCompanies`.
+- **View-title actions:** search (filters across companies and problems by title / slug / topic), filter by difficulty, and refresh.
+- **Solved / attempting overlays.** Status icons override the difficulty dot, matching the existing problem browser.
+- **Topics + companies in the problem view.** Problem webview now lists relevant topics and the companies that ask the problem (with per-company frequency), populated from the same dataset.
+
+### Credits
+- Problem-frequency / acceptance / topic data is sourced from [`liquidslr/interview-company-wise-problems`](https://github.com/liquidslr/interview-company-wise-problems) (snapshot dated 1 June 2025).
+
 ## [0.2.1] — README: document the 0.2.0 inline-feedback suite
 
 ### Changed

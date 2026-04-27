@@ -201,6 +201,46 @@
       .tag.tag-notes {
         border: 1px solid var(--border);
       }
+      .meta-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin: -8px 0 16px;
+      }
+      .meta-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        padding: 8px 12px;
+        background: var(--code-bg);
+        border-radius: 8px;
+        border: 1px solid var(--border);
+      }
+      .meta-row[hidden] { display: none; }
+      .meta-row-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--text-muted);
+        margin-right: 4px;
+      }
+      .meta-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--bg-secondary);
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      .meta-pill.company-pill .meta-freq {
+        font-size: 10px;
+        color: var(--text-muted);
+        font-variant-numeric: tabular-nums;
+      }
       .lang-toolbar {
         display: flex;
         flex-wrap: wrap;
@@ -267,12 +307,38 @@
     </div>
     <div class="tags focus-chrome">
       <span class="tag difficulty-<%= difficulty.toLowerCase() %>"><%= difficulty %></span>
-      <span class="tag extra">Topics</span>
-      <span class="tag extra">Companies</span>
+      <% var hasTopics = (typeof topics !== 'undefined' && Array.isArray(topics) && topics.length > 0); %>
+      <% var hasCompanies = (typeof companies !== 'undefined' && Array.isArray(companies) && companies.length > 0); %>
+      <% if (hasTopics) { %>
+      <button type="button" class="tag extra tag-action" id="topicsChipBtn" title="Show problem topics" aria-expanded="false">Topics · <%= topics.length %></button>
+      <% } %>
+      <% if (hasCompanies) { %>
+      <button type="button" class="tag extra tag-action" id="companiesChipBtn" title="Show companies that ask this problem (with frequency)" aria-expanded="false">Companies · <%= companies.length %></button>
+      <% } %>
       <button type="button" class="tag extra tag-action tag-hint" id="hintChipBtn" title="Coaching — ask agent (how to think; no full solution)">Hint</button>
       <button type="button" class="tag extra tag-action tag-analyze" id="analyzeChipBtn" title="Analyze — ask agent (scored review in .hint)">Analyze</button>
       <button type="button" class="tag extra tag-action tag-notes" id="hintAnalysisBtn" title="Open solution notes (.hint) in the editor">Notes</button>
     </div>
+    <% if (hasTopics || hasCompanies) { %>
+    <div class="meta-rows focus-chrome">
+      <% if (hasTopics) { %>
+      <div class="meta-row" id="topicsRow" hidden>
+        <span class="meta-row-label">Topics</span>
+        <% topics.forEach(function (t) { %>
+        <span class="meta-pill topic-pill"><%= t %></span>
+        <% }); %>
+      </div>
+      <% } %>
+      <% if (hasCompanies) { %>
+      <div class="meta-row" id="companiesRow" hidden>
+        <span class="meta-row-label">Companies</span>
+        <% companies.forEach(function (c) { %>
+        <span class="meta-pill company-pill"><%= c.name %><span class="meta-freq"><%= Math.round(c.freq) %>%</span></span>
+        <% }); %>
+      </div>
+      <% } %>
+    </div>
+    <% } %>
     <div class="lang-toolbar focus-chrome">
       <!-- <label class="lang-toolbar-label" for="challengeLang">Language</label> -->
       <select id="challengeLang" class="challenge-lang-select" title="Overrides default for Solve / Run until you change it again (saved globally, not per problem)">
@@ -403,6 +469,23 @@
           vscode.postMessage({ event: "openHintAnalysis", titleSlug: titleSlug });
         });
       }
+      function wireMetaChip(chipId, rowId) {
+        var chip = document.getElementById(chipId);
+        var row = document.getElementById(rowId);
+        if (!chip || !row) return;
+        chip.addEventListener("click", function () {
+          var open = !row.hasAttribute("hidden");
+          if (open) {
+            row.setAttribute("hidden", "");
+            chip.setAttribute("aria-expanded", "false");
+          } else {
+            row.removeAttribute("hidden");
+            chip.setAttribute("aria-expanded", "true");
+          }
+        });
+      }
+      wireMetaChip("topicsChipBtn", "topicsRow");
+      wireMetaChip("companiesChipBtn", "companiesRow");
       document.getElementById("focusLayoutBtn").addEventListener("click", function () {
         vscode.postMessage({ event: "toggleFocusMode", titleSlug: titleSlug });
       });

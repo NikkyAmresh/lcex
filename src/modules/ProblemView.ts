@@ -37,6 +37,7 @@ import {
   track as trackAnalytics,
 } from "./cloud/analytics";
 import { createDefaultHintFileJson } from "./HintFile";
+import { lookupProblem as lookupCompaniesProblem } from "./CompaniesData";
 import { getProblemTimer, TIMER_BY_DAY_KEY, TIMER_ELAPSED_KEY, type TimerByDay } from "./ProblemTimer";
 import {
   FOCUS_COMPACT_WEBVIEW_KEY,
@@ -1194,6 +1195,9 @@ async function renderChallengeHtml(
     interviewMode &&
     Array.isArray(interviewSession?.solvedDuringSession) &&
     interviewSession.solvedDuringSession.includes(problem.titleSlug);
+  const companyLookup = lookupCompaniesProblem(context.extensionPath, problem.titleSlug);
+  const topics = companyLookup?.topics ?? [];
+  const companies = companyLookup?.companies ?? [];
   return ejs.renderFile(path.join(templatesDir, "challenge.ejs"), {
     id: problem.id,
     title: problem.title,
@@ -1213,6 +1217,8 @@ async function renderChallengeHtml(
     panelLanguage,
     languageChoices: LANGUAGE_CHOICES,
     otherSolutionLangs,
+    topics,
+    companies,
   });
 }
 

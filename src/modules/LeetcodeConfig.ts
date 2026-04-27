@@ -31,6 +31,8 @@ export interface LeetcodeConfig {
   qotdMonths?: number;
   /** Show the Contests sidebar view (past contests + upcoming metadata). */
   showContests?: boolean;
+  /** Show the Companies sidebar view (problems grouped by company). */
+  showCompanies?: boolean;
   /** Prompt sent to Cursor when clicking "Make runnable" in a solution file. Only in LeetCode workspace. */
   agentPromptMakeRunnable?: string;
   /** Prompt sent to Cursor when clicking "Hint" in a solution file. Only in LeetCode workspace. */
@@ -67,6 +69,7 @@ const DEFAULTS: Required<
   showQotd: true,
   qotdMonths: 6,
   showContests: true,
+  showCompanies: true,
   agentPromptMakeRunnable: "Make this Runnable, do not give solution.",
   agentPromptHint:
     "Load **lcex-dsa-hint** and follow it. Nudge from the problem only—do not read or review my code. Each `coaching` value: one short line; no solution.",
@@ -307,6 +310,9 @@ export function parseLeetcodeConfig(workspaceFolders: readonly vscode.WorkspaceF
       if (parsed.showContests !== undefined && typeof parsed.showContests === "boolean") {
         merged.showContests = parsed.showContests;
       }
+      if (parsed.showCompanies !== undefined && typeof parsed.showCompanies === "boolean") {
+        merged.showCompanies = parsed.showCompanies;
+      }
       if (parsed.qotdMonths !== undefined && typeof parsed.qotdMonths === "number" && parsed.qotdMonths >= 1) {
         merged.qotdMonths = parsed.qotdMonths;
       }
@@ -373,6 +379,10 @@ export function getEffectiveConfig(
       (leetcode.internalApiUrl ?? vscodeConfig.get<string>("internalApiUrl") ?? "").trim() !== ""
         ? false
         : (leetcode.showContests ?? vscodeConfig.get<boolean>("showContests") ?? DEFAULTS.showContests),
+    showCompanies:
+      (leetcode.internalApiUrl ?? vscodeConfig.get<string>("internalApiUrl") ?? "").trim() !== ""
+        ? false
+        : (leetcode.showCompanies ?? vscodeConfig.get<boolean>("showCompanies") ?? DEFAULTS.showCompanies),
     agentPromptMakeRunnable: leetcode.agentPromptMakeRunnable ?? DEFAULTS.agentPromptMakeRunnable,
     agentPromptHint: leetcode.agentPromptHint ?? DEFAULTS.agentPromptHint,
     agentPromptAnalyze: leetcode.agentPromptAnalyze ?? DEFAULTS.agentPromptAnalyze,

@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
   "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -154,6 +154,21 @@
         "command": "leetcode-practice.openContestOnWeb",
         "title": "LeetCode: Open Contest on leetcode.com",
         "icon": "$(link-external)"
+      },
+      {
+        "command": "leetcode-practice.refreshCompanies",
+        "title": "LeetCode: Refresh Companies",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "leetcode-practice.searchCompanies",
+        "title": "LeetCode: Search Companies",
+        "icon": "$(search)"
+      },
+      {
+        "command": "leetcode-practice.filterCompaniesByDifficulty",
+        "title": "LeetCode: Filter Companies by Difficulty",
+        "icon": "$(filter)"
       },
       {
         "command": "leetcode-practice.markAsSolved",
@@ -327,15 +342,15 @@
       "view/item/context": [
         {
           "command": "leetcode-practice.markAsSolved",
-          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView || (view == leetcode-practice.contestsView && viewItem == lcex.contestProblem)"
+          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView || (view == leetcode-practice.contestsView && viewItem == lcex.contestProblem) || (view == leetcode-practice.companiesView && viewItem == lcex.companyProblem)"
         },
         {
           "command": "leetcode-practice.markAsAttempting",
-          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView || (view == leetcode-practice.contestsView && viewItem == lcex.contestProblem)"
+          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView || (view == leetcode-practice.contestsView && viewItem == lcex.contestProblem) || (view == leetcode-practice.companiesView && viewItem == lcex.companyProblem)"
         },
         {
           "command": "leetcode-practice.clearProblemStatus",
-          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView || (view == leetcode-practice.contestsView && viewItem == lcex.contestProblem)"
+          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView || (view == leetcode-practice.contestsView && viewItem == lcex.contestProblem) || (view == leetcode-practice.companiesView && viewItem == lcex.companyProblem)"
         },
         {
           "command": "leetcode-practice.openContestOnWeb",
@@ -393,6 +408,21 @@
           "command": "leetcode-practice.refreshContests",
           "when": "view == leetcode-practice.contestsView",
           "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.searchCompanies",
+          "when": "view == leetcode-practice.companiesView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "leetcode-practice.filterCompaniesByDifficulty",
+          "when": "view == leetcode-practice.companiesView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "leetcode-practice.refreshCompanies",
+          "when": "view == leetcode-practice.companiesView",
+          "group": "navigation@3"
         }
       ]
     },
@@ -431,6 +461,11 @@
           "id": "leetcode-practice.contestsView",
           "name": "Practice Past Contests",
           "when": "leetcodePractice.hasMarker && leetcodePractice.showContests"
+        },
+        {
+          "id": "leetcode-practice.companiesView",
+          "name": "Companies",
+          "when": "leetcodePractice.hasMarker && leetcodePractice.showCompanies"
         }
       ]
     },
@@ -680,6 +715,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show the Contests sidebar view (past weekly/biweekly + upcoming-contest metadata). Past contest problems open in the editor; upcoming contests show a countdown and an 'Open on leetcode.com' action only — live-contest questions are intentionally not surfaced."
+        },
+        "leetcodePractice.showCompanies": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Companies sidebar view — browse LeetCode problems grouped by company (frequency, acceptance, difficulty, topics) sourced from liquidslr/interview-company-wise-problems."
         }
       }
     },
@@ -750,6 +790,7 @@
     "typecheck": "tsc -p ./ --noEmit",
     "bundle": "node esbuild.config.mjs",
     "compile": "npm run typecheck && npm run bundle",
+    "build:companies-data": "node scripts/build-companies-data.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "test": "node --test --import tsx test/integration.test.ts",
     "package": "npm run compile && npx vsce package",

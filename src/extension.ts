@@ -21,6 +21,10 @@ import {
   UpcomingContestItem,
 } from "./modules/ContestsProvider";
 import { openContestSetupWebview } from "./modules/ContestSetupView";
+import {
+  CompaniesTreeProvider,
+  CompanyProblemTreeItem,
+} from "./modules/CompaniesProvider";
 import type { OpenProblemWebviewOpts, ProblemPanelState } from "./modules/ProblemView";
 import {
   openProblemWebview,
@@ -188,6 +192,7 @@ const SHOW_STUDY_PLANS_CONTEXT = "leetcodePractice.showStudyPlans";
 const SHOW_PROBLEM_LISTS_CONTEXT = "leetcodePractice.showProblemLists";
 const SHOW_QOTD_CONTEXT = "leetcodePractice.showQotd";
 const SHOW_CONTESTS_CONTEXT = "leetcodePractice.showContests";
+const SHOW_COMPANIES_CONTEXT = "leetcodePractice.showCompanies";
 const IS_SOLUTION_FILE_CONTEXT = "leetcodePractice.isSolutionFile";
 
 const SOLUTION_EXTENSIONS = new Set(SOLUTION_FILE_EXTENSIONS);
@@ -331,6 +336,7 @@ function updateHasMarkerContext(): void {
   void vscode.commands.executeCommand("setContext", SHOW_PROBLEM_LISTS_CONTEXT, config?.showProblemLists ?? true);
   void vscode.commands.executeCommand("setContext", SHOW_QOTD_CONTEXT, config?.showQotd ?? true);
   void vscode.commands.executeCommand("setContext", SHOW_CONTESTS_CONTEXT, config?.showContests ?? true);
+  void vscode.commands.executeCommand("setContext", SHOW_COMPANIES_CONTEXT, config?.showCompanies ?? true);
   updateSolutionFileContext();
   updateAgentStatusBarVisibility();
   if (extensionContextForBars) {
@@ -2405,12 +2411,33 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
     }
   });
   context.subscriptions.push(contestsView, { dispose: () => contestsProvider.dispose() });
+
+  const companiesProvider = new CompaniesTreeProvider(context.extensionPath, globalState);
+  const companiesView = vscode.window.createTreeView("leetcode-practice.companiesView", {
+    treeDataProvider: companiesProvider,
+  });
+  companiesView.onDidChangeSelection(async (e) => {
+    const item = e.selection[0];
+    if (item instanceof CompanyProblemTreeItem) {
+      trackAnalytics("command_invoked", "sidebar", "open_company_problem");
+      await openProblemWebview(
+        context,
+        item.item,
+        getProvider,
+        getProblemStatus,
+        getWebviewOpts()
+      );
+    }
+  });
+  context.subscriptions.push(companiesView, { dispose: () => companiesProvider.dispose() });
+
   function refreshAllProblemViews(): void {
     problemsProvider.invalidate();
     studyPlanProvider.invalidate();
     problemListProvider.invalidate();
     qotdProvider.invalidate();
     contestsProvider.invalidate();
+    companiesProvider.invalidate();
   }
   webviewOptsHolder.current = {
     onMarkSolved: (titleSlug) => {
@@ -2455,6 +2482,36 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
         { location: vscode.ProgressLocation.Notification, title: "Refreshing contests..." },
         () => contestsProvider.refresh()
       );
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.refreshCompanies", () => {
+      trackAnalytics("command_invoked", "sidebar", "refresh_companies");
+      companiesProvider.refresh();
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.searchCompanies", async () => {
+      trackAnalytics("command_invoked", "sidebar", "search_companies");
+      const query = await vscode.window.showInputBox({
+        prompt: "Search companies and problems",
+        placeHolder: "e.g. amazon, two sum, dynamic programming",
+      });
+      if (query === undefined) return;
+      companiesProvider.setQueryFilter(query || undefined);
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.filterCompaniesByDifficulty", async () => {
+      const choice = await vscode.window.showQuickPick(
+        ["All", "Easy", "Medium", "Hard"],
+        { placeHolder: "Filter company problems by difficulty" }
+      );
+      if (choice === undefined) return;
+      companiesProvider.setDifficultyFilter(choice === "All" ? undefined : choice);
     })
   );
 

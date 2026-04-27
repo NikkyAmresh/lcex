@@ -61,6 +61,7 @@ leetcode-practice-*.png
 # But keep what we DO want shipped (whitelist overrides above)
 !out/**/*.js
 !out/**/*.ejs
+!out/data/**/*.json
 !icons/**
 !themes/**
 !resources/**
