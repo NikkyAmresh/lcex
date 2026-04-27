@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
   "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -703,8 +703,8 @@
         },
         "leetcodePractice.adversarialTests.enabled": {
           "type": "boolean",
-          "default": true,
-          "description": "On save, surface edge-case probes derived from parsed constraints (empty, max-size, boundary, negatives) as an inline hint on the function signature."
+          "default": false,
+          "description": "On save, surface edge-case probes derived from parsed constraints (empty, max-size, boundary, negatives) as an inline hint on the function signature. Off by default — enable or run `LeetCode: Surface Adversarial Edge Cases` on demand."
         },
         "leetcodePractice.runExamplesOnSave.enabled": {
           "type": "boolean",

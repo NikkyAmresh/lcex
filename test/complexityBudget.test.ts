@@ -140,3 +140,266 @@ Answer fits in a 32-bit integer.
     assert.strictEqual(b, null);
   });
 });
+
+/**
+ * Pattern-catalog tests for the structured analyzer. These guard the cases
+ * the indent-only estimator got wrong: constant-bounded inner loops,
+ * log-shrinkage loops, two-pointer / sliding-window / monotonic-stack
+ * amortized patterns, call-catalog upgrades (heappush, Array.includes), and
+ * recursion (Master theorem + DFS-with-visited).
+ */
+describe("ComplexityEngine — loop bounds", () => {
+  it("constant-bounded inner loop (range(26)) → O(n), not O(n²)", () => {
+    const src = [
+      "class Solution:",
+      "    def f(self, s):",
+      "        for i in range(len(s)):",
+      "            for c in range(26):",
+      "                pass",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "python");
+    assert.strictEqual(e.maxDepth, 1, `got bigO=${e.bigO}`);
+    assert.match(e.bigO, /^O\(n\)$/);
+    assert.notStrictEqual(e.confidence, "low");
+  });
+
+  it("logarithmic inner loop (x //= 2) inside linear outer → O(n log n)", () => {
+    const src = [
+      "def f(nums):",
+      "    for i in range(len(nums)):",
+      "        x = nums[i]",
+      "        while x > 0:",
+      "            x //= 2",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "python");
+    assert.strictEqual(e.bigO, "O(n log n)");
+    assert.strictEqual(e.maxDepth, 1);
+    assert.strictEqual(e.hasLogFactor, true);
+  });
+
+  it("sqrt loop (i*i <= n) → O(√n)", () => {
+    const src = [
+      "function f(n: number) {",
+      "  for (let i = 1; i * i <= n; i++) {",
+      "    if (n % i === 0) return i;",
+      "  }",
+      "  return -1;",
+      "}",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "typescript");
+    assert.match(e.bigO, /√n|sqrt/i);
+    assert.strictEqual(e.maxDepth, 0);
+  });
+});
+
+describe("ComplexityEngine — amortized", () => {
+  it("two-pointer while → O(n), not O(n²)", () => {
+    const src = [
+      "def twoSum(nums, target):",
+      "    l, r = 0, len(nums) - 1",
+      "    while l < r:",
+      "        s = nums[l] + nums[r]",
+      "        if s == target: return [l, r]",
+      "        if s < target: l += 1",
+      "        else: r -= 1",
+      "    return []",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "python");
+    assert.strictEqual(e.bigO, "O(n)");
+    assert.strictEqual(e.maxDepth, 1);
+  });
+
+  it("sliding window (for outer + while-advance inner) → O(n)", () => {
+    const src = [
+      "def lengthOfLongestSubstring(s):",
+      "    seen = {}",
+      "    l = 0",
+      "    best = 0",
+      "    for r in range(len(s)):",
+      "        while s[r] in seen and seen[s[r]] >= l:",
+      "            l += 1",
+      "        seen[s[r]] = r",
+      "        if r - l + 1 > best: best = r - l + 1",
+      "    return best",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "python");
+    assert.strictEqual(e.bigO, "O(n)", `got ${e.bigO}, reasoning: ${e.reasoning.join("; ")}`);
+    assert.strictEqual(e.maxDepth, 1);
+  });
+
+  it("monotonic stack (while stack and ...: stack.pop()) inside for → O(n)", () => {
+    const src = [
+      "def dailyTemperatures(t):",
+      "    stack = []",
+      "    res = [0] * len(t)",
+      "    for i in range(len(t)):",
+      "        while stack and t[stack[-1]] < t[i]:",
+      "            j = stack.pop()",
+      "            res[j] = i - j",
+      "        stack.append(i)",
+      "    return res",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "python");
+    assert.strictEqual(e.bigO, "O(n)", `got ${e.bigO}`);
+    assert.strictEqual(e.maxDepth, 1);
+  });
+});
+
+describe("ComplexityEngine — call catalog", () => {
+  it("heappush in a loop → O(n log n)", () => {
+    const src = [
+      "import heapq",
+      "def f(nums):",
+      "    h = []",
+      "    for x in nums:",
+      "        heapq.heappush(h, x)",
+      "    return h",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "python");
+    assert.strictEqual(e.bigO, "O(n log n)", `got ${e.bigO}`);
+    assert.strictEqual(e.maxDepth, 1);
+    assert.strictEqual(e.hasLogFactor, true);
+  });
+
+  it("Array.includes in a loop → O(n²)", () => {
+    const src = [
+      "function f(nums: number[], q: number[]): number[] {",
+      "  const out: number[] = [];",
+      "  for (const x of q) {",
+      "    if (nums.includes(x)) out.push(x);",
+      "  }",
+      "  return out;",
+      "}",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "typescript");
+    assert.strictEqual(e.bigO, "O(n²)", `got ${e.bigO}`);
+    assert.strictEqual(e.maxDepth, 2);
+  });
+
+  it("sort + single pass → O(n log n)", () => {
+    const src = [
+      "function f(nums: number[]) {",
+      "  nums.sort();",
+      "  for (const x of nums) { console.log(x); }",
+      "}",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "typescript");
+    assert.strictEqual(e.bigO, "O(n log n)");
+  });
+});
+
+describe("ComplexityEngine — recursion", () => {
+  it("mergesort 2T(n/2) + O(n) → O(n log n)", () => {
+    const src = [
+      "def mergeSort(arr):",
+      "    if len(arr) <= 1: return arr",
+      "    mid = len(arr) // 2",
+      "    left = mergeSort(arr[:mid])",
+      "    right = mergeSort(arr[mid:])",
+      "    out = []",
+      "    i, j = 0, 0",
+      "    while i < len(left) and j < len(right):",
+      "        if left[i] <= right[j]:",
+      "            out.append(left[i]); i += 1",
+      "        else:",
+      "            out.append(right[j]); j += 1",
+      "    return out + left[i:] + right[j:]",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "python");
+    assert.strictEqual(e.bigO, "O(n log n)", `got ${e.bigO}; reasoning=${e.reasoning.join(" | ")}`);
+  });
+
+  it("linear recursion T(n-1) + O(1) → O(n)", () => {
+    const src = [
+      "def fact(n):",
+      "    if n <= 1: return 1",
+      "    return n * fact(n - 1)",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "python");
+    assert.strictEqual(e.bigO, "O(n)");
+  });
+
+  it("two recursive calls without halving → exponential", () => {
+    const src = [
+      "def fib(n):",
+      "    if n <= 1: return n",
+      "    return fib(n - 1) + fib(n - 2)",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "python");
+    assert.match(e.bigO, /2ⁿ|exp/i);
+  });
+
+  it("DFS over adjacency list with visited → O(V+E)", () => {
+    const src = [
+      "def dfs(u, adj, visited):",
+      "    if u in visited: return",
+      "    visited.add(u)",
+      "    for v in adj[u]:",
+      "        dfs(v, adj, visited)",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "python");
+    assert.match(e.bigO, /V\+E/);
+  });
+});
+
+describe("ComplexityEngine — confidence", () => {
+  it("returns low confidence (severity capped to 🟡) when nested loop bound is unrecognized", () => {
+    const src = [
+      "def f(g):",
+      "    while not g.done():",
+      "        while not g.subDone():",
+      "            g.step()",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "python");
+    assert.strictEqual(e.confidence, "low");
+
+    const c = parseProblemConstraints(`Constraints:\n1 <= n <= 10^5\n`);
+    const b = deriveBudget(c);
+    const v = compareToBudget(e, b);
+    // Even though depth-2 unknowns mean overall could be O(n²), severity must NOT escalate to 🔴.
+    assert.notStrictEqual(v.icon, "🔴", `low-confidence verdicts must not be red, got ${v.icon}`);
+  });
+
+  it("empty body → O(1) with high confidence", () => {
+    const src = "function f() { return 1; }";
+    const e = estimateLoopNesting(src, "typescript");
+    assert.strictEqual(e.maxDepth, 0);
+    assert.strictEqual(e.confidence, "high");
+  });
+});
+
+describe("ComplexityEngine — multi-language two-pointer", () => {
+  it("two-pointer in TypeScript → O(n)", () => {
+    const src = [
+      "function twoSum(nums: number[], target: number): number[] {",
+      "  let l = 0, r = nums.length - 1;",
+      "  while (l < r) {",
+      "    const s = nums[l] + nums[r];",
+      "    if (s === target) return [l, r];",
+      "    if (s < target) l++;",
+      "    else r--;",
+      "  }",
+      "  return [];",
+      "}",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "typescript");
+    assert.strictEqual(e.bigO, "O(n)");
+  });
+
+  it("two-pointer in C++ → O(n)", () => {
+    const src = [
+      "vector<int> twoSum(vector<int>& nums, int target) {",
+      "  int l = 0, r = nums.size() - 1;",
+      "  while (l < r) {",
+      "    int s = nums[l] + nums[r];",
+      "    if (s == target) return {l, r};",
+      "    if (s < target) l++;",
+      "    else r--;",
+      "  }",
+      "  return {};",
+      "}",
+    ].join("\n");
+    const e = estimateLoopNesting(src, "cpp");
+    assert.strictEqual(e.bigO, "O(n)");
+  });
+});

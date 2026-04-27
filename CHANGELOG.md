@@ -2,6 +2,16 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.3.1] — Smarter complexity analysis
+
+### Changed
+- **Complexity budget engine rewritten.** Replaces the indent-only loop-counter with a structured analyzer that classifies each loop's bound (`const` / `log` / `√n` / `linear` / `amortized`), recognizes two-pointer / sliding-window / monotonic-stack as O(n) instead of O(n²), and applies Master-theorem reasoning to self-recursion (mergesort → O(n log n), DFS over adjacency → O(V+E)). Includes a curated call-cost catalog so a `sort` / `heappush` / `Array.includes` inside a loop upgrades the estimate correctly.
+- **Confidence-aware severity.** When a loop's bound can't be classified statically the verdict is capped at 🟡 (`tight`) instead of escalating to 🔴, with the hover noting the fallback. Reduces false "over budget" labels on novel patterns.
+- **Per-hotspot inline decorations.** Each loop / dominant call line now gets its own ghost-text annotation (`for ≈ O(n) · cumulative O(n²)`) with severity ranked against the budget's target depth, so the offending nest is visible without opening the hover.
+
+### Defaults
+- **Edge-case probes are now off by default** (`leetcodePractice.adversarialTests.enabled: false`). Run `LeetCode: Surface Adversarial Edge Cases` on demand or re-enable the setting if you want them back on save. Existing users who already set the flag explicitly are unaffected.
+
 ## [0.3.0] — Companies sidebar
 
 ### Added

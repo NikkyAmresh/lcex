@@ -1774,7 +1774,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
   const isInlineEnabled = () => cfg("inlineDecorations.enabled", true);
   const isLintEnabled = () => cfg("lint.enabled", true);
   const isComplexityEnabled = () => cfg("complexityBudget.enabled", true);
-  const isAdversarialEnabled = () => cfg("adversarialTests.enabled", true);
+  const isAdversarialEnabled = () => cfg("adversarialTests.enabled", false);
   const isRunExamplesOnSaveEnabled = () => cfg("runExamplesOnSave.enabled", true);
 
   type CachedProblem = Awaited<ReturnType<ReturnType<typeof getProvider>["getProblem"]>>;
@@ -2054,7 +2054,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
     ),
     vscode.commands.registerCommand(
       "leetcode-practice.toggleAdversarialTests",
-      makeToggle("adversarialTests.enabled", "edge-case probes", "lcex.adversarial", true)
+      makeToggle("adversarialTests.enabled", "edge-case probes", "lcex.adversarial", false)
     ),
     vscode.commands.registerCommand(
       "leetcode-practice.toggleRunExamplesOnSave",

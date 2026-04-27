@@ -1159,7 +1159,7 @@ async function renderChallengeHtml(
   let solutionLang: string | undefined;
   if (isSolved) {
     const { path: solutionPath, exists } = await Database.resolveSolutionFilePathForOpen(
-      undefined,
+      vscode.window.activeTextEditor?.document.uri,
       problem.id,
       problem.titleSlug,
       interviewSolutionBaseDir(context.globalState),

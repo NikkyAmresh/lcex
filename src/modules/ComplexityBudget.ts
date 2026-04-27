@@ -1,3 +1,5 @@
+import { analyzeComplexity } from "./complexity/Engine";
+import type { Confidence, Hotspot } from "./complexity/IR";
 import type { ProblemConstraints } from "./ConstraintParser";
 import type { SupportedLanguage } from "./interface/Problem";
 
@@ -8,15 +10,33 @@ export interface Budget {
   targetLabel: string;
 }
 
+/**
+ * Loop position used by the inline-decoration builder. We keep the field
+ * for backward compatibility with hover formatting; the new engine populates
+ * it with hotspot lines (loop heads, expensive call sites).
+ */
 export interface LoopPosition {
   line: number;
   depth: number;
 }
 
 export interface ComplexityEstimate {
+  /** Numeric depth used to compare to budget.targetDepth (1 = O(n) or O(n log n), 2 = O(n²), etc.). */
   maxDepth: number;
+  /** Hotspot lines for inline decorations (one item per loop / dominant call). */
   loops: LoopPosition[];
+  /** True when the depth-1 estimate carries a log factor (n log n vs n). */
+  hasLogFactor: boolean;
+  /** Compatibility shim: true iff a sort builtin contributed. */
   hasSort: boolean;
+  /** Confidence in the verdict: high / medium / low. */
+  confidence: Confidence;
+  /** Big-O label, e.g. "O(n log n)" / "O(n²)" / "O(V+E)". */
+  bigO: string;
+  /** Hotspot details for hover reasoning. */
+  hotspots: Hotspot[];
+  /** Human-readable reasoning bullets, one per non-trivial step. */
+  reasoning: string[];
 }
 
 export type Tone = "ok" | "tight" | "over" | "unknown";
@@ -68,72 +88,74 @@ export function deriveBudget(constraints: ProblemConstraints): Budget | null {
   return { maxSize, maxSizeLabel, targetDepth: 1, targetLabel: "O(n)" };
 }
 
-const SINGLE_LINE_COMMENT: Record<SupportedLanguage, RegExp> = {
-  python: /^\s*#/,
-  typescript: /^\s*\/\//,
-  javascript: /^\s*\/\//,
-  cpp: /^\s*\/\//,
-};
-
-function isLoopStart(line: string): boolean {
-  return /^\s*(?:for|while)\s*[\s(]/.test(line);
+/**
+ * Static complexity analysis entry point. Replaces the previous indent-only
+ * loop-counting heuristic with a structured AST-lite analyzer that classifies
+ * loop bounds, recognizes amortized patterns (two-pointer / sliding-window /
+ * monotonic-stack), and applies Master-theorem reasoning to recursion.
+ *
+ * The function name is preserved for callers and tests.
+ */
+export function estimateLoopNesting(source: string, lang: SupportedLanguage): ComplexityEstimate {
+  const result = analyzeComplexity(source, lang);
+  const loops: LoopPosition[] = result.hotspots
+    .filter((h) => /^(for|while)/.test(h.label))
+    .map((h) => ({ line: h.line, depth: depthFromLabel(h.contributesO) }));
+  return {
+    maxDepth: result.depth,
+    loops,
+    hasLogFactor: result.hasLogFactor,
+    hasSort: /n log n/.test(result.bigO) || result.reasoning.some((r) => /sort/i.test(r)),
+    confidence: result.confidence,
+    bigO: result.bigO,
+    hotspots: result.hotspots,
+    reasoning: result.reasoning,
+  };
 }
 
-/** Indent-based loop nesting estimate. Works on well-indented code across all four languages. */
-export function estimateLoopNesting(source: string, lang: SupportedLanguage): ComplexityEstimate {
-  const lines = source.split("\n");
-  const loops: LoopPosition[] = [];
-  const stack: number[] = [];
-  let maxDepth = 0;
-  let hasSort = false;
-  const commentRe = SINGLE_LINE_COMMENT[lang];
-
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
-    if (!raw.trim()) continue;
-    if (commentRe.test(raw)) continue;
-
-    const indent = /^(\s*)/.exec(raw)?.[1].length ?? 0;
-    while (stack.length > 0 && indent <= stack[stack.length - 1]) {
-      stack.pop();
-    }
-
-    if (isLoopStart(raw)) {
-      stack.push(indent);
-      const d = stack.length;
-      loops.push({ line: i, depth: d });
-      if (d > maxDepth) maxDepth = d;
-    }
-
-    if (!hasSort && /\.sort\s*\(/.test(raw)) hasSort = true;
-  }
-
-  return { maxDepth, loops, hasSort };
+function depthFromLabel(big: string): number {
+  if (/n³/.test(big)) return 3;
+  if (/n²/.test(big)) return 2;
+  if (/n log n/.test(big) || /^O\(n\)$/.test(big) || /V\+E/.test(big)) return 1;
+  return 0;
 }
 
 export function formatEstimate(estimate: ComplexityEstimate): string {
-  const d = estimate.maxDepth;
-  let base: string;
-  if (d === 0) base = "O(1) / no loops detected";
-  else if (d === 1) base = "O(n)";
-  else if (d === 2) base = "O(n²)";
-  else if (d === 3) base = "O(n³)";
-  else base = `O(n^${d})`;
-  if (estimate.hasSort && d <= 1) return "O(n log n)";
-  if (estimate.hasSort) return `${base} · +sort`;
-  return base;
+  return estimate.bigO;
 }
 
 export function compareToBudget(
   estimate: ComplexityEstimate,
-  budget: Budget | null
+  budget: Budget | null,
 ): Verdict {
   const estimateLabel = formatEstimate(estimate);
   if (!budget) {
     return { tone: "unknown", icon: "⚪", estimateLabel };
   }
   const delta = estimate.maxDepth - budget.targetDepth;
-  if (delta <= 0) {
+
+  // Confidence-aware severity capping: when the engine couldn't classify
+  // a loop, never escalate to "over" — show "tight" with hover saying so.
+  if (estimate.confidence === "low") {
+    if (delta <= 0) return { tone: "ok", icon: "🟢", estimateLabel };
+    return { tone: "tight", icon: "🟡", estimateLabel };
+  }
+
+  if (delta < 0) {
+    return { tone: "ok", icon: "🟢", estimateLabel };
+  }
+  if (delta === 0) {
+    // Same depth — check for log-factor mismatches that matter for large n.
+    // E.g., target O(n log n) vs estimate O(n²) → already delta=1 (not here).
+    // Target O(n) vs estimate O(n log n): same depth=1 but estimate has log factor.
+    if (
+      budget.targetDepth === 1
+      && /^O\(n\)$/.test(budget.targetLabel)
+      && estimate.hasLogFactor
+      && budget.maxSize > 1e5
+    ) {
+      return { tone: "tight", icon: "🟡", estimateLabel };
+    }
     return { tone: "ok", icon: "🟢", estimateLabel };
   }
   // For large-n problems, even one extra depth means TLE territory.
@@ -155,12 +177,18 @@ export interface ComplexityInlineItem {
 export function buildComplexityInlineItems(
   signatureLine: number,
   estimate: ComplexityEstimate,
-  budget: Budget | null
+  budget: Budget | null,
 ): ComplexityInlineItem[] {
   const verdict = compareToBudget(estimate, budget);
+  const confidenceTag =
+    estimate.confidence === "low"
+      ? " · low confidence"
+      : estimate.confidence === "medium"
+        ? " · medium confidence"
+        : "";
   const signatureText = budget
-    ? `  ${verdict.icon} ${budget.maxSizeLabel} · target ${budget.targetLabel} · est ${verdict.estimateLabel}`
-    : `  ⚪ no size constraint parsed · est ${verdict.estimateLabel}`;
+    ? `  ${verdict.icon} ${budget.maxSizeLabel} · target ${budget.targetLabel} · est ${verdict.estimateLabel}${confidenceTag}`
+    : `  ⚪ no size constraint parsed · est ${verdict.estimateLabel}${confidenceTag}`;
   const sigSeverity: ComplexityInlineItem["severity"] =
     verdict.tone === "ok" ? "success"
       : verdict.tone === "tight" ? "warning"
@@ -176,26 +204,35 @@ export function buildComplexityInlineItems(
     },
   ];
 
-  for (const loop of estimate.loops) {
-    if (loop.line === signatureLine) continue;
-    let loopSeverity: ComplexityInlineItem["severity"] = "muted";
-    if (budget) {
-      const delta = loop.depth - budget.targetDepth;
-      if (delta > 0) {
-        const isLargeN = budget.maxSize >= 1e4;
-        loopSeverity = delta === 1 && !isLargeN ? "warning" : "error";
+  // Hotspot decorations on each loop / expensive call line. Severity is
+  // driven by the loop's nest depth vs. the budget's target depth, so the
+  // depth-2 loop in a target-O(n) problem is flagged red while a constant-
+  // bounded inner doesn't add depth and stays muted.
+  const seenLines = new Set<number>([signatureLine]);
+  for (const h of estimate.hotspots) {
+    if (seenLines.has(h.line)) continue;
+    seenLines.add(h.line);
+    let severity: ComplexityInlineItem["severity"] = "muted";
+    if (budget && estimate.confidence !== "low") {
+      const isLargeN = budget.maxSize >= 1e4;
+      if (h.nestDepth != null) {
+        const delta = h.nestDepth - budget.targetDepth;
+        if (delta > 0) severity = isLargeN ? "error" : "warning";
+        else if (/amortized/i.test(h.contributesO)) severity = "success";
+      } else {
+        // calls/recursion: rank by the call's contributesO
+        if (/n²/.test(h.contributesO) && budget.targetDepth < 2) severity = isLargeN ? "error" : "warning";
+        else if (/n³/.test(h.contributesO) && budget.targetDepth < 3) severity = isLargeN ? "error" : "warning";
       }
     }
-    const tag = `  nest ${loop.depth}× → O(n${loop.depth === 1 ? "" : superscript(loop.depth)})`;
-    items.push({ line: loop.line, text: tag, severity: loopSeverity });
+    items.push({
+      line: h.line,
+      text: `  ↳ ${h.label}`,
+      severity,
+    });
   }
 
   return items;
-}
-
-function superscript(n: number): string {
-  const map: Record<string, string> = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
-  return String(n).split("").map((c) => map[c] ?? c).join("");
 }
 
 function buildHover(estimate: ComplexityEstimate, budget: Budget | null, verdict: Verdict): string {
@@ -207,7 +244,17 @@ function buildHover(estimate: ComplexityEstimate, budget: Budget | null, verdict
     lines.push(`- size cap: _not detected in problem constraints_`);
   }
   lines.push(`- estimate: \`${verdict.estimateLabel}\` ${verdict.icon}`);
-  lines.push(`- detected loop nesting: max depth **${estimate.maxDepth}**${estimate.hasSort ? " · `.sort()` present" : ""}`);
-  lines.push("", "_Heuristic: counts nested `for`/`while` by indent. Recursive depth is not yet modeled._");
+  lines.push(`- confidence: **${estimate.confidence}**`);
+  if (estimate.reasoning.length > 0) {
+    lines.push("", "**reasoning**");
+    for (const r of estimate.reasoning) lines.push(`- ${r}`);
+  }
+  if (estimate.confidence === "low") {
+    lines.push("", "_Tentative: at least one loop's bound could not be classified statically — severity is capped at 🟡._");
+  }
+  lines.push(
+    "",
+    "_Static heuristic: classifies loop bounds (const / log / linear / amortized), recognizes two-pointer / sliding-window / monotonic-stack, and applies Master-theorem reasoning to self-recursion. Falls back to low confidence on novel patterns rather than guessing._",
+  );
   return lines.join("\n");
 }
