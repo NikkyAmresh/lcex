@@ -124,6 +124,8 @@ export type AnalyticsFeature =
   | "search_problems"
   | "refresh_problems"
   | "refresh_qotd"
+  | "refresh_contests"
+  | "open_contest_on_web"
   | "sign_in"
   | "sign_out"
   | "open_hint_analysis"
@@ -167,6 +169,8 @@ const FEATURES: ReadonlySet<AnalyticsFeature> = new Set<AnalyticsFeature>([
   "search_problems",
   "refresh_problems",
   "refresh_qotd",
+  "refresh_contests",
+  "open_contest_on_web",
   "sign_in",
   "sign_out",
   "open_hint_analysis",

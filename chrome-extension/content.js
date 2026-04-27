@@ -1,5 +1,5 @@
 (() => {
-  const CURSOR_URI = "cursor://lcex.leetcode-practice/open/";
+  const CURSOR_URI = "cursor://NikkyAmresh.leetcode-practice/open/";
   const DATA_ATTR = "data-lcex-cursor-btn";
 
   function extractSlug(url) {

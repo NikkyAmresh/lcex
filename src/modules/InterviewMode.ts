@@ -31,6 +31,8 @@ export interface InterviewSessionState {
   solutionFolderPath?: string;
   /** Three-digit hex id for this attempt; solution/report files use this suffix. */
   attemptHex?: string;
+  /** Distinguishes contest re-runs from regular timed interviews (drives the (contest) badge). */
+  kind?: "contest";
 }
 
 /** Per planned problem on the interview report (time + interview-only XP). */
@@ -116,6 +118,7 @@ function migrateRawSession(raw: unknown): InterviewSessionState | undefined {
     typeof extra.interviewFocusSlug === "string" && extra.interviewFocusSlug.trim()
       ? extra.interviewFocusSlug.trim()
       : undefined;
+  const kind = (s as { kind?: unknown }).kind === "contest" ? ("contest" as const) : undefined;
   return {
     active: true,
     startedAt: s.startedAt,
@@ -129,6 +132,7 @@ function migrateRawSession(raw: unknown): InterviewSessionState | undefined {
     ...(interviewName ? { interviewName } : {}),
     ...(solutionFolderPath ? { solutionFolderPath } : {}),
     ...(attemptHex ? { attemptHex } : {}),
+    ...(kind ? { kind } : {}),
   };
 }
 
@@ -151,11 +155,12 @@ export type StartInterviewSessionOptions = {
   interviewName?: string;
   solutionFolderPath?: string;
   attemptHex?: string;
+  kind?: "contest";
 };
 
 export async function startInterviewSession(
   memento: vscode.Memento,
-  durationMinutes: 45 | 60 | 180,
+  durationMinutes: number,
   plannedProblems: PlannedInterviewProblem[],
   options?: StartInterviewSessionOptions
 ): Promise<void> {
@@ -184,6 +189,7 @@ export async function startInterviewSession(
   const rawOptHex =
     typeof options?.attemptHex === "string" ? options.attemptHex.trim().toLowerCase() : "";
   const attemptHex = /^[0-9a-f]{3}$/.test(rawOptHex) ? rawOptHex : undefined;
+  const kind = options?.kind === "contest" ? ("contest" as const) : undefined;
   const state: InterviewSessionState = {
     active: true,
     startedAt: now,
@@ -196,6 +202,7 @@ export async function startInterviewSession(
     ...(interviewName ? { interviewName } : {}),
     ...(solutionFolderPath ? { solutionFolderPath } : {}),
     ...(attemptHex ? { attemptHex } : {}),
+    ...(kind ? { kind } : {}),
   };
   await memento.update(INTERVIEW_SESSION_KEY, state);
   await setInterviewContext(true);

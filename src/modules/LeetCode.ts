@@ -75,6 +75,30 @@ export interface StudyPlanGroup {
   problems: ProblemListItem[];
 }
 
+export type ContestType = "weekly" | "biweekly" | "other";
+
+export interface ContestSummary {
+  titleSlug: string;
+  title: string;
+  type: ContestType;
+  startTime: number;
+  duration: number;
+  totalQuestions?: number;
+}
+
+export interface ContestProblemItem {
+  titleSlug: string;
+  title: string;
+  questionId: string;
+  credit?: number;
+}
+
+function contestTypeFromSlug(slug: string): ContestType {
+  if (slug.startsWith("biweekly-contest-")) return "biweekly";
+  if (slug.startsWith("weekly-contest-")) return "weekly";
+  return "other";
+}
+
 const QOTD_QUERY = `
 query questionOfToday {
   activeDailyCodingChallengeQuestion {
@@ -479,6 +503,186 @@ export class LeetCodeProvider implements IProblemProvider {
   async getStudyPlanProblemList(planSlug: string): Promise<ProblemListItem[]> {
     const groups = await this.getStudyPlanProblemListGrouped(planSlug);
     return groups.flatMap((g) => g.problems);
+  }
+
+  /** Upcoming weekly + biweekly contests (metadata only, no questions). */
+  async getUpcomingContests(): Promise<ContestSummary[]> {
+    const res = await fetch(GRAPHQL_URL, {
+      method: "POST",
+      headers: { ...FETCH_HEADERS, Referer: "https://leetcode.com/contest/" },
+      body: JSON.stringify({
+        operationName: "contestV2UpcomingContests",
+        variables: {},
+        query: `
+          query contestV2UpcomingContests {
+            contestV2UpcomingContests {
+              titleSlug
+              title
+              startTime
+              duration
+            }
+          }
+        `,
+      }),
+    });
+    if (!res.ok) return [];
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) return [];
+    let json: {
+      data?: {
+        contestV2UpcomingContests?: Array<{
+          titleSlug: string;
+          title?: string;
+          startTime?: number;
+          duration?: number;
+        }>;
+      };
+    };
+    try {
+      json = (await res.json()) as typeof json;
+    } catch {
+      return [];
+    }
+    const list = json.data?.contestV2UpcomingContests ?? [];
+    return list
+      .filter((c) => c.titleSlug && typeof c.startTime === "number" && typeof c.duration === "number")
+      .map((c) => ({
+        titleSlug: c.titleSlug,
+        title: c.title ?? slugToTitle(c.titleSlug),
+        type: contestTypeFromSlug(c.titleSlug),
+        startTime: c.startTime as number,
+        duration: c.duration as number,
+      }))
+      .sort((a, b) => a.startTime - b.startTime);
+  }
+
+  /** Past contests, paginated. Returns up to `limit` contests starting at `skip`. */
+  async getPastContests(skip: number, limit: number): Promise<{ totalNum: number; contests: ContestSummary[] }> {
+    const res = await fetch(GRAPHQL_URL, {
+      method: "POST",
+      headers: { ...FETCH_HEADERS, Referer: "https://leetcode.com/contest/" },
+      body: JSON.stringify({
+        operationName: "contestV2HistoryContests",
+        variables: { skip, limit },
+        query: `
+          query contestV2HistoryContests($skip: Int!, $limit: Int!) {
+            contestV2HistoryContests(skip: $skip, limit: $limit) {
+              totalNum
+              contests {
+                titleSlug
+                title
+                startTime
+                duration
+                totalQuestions
+              }
+            }
+          }
+        `,
+      }),
+    });
+    if (!res.ok) return { totalNum: 0, contests: [] };
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) return { totalNum: 0, contests: [] };
+    let json: {
+      data?: {
+        contestV2HistoryContests?: {
+          totalNum?: number;
+          contests?: Array<{
+            titleSlug: string;
+            title?: string;
+            startTime?: number;
+            duration?: number;
+            totalQuestions?: number;
+          }>;
+        };
+      };
+    };
+    try {
+      json = (await res.json()) as typeof json;
+    } catch {
+      return { totalNum: 0, contests: [] };
+    }
+    const block = json.data?.contestV2HistoryContests;
+    const contests = (block?.contests ?? [])
+      .filter((c) => c.titleSlug && typeof c.startTime === "number" && typeof c.duration === "number")
+      .map((c) => ({
+        titleSlug: c.titleSlug,
+        title: c.title ?? slugToTitle(c.titleSlug),
+        type: contestTypeFromSlug(c.titleSlug),
+        startTime: c.startTime as number,
+        duration: c.duration as number,
+        totalQuestions: c.totalQuestions,
+      }));
+    return { totalNum: block?.totalNum ?? contests.length, contests };
+  }
+
+  /** Fetches the problem list for a (past) contest. Caller must enforce that the contest has ended. */
+  async getContestQuestionList(contestSlug: string): Promise<ContestProblemItem[]> {
+    const res = await fetch(GRAPHQL_URL, {
+      method: "POST",
+      headers: { ...FETCH_HEADERS, Referer: `https://leetcode.com/contest/${contestSlug}/` },
+      body: JSON.stringify({
+        operationName: "contestQuestionList",
+        variables: { contestSlug },
+        query: `
+          query contestQuestionList($contestSlug: String!) {
+            contestQuestionList(contestSlug: $contestSlug) {
+              credit
+              title
+              titleSlug
+              questionId
+            }
+          }
+        `,
+      }),
+    });
+    if (!res.ok) return [];
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) return [];
+    let json: {
+      data?: {
+        contestQuestionList?: Array<{
+          credit?: number;
+          title?: string;
+          titleSlug: string;
+          questionId?: string | number;
+        }>;
+      };
+    };
+    try {
+      json = (await res.json()) as typeof json;
+    } catch {
+      return [];
+    }
+    const list = json.data?.contestQuestionList ?? [];
+    return list
+      .filter((q) => q.titleSlug)
+      .map((q) => ({
+        titleSlug: q.titleSlug,
+        title: q.title ?? slugToTitle(q.titleSlug),
+        questionId: String(q.questionId ?? ""),
+        credit: typeof q.credit === "number" ? q.credit : undefined,
+      }));
+  }
+
+  /**
+   * Resolves contest problems to ProblemListItem (with difficulty enriched from problemset).
+   * Falls back to "Unknown" difficulty for problems not in the public problemset.
+   */
+  async getContestProblemListEnriched(contestSlug: string): Promise<ProblemListItem[]> {
+    const items = await this.getContestQuestionList(contestSlug);
+    if (items.length === 0) return [];
+    const slugToItem = await this.getSlugToProblemListItemMap();
+    return items.map((q, idx) => {
+      const known = slugToItem.get(q.titleSlug);
+      if (known) return known;
+      return {
+        id: q.questionId || String(idx + 1),
+        titleSlug: q.titleSlug,
+        title: q.title,
+        difficulty: "Unknown",
+      };
+    });
   }
 
   /**

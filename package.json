@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
   "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -144,6 +144,16 @@
       {
         "command": "leetcode-practice.refreshQotd",
         "title": "LeetCode: Refresh Question of the Day"
+      },
+      {
+        "command": "leetcode-practice.refreshContests",
+        "title": "LeetCode: Refresh Contests",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "leetcode-practice.openContestOnWeb",
+        "title": "LeetCode: Open Contest on leetcode.com",
+        "icon": "$(link-external)"
       },
       {
         "command": "leetcode-practice.markAsSolved",
@@ -317,15 +327,20 @@
       "view/item/context": [
         {
           "command": "leetcode-practice.markAsSolved",
-          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView"
+          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView || (view == leetcode-practice.contestsView && viewItem == lcex.contestProblem)"
         },
         {
           "command": "leetcode-practice.markAsAttempting",
-          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView"
+          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView || (view == leetcode-practice.contestsView && viewItem == lcex.contestProblem)"
         },
         {
           "command": "leetcode-practice.clearProblemStatus",
-          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView"
+          "when": "view == leetcode-practice.problemsView || view == leetcode-practice.topInterview150View || view == leetcode-practice.problemListsView || view == leetcode-practice.qotdView || (view == leetcode-practice.contestsView && viewItem == lcex.contestProblem)"
+        },
+        {
+          "command": "leetcode-practice.openContestOnWeb",
+          "when": "view == leetcode-practice.contestsView && (viewItem == lcex.upcomingContest || viewItem == lcex.pastContest)",
+          "group": "inline"
         }
       ],
       "view/title": [
@@ -373,6 +388,11 @@
           "command": "leetcode-practice.switchProblemList",
           "when": "view == leetcode-practice.problemListsView",
           "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.refreshContests",
+          "when": "view == leetcode-practice.contestsView",
+          "group": "navigation"
         }
       ]
     },
@@ -406,6 +426,11 @@
           "id": "leetcode-practice.qotdView",
           "name": "Question of the Day",
           "when": "leetcodePractice.hasMarker && leetcodePractice.showQotd"
+        },
+        {
+          "id": "leetcode-practice.contestsView",
+          "name": "Practice Past Contests",
+          "when": "leetcodePractice.hasMarker && leetcodePractice.showContests"
         }
       ]
     },
@@ -650,6 +675,11 @@
           "type": "boolean",
           "default": true,
           "description": "On save, run the solution's example lines automatically and show results inline. Spawns a language process per save — disable if iteration feels sluggish."
+        },
+        "leetcodePractice.showContests": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the Contests sidebar view (past weekly/biweekly + upcoming-contest metadata). Past contest problems open in the editor; upcoming contests show a countdown and an 'Open on leetcode.com' action only — live-contest questions are intentionally not surfaced."
         }
       }
     },

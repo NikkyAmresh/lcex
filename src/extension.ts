@@ -14,6 +14,13 @@ import {
   getStoredStatus,
   getAllStatusEntries,
 } from "./modules/ProblemsProvider";
+import {
+  ContestsTreeProvider,
+  ContestProblemTreeItem,
+  PastContestItem,
+  UpcomingContestItem,
+} from "./modules/ContestsProvider";
+import { openContestSetupWebview } from "./modules/ContestSetupView";
 import type { OpenProblemWebviewOpts, ProblemPanelState } from "./modules/ProblemView";
 import {
   openProblemWebview,
@@ -180,6 +187,7 @@ const SHOW_PROBLEMSET_CONTEXT = "leetcodePractice.showProblemset";
 const SHOW_STUDY_PLANS_CONTEXT = "leetcodePractice.showStudyPlans";
 const SHOW_PROBLEM_LISTS_CONTEXT = "leetcodePractice.showProblemLists";
 const SHOW_QOTD_CONTEXT = "leetcodePractice.showQotd";
+const SHOW_CONTESTS_CONTEXT = "leetcodePractice.showContests";
 const IS_SOLUTION_FILE_CONTEXT = "leetcodePractice.isSolutionFile";
 
 const SOLUTION_EXTENSIONS = new Set(SOLUTION_FILE_EXTENSIONS);
@@ -322,6 +330,7 @@ function updateHasMarkerContext(): void {
   void vscode.commands.executeCommand("setContext", SHOW_STUDY_PLANS_CONTEXT, config?.showStudyPlans ?? true);
   void vscode.commands.executeCommand("setContext", SHOW_PROBLEM_LISTS_CONTEXT, config?.showProblemLists ?? true);
   void vscode.commands.executeCommand("setContext", SHOW_QOTD_CONTEXT, config?.showQotd ?? true);
+  void vscode.commands.executeCommand("setContext", SHOW_CONTESTS_CONTEXT, config?.showContests ?? true);
   updateSolutionFileContext();
   updateAgentStatusBarVisibility();
   if (extensionContextForBars) {
@@ -565,8 +574,8 @@ async function showInterviewSessionEnded(
       interviewXpEarned: stat?.interviewXpEarned ?? 0,
     };
   });
-  if (attemptHex && solutionFolderPath && sourceLcInterviewPath) {
-    const abs = normalizeInterviewFilePath(sourceLcInterviewPath);
+  if (attemptHex && solutionFolderPath) {
+    const abs = sourceLcInterviewPath ? normalizeInterviewFilePath(sourceLcInterviewPath) : "";
     const reportFile = getReportPathForAttempt(solutionFolderPath, attemptHex);
     writeInterviewReportAtPath(reportFile, {
       version: 1,
@@ -676,12 +685,15 @@ async function runInterviewSessionAfterPlan(
   context: vscode.ExtensionContext,
   getWebviewOpts: () => InterviewPanelOpts,
   opts: {
-    durationMinutes: 45 | 60 | 180;
+    durationMinutes: number;
     planned: PlannedInterviewProblem[];
     sourceLcInterviewPath?: string;
     interviewName: string;
     solutionFolderPath?: string;
     attemptHex?: string;
+    kind?: "contest";
+    /** When set, this problem is opened first instead of planned[0]. Must be in planned. */
+    firstProblemSlug?: string;
   }
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   if (!shouldAutoApplyTheme()) {
@@ -701,11 +713,12 @@ async function runInterviewSessionAfterPlan(
     interviewName: opts.interviewName,
     ...(opts.solutionFolderPath ? { solutionFolderPath: opts.solutionFolderPath } : {}),
     ...(opts.attemptHex ? { attemptHex: opts.attemptHex } : {}),
+    ...(opts.kind ? { kind: opts.kind } : {}),
   });
   trackAnalytics("interview_started", "auto", "interview_start", {
     durationBucket: bucketDurationMin(opts.durationMinutes),
     countBucket: bucketCount(opts.planned.length),
-    source: opts.sourceLcInterviewPath ? "ai" : "panel",
+    source: opts.kind === "contest" ? "panel" : opts.sourceLcInterviewPath ? "ai" : "panel",
   });
   await setInterviewContext(true);
   await enterFocusModeUi(context);
@@ -714,7 +727,9 @@ async function runInterviewSessionAfterPlan(
   refreshInterviewStatusBarNow(context);
   updateGamificationStatusBars(context);
 
-  const first = opts.planned[0];
+  const first =
+    (opts.firstProblemSlug && opts.planned.find((p) => p.titleSlug === opts.firstProblemSlug)) ||
+    opts.planned[0];
   const prob = await getProvider().getProblem(first.titleSlug);
   const getProblemStatus = (slug: string) => getStoredStatus(context.globalState, slug);
   const item: ProblemListItem = prob
@@ -775,8 +790,12 @@ function startInterviewTick(context: vscode.ExtensionContext): void {
     const m = Math.floor(rm / 60_000);
     const s = Math.floor((rm % 60_000) / 1000);
     if (interviewStatusBar) {
-      interviewStatusBar.text = `$(vm-running) ${m}:${s < 10 ? "0" : ""}${s}`;
-      interviewStatusBar.tooltip = "Interview mode — click to stop";
+      const badge = sess.kind === "contest" ? " (contest)" : "";
+      interviewStatusBar.text = `$(vm-running)${badge} ${m}:${s < 10 ? "0" : ""}${s}`;
+      interviewStatusBar.tooltip =
+        sess.kind === "contest"
+          ? `Contest interview${sess.interviewName ? ` — ${sess.interviewName}` : ""} — click to stop`
+          : "Interview mode — click to stop";
       interviewStatusBar.command = "leetcode-practice.interviewModeStop";
       interviewStatusBar.show();
     }
@@ -824,8 +843,12 @@ function refreshInterviewStatusBarNow(context: vscode.ExtensionContext): void {
   const rm = remainingMs(sess);
   const m = Math.floor(rm / 60_000);
   const s = Math.floor((rm % 60_000) / 1000);
-  interviewStatusBar.text = `$(vm-running) ${m}:${s < 10 ? "0" : ""}${s}`;
-  interviewStatusBar.tooltip = "Interview mode — click to stop";
+  const badge = sess.kind === "contest" ? " (contest)" : "";
+  interviewStatusBar.text = `$(vm-running)${badge} ${m}:${s < 10 ? "0" : ""}${s}`;
+  interviewStatusBar.tooltip =
+    sess.kind === "contest"
+      ? `Contest interview${sess.interviewName ? ` — ${sess.interviewName}` : ""} — click to stop`
+      : "Interview mode — click to stop";
   interviewStatusBar.command = "leetcode-practice.interviewModeStop";
   interviewStatusBar.show();
 }
@@ -2306,11 +2329,88 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
   const qotdView = vscode.window.createTreeView("leetcode-practice.qotdView", {
     treeDataProvider: qotdProvider,
   });
+  const contestsProvider = new ContestsTreeProvider(storagePath, globalState);
+  const contestsView = vscode.window.createTreeView("leetcode-practice.contestsView", {
+    treeDataProvider: contestsProvider,
+  });
+  if (contestsView.visible) contestsProvider.startCountdownTimer();
+  contestsView.onDidChangeVisibility((e) => {
+    if (e.visible) contestsProvider.startCountdownTimer();
+    else contestsProvider.stopCountdownTimer();
+  });
+  contestsView.onDidChangeSelection(async (e) => {
+    const item = e.selection[0];
+    if (item instanceof ContestProblemTreeItem) {
+      // Plain open — never auto-start; the setup panel is the only entry point for contest interviews.
+      await openProblemWebview(context, item.item, getProvider, getProblemStatus, getWebviewOpts());
+      return;
+    }
+    if (item instanceof PastContestItem) {
+      const contest = item.contest;
+      const problems = await vscode.window.withProgress(
+        { location: { viewId: "leetcode-practice.contestsView" }, title: "Loading contest problems…" },
+        () => contestsProvider.getContestProblems(contest.titleSlug)
+      );
+      openContestSetupWebview(context, contest, problems, {
+        onStart: async (slug) => {
+          if (slug !== contest.titleSlug) {
+            return { ok: false, message: "Contest mismatch." };
+          }
+          if (problems.length === 0) {
+            return { ok: false, message: "No problems found for this contest." };
+          }
+          const planned: PlannedInterviewProblem[] = problems.map((p) => ({
+            titleSlug: p.titleSlug,
+            difficulty: (p.difficulty || "MEDIUM").toUpperCase(),
+          }));
+          const folders = vscode.workspace.workspaceFolders ?? [];
+          const root = folders[0]?.uri.fsPath;
+          const solutionFolderPath = root
+            ? path.join(root, "contests", sanitizeInterviewDirectoryName(contest.titleSlug))
+            : path.join(context.globalStorageUri.fsPath, "contests", sanitizeInterviewDirectoryName(contest.titleSlug));
+          try {
+            fs.mkdirSync(solutionFolderPath, { recursive: true });
+          } catch (err) {
+            return {
+              ok: false,
+              message: `Could not create contest folder: ${err instanceof Error ? err.message : String(err)}`,
+            };
+          }
+          let attemptHex: string;
+          try {
+            attemptHex = generateUniqueAttemptHex([], solutionFolderPath);
+          } catch {
+            return { ok: false, message: "Could not allocate a unique attempt id." };
+          }
+          const durationMinutes = Math.max(1, Math.round(contest.duration / 60));
+          return runInterviewSessionAfterPlan(context, getWebviewOpts, {
+            durationMinutes,
+            planned,
+            interviewName: contest.title,
+            kind: "contest",
+            solutionFolderPath,
+            attemptHex,
+          });
+        },
+        onOpenProblem: async (titleSlug: string) => {
+          const peek = problems.find((p) => p.titleSlug === titleSlug) ?? {
+            id: titleSlug,
+            title: titleSlug,
+            titleSlug,
+            difficulty: "Unknown",
+          };
+          await openProblemWebview(context, peek, getProvider, getProblemStatus, getWebviewOpts());
+        },
+      });
+    }
+  });
+  context.subscriptions.push(contestsView, { dispose: () => contestsProvider.dispose() });
   function refreshAllProblemViews(): void {
     problemsProvider.invalidate();
     studyPlanProvider.invalidate();
     problemListProvider.invalidate();
     qotdProvider.invalidate();
+    contestsProvider.invalidate();
   }
   webviewOptsHolder.current = {
     onMarkSolved: (titleSlug) => {
@@ -2341,9 +2441,34 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
           studyPlanProvider.refresh();
           problemListProvider.refresh();
           await qotdProvider.refresh();
+          await contestsProvider.refresh();
           fileDecorationProvider.invalidate();
         }
       );
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.refreshContests", async () => {
+      trackAnalytics("command_invoked", "sidebar", "refresh_contests");
+      await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: "Refreshing contests..." },
+        () => contestsProvider.refresh()
+      );
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.openContestOnWeb", async (item) => {
+      trackAnalytics("command_invoked", "sidebar", "open_contest_on_web");
+      const slug =
+        item instanceof UpcomingContestItem
+          ? item.contest.titleSlug
+          : item instanceof PastContestItem
+            ? item.contest.titleSlug
+            : undefined;
+      if (!slug) return;
+      await vscode.env.openExternal(vscode.Uri.parse(`https://leetcode.com/contest/${slug}/`));
     })
   );
 
