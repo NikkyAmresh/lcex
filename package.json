@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
   "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -95,6 +95,11 @@
       {
         "command": "leetcode-practice.visualizeRecursion",
         "title": "LeetCode: Visualize Recursion Call Tree",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.visualizeIterative",
+        "title": "LeetCode: Visualize Iterative Traversal",
         "category": "LeetCode"
       },
       {
@@ -750,6 +755,11 @@
           "type": "boolean",
           "default": false,
           "description": "Recursion call-tree visualizer: instruments the recursive function in the open file (TS/JS via wrapper, Python via sys.setprofile), runs it, and renders the live call tree with memoization-hit edges in a webview. Off by default."
+        },
+        "leetcodePractice.iterativeVisualizer.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Iterative traversal visualizer: wraps push/pop on a user-tracked stack/queue (`lcexTrace.track(container, \"stack\"|\"queue\")` in TS/JS, `lcex_trace.track(...)` in Python) and renders the resulting traversal tree with revisit edges. Off by default."
         },
         "leetcodePractice.showContests": {
           "type": "boolean",

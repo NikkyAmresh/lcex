@@ -60,6 +60,7 @@ The extension activates automatically when a workspace contains a `.leetcode` fi
   - **Differential fuzzer** (`leetcodePractice.fuzzer.enabled`) — define `bruteForce` + `fuzzInputs(seed)` alongside your solution; the fuzzer reports the first divergence as a counterexample (and snapshots it to the SR queue if bug-review is on).
   - **Empirical complexity fitter** (`leetcodePractice.empiricalFit.enabled`) — define `benchmark(n)`; the fitter times your solution at growing N, fits eight candidate curves, and flags when empirical complexity exceeds the static estimate.
   - **Recursion call-tree visualizer** (`leetcodePractice.recursionTree.enabled`) — define `traceCall()`; the visualizer instruments your recursive function and renders the live call tree with **memo-hit edges** (the exact cells memoization would skip).
+  - **Iterative traversal visualizer** (`leetcodePractice.iterativeVisualizer.enabled`) — wrap your stack/queue with `lcexTrace.track(container, "stack"|"queue")` (or `lcex_trace.track(...)` in Python) inside `traceCall()`; the harness records every push/pop and renders the DFS/BFS traversal tree with **revisit edges** (cycles, redundant work).
   - TS / JS / Python today; C++ is phase-2.
 - **Workspace config editor** — Custom editor for `.leetcode` files makes study plan, problem list, language, and file-naming overrides a UI action.
 - **Cloud sync (optional)** — Sign in with Google to push and pull stats across machines via Firebase. Fully optional; the extension works offline without it.
@@ -154,6 +155,7 @@ All commands are available under the **LeetCode** category in the command palett
 | `LeetCode: Fuzz vs Brute Force` | Runs `bruteForce` + `fuzzInputs(seed)` against your solution, reports the first divergence (`leetcodePractice.fuzzer.enabled`) |
 | `LeetCode: Measure Complexity (Empirical)` | Times `benchmark(n)` at growing N, fits a curve, flags when empirical class exceeds static estimate (`leetcodePractice.empiricalFit.enabled`) |
 | `LeetCode: Visualize Recursion Call Tree` | Instruments the recursive function in the open file (TS/JS/Python) and renders the call tree with memo-hit edges (`leetcodePractice.recursionTree.enabled`) |
+| `LeetCode: Visualize Iterative Traversal` | Wraps a user-tracked stack/queue (`lcexTrace.track(...)`) and renders the DFS/BFS traversal tree with revisit edges (`leetcodePractice.iterativeVisualizer.enabled`) |
 
 ### Interview
 
@@ -213,6 +215,7 @@ All commands are available under the **LeetCode** category in the command palett
 | `leetcodePractice.fuzzer.enabled` | Differential fuzzer vs `bruteForce` + `fuzzInputs(seed)` (default: off) |
 | `leetcodePractice.empiricalFit.enabled` | Empirical complexity fitter; needs `benchmark(n)` (default: off) |
 | `leetcodePractice.recursionTree.enabled` | Recursion call-tree visualizer; needs `traceCall()` (default: off) |
+| `leetcodePractice.iterativeVisualizer.enabled` | Iterative traversal visualizer; needs `lcexTrace.track(container)` inside `traceCall()` (default: off) |
 
 ## Privacy & anonymous analytics
 

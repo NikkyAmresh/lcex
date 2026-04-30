@@ -24,13 +24,13 @@ export interface RecursionOutcome {
 }
 
 const HARNESS_DIR = path.join(os.homedir(), ".lcex", "trace");
-const FRAME_LIMIT = 5000;
+export const FRAME_LIMIT = 5000;
 
 function ensureDir(): void {
   fs.mkdirSync(HARNESS_DIR, { recursive: true });
 }
 
-function harnessPath(slug: string, ext: string): string {
+export function harnessPath(slug: string, ext: string): string {
   ensureDir();
   return path.join(HARNESS_DIR, `trace-${slug}-${Date.now().toString(36)}${ext}`);
 }
@@ -185,7 +185,7 @@ def __lcex_trace_harness():
 __lcex_trace_harness()
 `;
 
-function parseTrace(stderr: string): { frames: TraceFrame[]; truncated: boolean; err?: string } {
+export function parseTrace(stderr: string): { frames: TraceFrame[]; truncated: boolean; err?: string } {
   const errMatch = /__TRACE_ERR__(.+)/m.exec(stderr);
   if (errMatch) return { frames: [], truncated: false, err: errMatch[1].trim() };
   const enterEvents = new Map<number, { parentId: number; fn: string; args: string; depth: number; memoHit: boolean }>();
@@ -280,11 +280,26 @@ export async function runRecursionTrace(opts: TraceRunOptions): Promise<Recursio
   }
 }
 
+export interface TraceTreeRenderOptions {
+  icon?: string;
+  titleSuffix?: string;
+  failureTitle?: string;
+  memoLabel?: string;
+  unitLabel?: string;
+  showFn?: boolean;
+}
+
 /** Render an HTML tree (no external deps; uses <details>/<summary> + inline styles). */
-export function renderRecursionTreeHtml(outcome: RecursionOutcome): string {
+export function renderTraceTreeHtml(outcome: RecursionOutcome, opts: TraceTreeRenderOptions = {}): string {
+  const icon = opts.icon ?? "🌳";
+  const titleSuffix = opts.titleSuffix ?? "call tree";
+  const failureTitle = opts.failureTitle ?? "Recursion trace failed";
+  const memoLabel = opts.memoLabel ?? "memo-hit";
+  const unitLabel = opts.unitLabel ?? "frame";
+  const showFn = opts.showFn ?? true;
   if (!outcome.ok) {
     return `<!doctype html><html><body style="font-family:sans-serif;padding:2rem;color:#888">
-      <h2>Recursion trace failed</h2><pre>${escapeHtml(outcome.message)}</pre></body></html>`;
+      <h2>${escapeHtml(failureTitle)}</h2><pre>${escapeHtml(outcome.message)}</pre></body></html>`;
   }
   const childrenOf = new Map<number | null, TraceFrame[]>();
   for (const f of outcome.frames) {
@@ -297,24 +312,33 @@ export function renderRecursionTreeHtml(outcome: RecursionOutcome): string {
     const kids = childrenOf.get(f.id) ?? [];
     const ret = f.ret !== undefined ? ` → <span style="color:#7ec47e">${escapeHtml(f.ret)}</span>` : "";
     const memoBadge = f.memoHit
-      ? ` <span style="background:#553;color:#ffeb3b;padding:0 4px;border-radius:3px;font-size:11px">memo-hit</span>`
+      ? ` <span style="background:#553;color:#ffeb3b;padding:0 4px;border-radius:3px;font-size:11px">${escapeHtml(memoLabel)}</span>`
       : "";
     const dur = f.durationMs !== undefined ? ` <span style="color:#888;font-size:11px">${f.durationMs.toFixed(2)}ms</span>` : "";
-    const label = `<code>${escapeHtml(f.fn)}(${escapeHtml(f.args.replace(/^\[|\]$/g, ""))})</code>${ret}${memoBadge}${dur}`;
+    const argInner = escapeHtml(f.args.replace(/^\[|\]$/g, ""));
+    const label = showFn
+      ? `<code>${escapeHtml(f.fn)}(${argInner})</code>${ret}${memoBadge}${dur}`
+      : `<code>${argInner}</code>${ret}${memoBadge}${dur}`;
     if (kids.length === 0) return `<div style="padding:2px 0 2px 1.5em">${label}</div>`;
     return `<details open><summary style="cursor:pointer;padding:2px 0">${label}</summary><div style="border-left:1px dashed #555;margin-left:0.5em;padding-left:1em">${kids.map(renderNode).join("")}</div></details>`;
   };
   const roots = childrenOf.get(null) ?? [];
-  return `<!doctype html><html><head><meta charset="utf-8"><title>lcex recursion trace</title>
+  const headline = `${icon} ${escapeHtml(outcome.fn ?? "")} ${titleSuffix}`.replace(/\s+/g, " ");
+  return `<!doctype html><html><head><meta charset="utf-8"><title>lcex trace</title>
     <style>body{font-family:ui-monospace,Menlo,monospace;background:#1e1e1e;color:#d4d4d4;padding:1.5rem;margin:0}
     h2{color:#9cdcfe;margin:0 0 0.25em 0}
     .meta{color:#888;font-size:12px;margin-bottom:1.5em}
     summary::marker{color:#888}
     code{color:#d4d4d4}</style></head><body>
-    <h2>🌳 ${escapeHtml(outcome.fn ?? "")} call tree</h2>
-    <div class="meta">${outcome.frames.length} frame${outcome.frames.length === 1 ? "" : "s"} · ${memoHits} memo-hit${memoHits === 1 ? "" : "s"}${outcome.truncated ? ` · <span style="color:#f48771">truncated at ${FRAME_LIMIT}</span>` : ""}</div>
+    <h2>${headline}</h2>
+    <div class="meta">${outcome.frames.length} ${unitLabel}${outcome.frames.length === 1 ? "" : "s"} · ${memoHits} ${memoLabel}${memoHits === 1 ? "" : "s"}${outcome.truncated ? ` · <span style="color:#f48771">truncated at ${FRAME_LIMIT}</span>` : ""}</div>
     ${roots.map(renderNode).join("")}
   </body></html>`;
+}
+
+/** Backwards-compatible alias used by the recursion command. */
+export function renderRecursionTreeHtml(outcome: RecursionOutcome): string {
+  return renderTraceTreeHtml(outcome, { icon: "🌳", titleSuffix: "call tree", failureTitle: "Recursion trace failed" });
 }
 
 function escapeHtml(s: string): string {

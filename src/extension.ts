@@ -50,6 +50,7 @@ import { runExamples as runExamplesImpl, parseExampleBlocks, type ExampleResult 
 import { runFuzz } from "./modules/Fuzzer";
 import { runEmpiricalFit, type ComplexityClass } from "./modules/EmpiricalFit";
 import { renderRecursionTreeHtml, runRecursionTrace } from "./modules/RecursionVisualizer";
+import { renderIterativeTreeHtml, runIterativeTrace } from "./modules/IterativeVisualizer";
 import {
   advanceOnPass as advanceBugReviewOnPass,
   countDueReviews,
@@ -1807,6 +1808,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
   const isFuzzerEnabled = () => cfg("fuzzer.enabled", false);
   const isEmpiricalFitEnabled = () => cfg("empiricalFit.enabled", false);
   const isRecursionTreeEnabled = () => cfg("recursionTree.enabled", false);
+  const isIterativeVisualizerEnabled = () => cfg("iterativeVisualizer.enabled", false);
 
   type CachedProblem = Awaited<ReturnType<ReturnType<typeof getProvider>["getProblem"]>>;
   const problemCache = new Map<string, { p: CachedProblem; at: number }>();
@@ -2182,6 +2184,54 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
         Logger.logError("visualizeRecursion failed", e);
         vscode.window.showErrorMessage(
           `lcex recursion failed: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.visualizeIterative", async () => {
+      if (!isIterativeVisualizerEnabled()) {
+        vscode.window.showInformationMessage(
+          "lcex: iterative visualizer is disabled. Enable `leetcodePractice.iterativeVisualizer.enabled` and define `traceCall()` (or `trace_call()` in Python) that calls `lcexTrace.track(container, \"stack\"|\"queue\")` and runs the loop."
+        );
+        return;
+      }
+      const editor = vscode.window.activeTextEditor;
+      const uri = editor?.document.uri;
+      const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
+      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+        vscode.window.setStatusBarMessage("lcex: open a solution file to visualize iterative traversal", 5000);
+        return;
+      }
+      const lang = languageFromFileExtension(ext) ?? "typescript";
+      if (lang === "cpp") {
+        vscode.window.setStatusBarMessage("lcex: iterative visualizer doesn't support C++ yet", 5000);
+        return;
+      }
+      if (editor.document.isDirty) await editor.document.save();
+      const slug = resolveSlugForUri(uri);
+      try {
+        const outcome = await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Window, title: "lcex: tracing traversal…" },
+          () => runIterativeTrace({ source: editor.document.getText(), lang, slug })
+        );
+        if (!outcome.ok) {
+          vscode.window.showWarningMessage(`lcex iterative: ${outcome.message}`);
+          return;
+        }
+        const panel = vscode.window.createWebviewPanel(
+          "lcexIterativeTree",
+          `🧭 ${outcome.fn ?? "traversal"} · ${slug}`,
+          vscode.ViewColumn.Beside,
+          { enableScripts: false, retainContextWhenHidden: true }
+        );
+        panel.webview.html = renderIterativeTreeHtml(outcome);
+        vscode.window.setStatusBarMessage(`lcex iterative: ${outcome.message}`, 6000);
+      } catch (e) {
+        Logger.logError("visualizeIterative failed", e);
+        vscode.window.showErrorMessage(
+          `lcex iterative failed: ${e instanceof Error ? e.message : String(e)}`
         );
       }
     })

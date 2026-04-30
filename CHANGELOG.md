@@ -2,6 +2,11 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.4.1] — Iterative traversal visualizer
+
+### Added
+- **Iterative traversal visualizer** (`leetcodePractice.iterativeVisualizer.enabled`, default off). Companion to the recursion visualizer for explicit-stack / queue traversals (DFS, BFS, Dijkstra-style). Inside `traceCall()` (or `trace_call()` in Python), wrap your container with `lcexTrace.track(stack, "stack")` or `lcex_trace.track(queue, "queue")`; the harness instruments `push` / `pop` / `shift` / `unshift` (and Python `append` / `pop` / `appendleft` / `popleft` / `extend` / `insert`), assigns each pushed item the currently-expanding parent, and renders the resulting traversal tree. Repeat values surface as **revisit** edges (cycle detection / redundant work). 5,000-op cap. New command `LeetCode: Visualize Iterative Traversal`. TS / JS / Python.
+
 ## [0.4.0] — DSA practice loop: bug-review queue, fuzzer, complexity fitter, recursion visualizer
 
 Five new opt-in features that go beyond "did your sample pass?" — all behind config flags so existing workflows are untouched.
