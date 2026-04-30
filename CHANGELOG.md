@@ -2,6 +2,24 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.4.0] — DSA practice loop: bug-review queue, fuzzer, complexity fitter, recursion visualizer
+
+Five new opt-in features that go beyond "did your sample pass?" — all behind config flags so existing workflows are untouched.
+
+### Added
+- **Spaced-repetition bug review** (`leetcodePractice.bugReview.enabled`, default off). When an example fails, the failing input, expected/actual output, and full source are snapshotted to `~/.lcex/bug-reviews.json`. The bug resurfaces 3 / 7 / 30 / 90 days later as a re-attempt drill at `~/.lcex/reviews/bug-<id>.<ext>`. Status bar shows `$(history) N reviews due` (right-side, only when the queue is non-empty); click to open the next due. Same `(slug, input)` is idempotent — re-failing only bumps `lapseCount`. Pass-on-rerun advances the SR ladder; fail resets to 3 days. New command `LeetCode: Open Next Bug Review`.
+- **Differential fuzzer vs brute-force** (`leetcodePractice.fuzzer.enabled`, default off). Define `bruteForce` and `fuzzInputs(seed)` (or `brute_force` / `fuzz_inputs` in Python) alongside your solution; the fuzzer runs both on random inputs and reports the first divergence inline as `❌ fuzz counterexample (iter N)` with args / your output / brute output in the hover. If bug-review is also on, the counterexample lands in the SR queue with `source: "fuzzer"`. New command `LeetCode: Fuzz vs Brute Force`. TS / JS / Python.
+- **Empirical complexity fitter** (`leetcodePractice.empiricalFit.enabled`, default off). Define `function benchmark(n)` (or `def benchmark(n)`) that runs your solution at problem size n; the fitter times it at N ∈ {16, 64, 256, 1024, 4096, 16384}, fits 8 candidate models (`O(1)`, `O(log n)`, `O(√n)`, `O(n)`, `O(n log n)`, `O(n²)`, `O(n³)`, `O(2ⁿ)`) by least RSS on log-log, and surfaces the best fit inline with a per-N timing table on hover. When the empirical class exceeds the static estimate, the verdict turns red — catches accidental `arr.indexOf` inside loops and other hidden costs the static engine can't see. New command `LeetCode: Measure Complexity (Empirical)`. TS / JS / Python.
+- **Recursion call-tree visualizer** (`leetcodePractice.recursionTree.enabled`, default off). Auto-detects the recursive function in the open file (any top-level function whose body references its own name); define `traceCall()` (or `trace_call()` in Python) that invokes it once. The visualizer instruments the function via lexical re-binding (TS / JS) or direct replacement (Python), runs the file, and renders the live call tree in a webview with collapsible nodes, return values, per-frame durations, and **memo-hit edges** (any repeat of an arg-tuple is highlighted — these are exactly the cells where memoization would pay off). 5,000-frame cap to bound infinite recursion. New command `LeetCode: Visualize Recursion Call Tree`.
+- **Constraint-aware hint context.** When you trigger `Hint`, lcex now writes a JSON sidecar to `~/.lcex/hint-context/<slug>.json` containing the static complexity estimate (`bigO`, depth, confidence), the parsed problem-size budget, the budget verdict (🟢/🟡/🔴), and the top hotspot. The prompt asks the **lcex-dsa-hint** skill to load that file and tailor the nudge — no more generic spoilers when your code is already optimal, sharper bottleneck hints when it isn't.
+
+### Changed
+- **lcex-dsa-hint skill rewritten as a Socratic mentor.** Verbal-only by default (one issue + one question per turn, ~40 words), reads your current code fresh each turn, and falls back to `apply_patch` only when you explicitly ask. Replaces the prior problem-only nudge style.
+
+### Notes
+- All five features ship off-by-default behind config flags. Turn one on and exercise it for a few sessions before flipping the next; nothing here is on the on-save hot path.
+- C++ is intentionally not supported in v1 for fuzzer / fitter / recursion-tree (instrumentation cost). Coming in a phase-2 if there's demand.
+
 ## [0.3.1] — Smarter complexity analysis
 
 ### Changed

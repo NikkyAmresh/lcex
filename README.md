@@ -54,7 +54,13 @@ The extension activates automatically when a workspace contains a `.leetcode` fi
 - **Run in terminal** — Execute the current solution file end-to-end in the integrated terminal.
 - **Progress tracking** — Solved / attempting / cleared states, daily streaks, XP and levels, daily goals, and a stats dashboard with trends.
 - **Interview mode** — Ad-hoc timed sessions (45 / 60 / 180 min) or planned `.lcInterview` mocks. Focus layout hides hints; each attempt produces a `.lcireport` snapshot.
-- **Solution notes and agent actions** — Capture notes in `.hint` files; trigger **Make Runnable**, **Hint**, and **Explain My Code** from the editor.
+- **Solution notes and agent actions** — Capture notes in `.hint` files; trigger **Make Runnable**, **Hint**, and **Explain My Code** from the editor. The `Hint` action writes a JSON sidecar (`~/.lcex/hint-context/<slug>.json`) with the static complexity estimate, parsed problem-size budget, verdict, and top hotspot, so the **lcex-dsa-hint** skill tailors the nudge to what you actually wrote.
+- **DSA practice loop** *(opt-in, all off by default)* — Five features that go beyond "did your sample pass?":
+  - **Spaced-repetition bug review** (`leetcodePractice.bugReview.enabled`) — failing examples are snapshotted to `~/.lcex/bug-reviews.json` and resurface as re-attempt drills 3 / 7 / 30 / 90 days later; status bar shows `N reviews due`.
+  - **Differential fuzzer** (`leetcodePractice.fuzzer.enabled`) — define `bruteForce` + `fuzzInputs(seed)` alongside your solution; the fuzzer reports the first divergence as a counterexample (and snapshots it to the SR queue if bug-review is on).
+  - **Empirical complexity fitter** (`leetcodePractice.empiricalFit.enabled`) — define `benchmark(n)`; the fitter times your solution at growing N, fits eight candidate curves, and flags when empirical complexity exceeds the static estimate.
+  - **Recursion call-tree visualizer** (`leetcodePractice.recursionTree.enabled`) — define `traceCall()`; the visualizer instruments your recursive function and renders the live call tree with **memo-hit edges** (the exact cells memoization would skip).
+  - TS / JS / Python today; C++ is phase-2.
 - **Workspace config editor** — Custom editor for `.leetcode` files makes study plan, problem list, language, and file-naming overrides a UI action.
 - **Cloud sync (optional)** — Sign in with Google to push and pull stats across machines via Firebase. Fully optional; the extension works offline without it.
 
@@ -140,6 +146,15 @@ All commands are available under the **LeetCode** category in the command palett
 | `LeetCode: Toggle Run Examples on Save` | — | Flip `leetcodePractice.runExamplesOnSave.enabled` |
 | `LeetCode: Toggle All Inline Decorations` | — | Master kill switch for every lcex decoration |
 
+### DSA practice loop (opt-in)
+
+| Command | Description |
+| --- | --- |
+| `LeetCode: Open Next Bug Review` | Opens the next due failing example as a re-attempt drill (`leetcodePractice.bugReview.enabled`) |
+| `LeetCode: Fuzz vs Brute Force` | Runs `bruteForce` + `fuzzInputs(seed)` against your solution, reports the first divergence (`leetcodePractice.fuzzer.enabled`) |
+| `LeetCode: Measure Complexity (Empirical)` | Times `benchmark(n)` at growing N, fits a curve, flags when empirical class exceeds static estimate (`leetcodePractice.empiricalFit.enabled`) |
+| `LeetCode: Visualize Recursion Call Tree` | Instruments the recursive function in the open file (TS/JS/Python) and renders the call tree with memo-hit edges (`leetcodePractice.recursionTree.enabled`) |
+
 ### Interview
 
 | Command | Description |
@@ -194,6 +209,10 @@ All commands are available under the **LeetCode** category in the command palett
 | `leetcodePractice.complexityBudget.enabled` | Derive target Big-O from constraints and paint 🟢/🟡/🔴 on save (default: on) |
 | `leetcodePractice.adversarialTests.enabled` | Surface edge-case probes on save (default: off — run `LeetCode: Surface Adversarial Edge Cases` on demand) |
 | `leetcodePractice.runExamplesOnSave.enabled` | Run example lines automatically on save (default: on) |
+| `leetcodePractice.bugReview.enabled` | Spaced-repetition queue of failed examples; resurfaces 3/7/30/90 days later (default: off) |
+| `leetcodePractice.fuzzer.enabled` | Differential fuzzer vs `bruteForce` + `fuzzInputs(seed)` (default: off) |
+| `leetcodePractice.empiricalFit.enabled` | Empirical complexity fitter; needs `benchmark(n)` (default: off) |
+| `leetcodePractice.recursionTree.enabled` | Recursion call-tree visualizer; needs `traceCall()` (default: off) |
 
 ## Privacy & anonymous analytics
 

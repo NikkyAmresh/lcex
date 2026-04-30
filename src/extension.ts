@@ -46,7 +46,19 @@ import {
   tryOpenExistingHintFile,
 } from "./modules/ProblemView";
 import { HintEditorProvider } from "./modules/HintEditorProvider";
-import { runExamples as runExamplesImpl, parseExampleBlocks } from "./modules/ExampleRunner";
+import { runExamples as runExamplesImpl, parseExampleBlocks, type ExampleResult } from "./modules/ExampleRunner";
+import { runFuzz } from "./modules/Fuzzer";
+import { runEmpiricalFit, type ComplexityClass } from "./modules/EmpiricalFit";
+import { renderRecursionTreeHtml, runRecursionTrace } from "./modules/RecursionVisualizer";
+import {
+  advanceOnPass as advanceBugReviewOnPass,
+  countDueReviews,
+  getReviewById as getBugReviewById,
+  lapseOnFail as lapseBugReviewOnFail,
+  listDueReviews,
+  recordFailure as recordBugReviewFailure,
+  type BugReview,
+} from "./modules/BugReviewStore";
 import {
   SOLUTION_FILE_EXTENSIONS,
   languageFromFileExtension,
@@ -760,6 +772,7 @@ async function runInterviewSessionAfterPlan(
 let interviewStatusBar: vscode.StatusBarItem | undefined;
 let dailyGoalStatusBar: vscode.StatusBarItem | undefined;
 let xpStatusBar: vscode.StatusBarItem | undefined;
+let bugReviewStatusBar: vscode.StatusBarItem | undefined;
 let interviewTickHandle: ReturnType<typeof setInterval> | null = null;
 
 function stopInterviewTick(): void {
@@ -1023,6 +1036,8 @@ export function activate(context: vscode.ExtensionContext): void {
   interviewStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   dailyGoalStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 96);
   xpStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 95);
+  bugReviewStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 94);
+  bugReviewStatusBar.command = "leetcode-practice.openNextBugReview";
   context.subscriptions.push(
     statusBarMakeRunnable,
     statusBarHint,
@@ -1030,7 +1045,8 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBarTimer,
     interviewStatusBar,
     dailyGoalStatusBar,
-    xpStatusBar
+    xpStatusBar,
+    bugReviewStatusBar
   );
   context.subscriptions.push({ dispose: () => stopInterviewTick() });
   initProblemTimer(
@@ -1139,6 +1155,9 @@ export function activate(context: vscode.ExtensionContext): void {
       await openChatWithPrompt(prompt);
     })
   );
+  // Late-bound; assigned below after `getCachedProblem` / `resolveSlugForUri` are defined.
+  let writeHintLadderContext: (slug?: string) => Promise<string | null> = async () => null;
+
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "leetcode-practice.agentHint",
@@ -1160,9 +1179,13 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         const folders = vscode.workspace.workspaceFolders ?? [];
         const config = getEffectiveConfig(folders);
-        const prompt =
+        const basePrompt =
           config.agentPromptHint?.trim() ||
           "Load **lcex-dsa-hint** and follow it. Nudge from the problem only—do not read or review my code. Each `coaching` value: one short line; no solution.";
+        const ctxPath = await writeHintLadderContext(args?.titleSlug);
+        const prompt = ctxPath
+          ? `${basePrompt}\n\nIf the **lcex-dsa-hint** skill supports it, load auto-detected user state from \`${ctxPath}\` (JSON: static complexity, problem-size budget, verdict, top hotspot) and tailor \`coaching.nextFocus\` to the verdict. Otherwise ignore.`
+          : basePrompt;
         await openChatWithPrompt(prompt);
       }
     )
@@ -1721,6 +1744,10 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
         });
         applyInlineDecorations(editor, "lcex.runExamples", items);
 
+        if (!handleBugReviewScratchResults(uri.fsPath, results)) {
+          recordBugReviewsFromExampleResults(editor.document, results);
+        }
+
         const passed = results.filter((r) => r.pass).length;
         const total = results.length;
         const summary =
@@ -1776,6 +1803,10 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
   const isComplexityEnabled = () => cfg("complexityBudget.enabled", true);
   const isAdversarialEnabled = () => cfg("adversarialTests.enabled", false);
   const isRunExamplesOnSaveEnabled = () => cfg("runExamplesOnSave.enabled", true);
+  const isBugReviewEnabled = () => cfg("bugReview.enabled", false);
+  const isFuzzerEnabled = () => cfg("fuzzer.enabled", false);
+  const isEmpiricalFitEnabled = () => cfg("empiricalFit.enabled", false);
+  const isRecursionTreeEnabled = () => cfg("recursionTree.enabled", false);
 
   type CachedProblem = Awaited<ReturnType<ReturnType<typeof getProvider>["getProblem"]>>;
   const problemCache = new Map<string, { p: CachedProblem; at: number }>();
@@ -1792,8 +1823,465 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
     return getTitleSlugForActiveSolutionFile(context) ?? path.basename(uri.fsPath, ext);
   };
 
+  const BUG_REVIEW_SCRATCH_DIR = path.join(require("os").homedir(), ".lcex", "reviews");
+  const bugReviewScratchPath = (id: string, ext: string): string =>
+    path.join(BUG_REVIEW_SCRATCH_DIR, `bug-${id}${ext}`);
+  const parseBugReviewIdFromPath = (fsPath: string): string | undefined => {
+    const base = path.basename(fsPath);
+    const m = /^bug-([A-Za-z0-9_-]+)\.[A-Za-z0-9]+$/.exec(base);
+    if (!m) return undefined;
+    if (path.dirname(fsPath) !== BUG_REVIEW_SCRATCH_DIR) return undefined;
+    return m[1];
+  };
+
+  const refreshBugReviewStatusBar = (): void => {
+    if (!bugReviewStatusBar) return;
+    if (!isBugReviewEnabled()) {
+      bugReviewStatusBar.hide();
+      return;
+    }
+    const due = countDueReviews();
+    if (due <= 0) {
+      bugReviewStatusBar.hide();
+      return;
+    }
+    bugReviewStatusBar.text = `$(history) ${due} review${due === 1 ? "" : "s"} due`;
+    bugReviewStatusBar.tooltip = `lcex bug-review queue: ${due} item${due === 1 ? "" : "s"} due. Click to open the next one.`;
+    bugReviewStatusBar.show();
+  };
+
+  const sliceSourceSnippet = (content: string, lineIndex: number): string => {
+    const lines = content.split("\n");
+    const start = Math.max(0, lineIndex - 1 - 5);
+    const end = Math.min(lines.length, lineIndex + 5);
+    return lines.slice(start, end).join("\n");
+  };
+
+  const recordBugReviewsFromExampleResults = (
+    doc: vscode.TextDocument,
+    results: ExampleResult[]
+  ): void => {
+    if (!isBugReviewEnabled()) return;
+    // Skip while inside a scratch bug-review file — those use advance/lapse instead.
+    if (parseBugReviewIdFromPath(doc.uri.fsPath)) return;
+    const failed = results.filter((r) => !r.pass && r.expected !== null);
+    if (failed.length === 0) return;
+    const ext = path.extname(doc.uri.fsPath).toLowerCase();
+    const lang = languageFromFileExtension(ext) ?? "typescript";
+    const slug = resolveSlugForUri(doc.uri);
+    const lines = doc.getText().split("\n");
+    void (async () => {
+      let title: string | undefined;
+      try {
+        const cached = await getCachedProblem(slug);
+        title = cached?.title;
+      } catch {
+        /* best-effort */
+      }
+      for (const r of failed) {
+        const idx0 = Math.max(0, r.lineIndex - 1);
+        const inputLine = (lines[idx0] ?? "").trim();
+        if (!inputLine) continue;
+        try {
+          recordBugReviewFailure({
+            titleSlug: slug,
+            problemTitle: title,
+            language: lang,
+            source: "examples",
+            input: inputLine,
+            expected: r.expected ?? "",
+            actual: r.actual ?? "",
+            sourceSnippet: sliceSourceSnippet(doc.getText(), r.lineIndex),
+            fullSource: doc.getText(),
+          });
+        } catch (e) {
+          Logger.logError("bug-review record failed", e);
+        }
+      }
+      refreshBugReviewStatusBar();
+    })();
+  };
+
+  const handleBugReviewScratchResults = (
+    fsPath: string,
+    results: ExampleResult[]
+  ): BugReview | undefined => {
+    const id = parseBugReviewIdFromPath(fsPath);
+    if (!id) return undefined;
+    if (results.length === 0) return undefined;
+    const allPass = results.every((r) => r.pass);
+    const updated = allPass ? advanceBugReviewOnPass(id) : lapseBugReviewOnFail(id);
+    refreshBugReviewStatusBar();
+    if (updated && allPass) {
+      vscode.window.setStatusBarMessage(
+        `lcex bug-review: nailed it — next due in ${updated.intervalDays} days`,
+        7000
+      );
+    } else if (updated) {
+      vscode.window.setStatusBarMessage(
+        `lcex bug-review: still wrong — resurfacing in 3 days (lapses: ${updated.lapseCount})`,
+        7000
+      );
+    }
+    return updated;
+  };
+
   const FEATURE_FOOTER = (label: string, toggleCmd: string) =>
     `\n\n[turn off ${label}](command:${toggleCmd}) · [hide all](command:leetcode-practice.toggleInlineDecorations)`;
+
+  writeHintLadderContext = async (slugHint?: string): Promise<string | null> => {
+    try {
+      const editor = vscode.window.activeTextEditor;
+      const uri = editor?.document.uri;
+      const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
+      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) return null;
+      const lang = languageFromFileExtension(ext) ?? "typescript";
+      const source = editor.document.getText();
+      if (!source.trim()) return null;
+      const slug = slugHint ?? resolveSlugForUri(uri);
+      const estimate = estimateLoopNesting(source, lang);
+      const ctx: {
+        slug: string;
+        language: string;
+        writtenAt: string;
+        staticComplexity: { bigO: string; depth: number; confidence: string; hasLogFactor: boolean };
+        topHotspot?: { line: number; label: string; contributesO: string };
+        constraints?: { primaryN: number; targetLabel: string };
+        verdict?: { tone: string; estimateLabel: string };
+      } = {
+        slug,
+        language: lang,
+        writtenAt: new Date().toISOString(),
+        staticComplexity: {
+          bigO: estimate.bigO,
+          depth: estimate.maxDepth,
+          confidence: estimate.confidence,
+          hasLogFactor: estimate.hasLogFactor,
+        },
+      };
+      const topHotspot = estimate.hotspots[0];
+      if (topHotspot) {
+        ctx.topHotspot = {
+          line: topHotspot.line,
+          label: topHotspot.label,
+          contributesO: topHotspot.contributesO,
+        };
+      }
+      try {
+        const problem = await getCachedProblem(slug);
+        if (problem?.content) {
+          const constraints = parseProblemConstraints(problem.content);
+          const budget = deriveBudget(constraints);
+          if (budget) {
+            ctx.constraints = { primaryN: budget.maxSize, targetLabel: budget.targetLabel };
+          }
+          const verdict = compareToBudget(estimate, budget);
+          ctx.verdict = { tone: verdict.tone, estimateLabel: verdict.estimateLabel };
+        }
+      } catch {
+        /* best-effort */
+      }
+      const dir = path.join(require("os").homedir(), ".lcex", "hint-context");
+      fs.mkdirSync(dir, { recursive: true });
+      const ctxPath = path.join(dir, `${slug}.json`);
+      fs.writeFileSync(ctxPath, JSON.stringify(ctx, null, 2), "utf-8");
+      return ctxPath;
+    } catch {
+      return null;
+    }
+  };
+
+  refreshBugReviewStatusBar();
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.openNextBugReview", async () => {
+      if (!isBugReviewEnabled()) {
+        vscode.window.showInformationMessage(
+          "lcex: bug-review queue is disabled. Enable `leetcodePractice.bugReview.enabled` in settings to use it."
+        );
+        return;
+      }
+      const due = listDueReviews();
+      if (due.length === 0) {
+        vscode.window.setStatusBarMessage("lcex: no bug reviews due — nothing to drill", 5000);
+        return;
+      }
+      const next = due[0];
+      const fileExt = (() => {
+        switch (next.language) {
+          case "javascript": return ".js";
+          case "python": return ".py";
+          case "cpp": return ".cpp";
+          default: return ".ts";
+        }
+      })();
+      try {
+        fs.mkdirSync(BUG_REVIEW_SCRATCH_DIR, { recursive: true });
+        const scratchPath = bugReviewScratchPath(next.id, fileExt);
+        const dueLabel = new Date(next.nextDueAt).toLocaleDateString();
+        const header =
+          next.language === "python"
+            ? `# lcex bug-review · ${next.problemTitle ?? next.titleSlug}\n# Failed ${next.failedAt.slice(0, 10)} · interval ${next.intervalDays}d · lapses ${next.lapseCount} · due ${dueLabel}\n# Reproduce the bug, fix it, then run examples (Cmd+Shift+P → "lcex: Run Examples").\n\n`
+            : `// lcex bug-review · ${next.problemTitle ?? next.titleSlug}\n// Failed ${next.failedAt.slice(0, 10)} · interval ${next.intervalDays}d · lapses ${next.lapseCount} · due ${dueLabel}\n// Reproduce the bug, fix it, then run examples (Cmd+Shift+P → "lcex: Run Examples").\n\n`;
+        const body = next.fullSource && next.fullSource.length > 0
+          ? next.fullSource
+          : `${next.sourceSnippet}\n${next.input}`;
+        if (!fs.existsSync(scratchPath)) {
+          fs.writeFileSync(scratchPath, header + body, "utf-8");
+        }
+        const docu = await vscode.workspace.openTextDocument(scratchPath);
+        await vscode.window.showTextDocument(docu, { preview: false });
+      } catch (e) {
+        Logger.logError("openNextBugReview failed", e);
+        vscode.window.showErrorMessage(
+          `lcex: could not open bug review — ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+    })
+  );
+
+  const COMPLEXITY_RANK: Record<ComplexityClass, number> = {
+    "O(1)": 0,
+    "O(log n)": 1,
+    "O(√n)": 2,
+    "O(n)": 3,
+    "O(n log n)": 4,
+    "O(n²)": 5,
+    "O(n³)": 6,
+    "O(2ⁿ)": 7,
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.measureComplexity", async () => {
+      if (!isEmpiricalFitEnabled()) {
+        vscode.window.showInformationMessage(
+          "lcex: complexity fitter is disabled. Enable `leetcodePractice.empiricalFit.enabled` and define `function benchmark(n)` (or `def benchmark(n)`) that runs your solution at problem size n."
+        );
+        return;
+      }
+      const editor = vscode.window.activeTextEditor;
+      const uri = editor?.document.uri;
+      const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
+      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+        vscode.window.setStatusBarMessage("lcex: open a solution file to measure complexity", 5000);
+        return;
+      }
+      const lang = languageFromFileExtension(ext) ?? "typescript";
+      if (lang === "cpp") {
+        vscode.window.setStatusBarMessage("lcex: complexity fitter doesn't support C++ yet", 5000);
+        return;
+      }
+      if (editor.document.isDirty) await editor.document.save();
+      clearInlineDecorations(editor, "lcex.fit");
+      const slug = resolveSlugForUri(uri);
+      try {
+        const outcome = await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Window, title: "lcex: measuring complexity…" },
+          () => runEmpiricalFit({ source: editor.document.getText(), lang, slug })
+        );
+        const source = editor.document.getText();
+        const idx = source.split("\n").findIndex((l) => /\bbenchmark\s*\(/.test(l));
+        const anchorLine = idx >= 0 ? idx : 0;
+        if (!outcome.ok) {
+          applyInlineDecorations(editor, "lcex.fit", [
+            {
+              line: anchorLine,
+              text: `  ⚠ fit: ${outcome.message}`,
+              severity: "warning",
+              hoverMarkdown: `**lcex empirical fit**\n\n${outcome.message}`,
+            },
+          ]);
+          vscode.window.setStatusBarMessage(`lcex fit: ${outcome.message}`, 8000);
+          return;
+        }
+        const staticEstimate = estimateLoopNesting(source, lang);
+        const empiricalRank = outcome.bestFit ? COMPLEXITY_RANK[outcome.bestFit] : -1;
+        const staticRank = (() => {
+          const o = staticEstimate.bigO;
+          if (/n³/.test(o)) return COMPLEXITY_RANK["O(n³)"];
+          if (/n²/.test(o)) return COMPLEXITY_RANK["O(n²)"];
+          if (/n log n/.test(o)) return COMPLEXITY_RANK["O(n log n)"];
+          if (/2\^n|2ⁿ/.test(o)) return COMPLEXITY_RANK["O(2ⁿ)"];
+          if (/log n|log\(/.test(o)) return COMPLEXITY_RANK["O(log n)"];
+          if (/^O\(1\)/.test(o)) return COMPLEXITY_RANK["O(1)"];
+          return COMPLEXITY_RANK["O(n)"];
+        })();
+        const exceeds = empiricalRank > staticRank;
+        const tableRows = outcome.measurements
+          .map((m) => `| ${m.n} | ${m.ms.toFixed(2)} ms |`)
+          .join("\n");
+        const ranking = (outcome.ranking ?? [])
+          .slice(0, 4)
+          .map((r) => `${r.cls} (rss=${r.rss.toFixed(2)})`)
+          .join(" · ");
+        const verdict = exceeds
+          ? `🔴 empirical \`${outcome.bestFit}\` exceeds static \`${staticEstimate.bigO}\` — likely a hidden cost (e.g. \`indexOf\` inside loop, accidental copy)`
+          : `🟢 empirical \`${outcome.bestFit}\` matches static \`${staticEstimate.bigO}\``;
+        applyInlineDecorations(editor, "lcex.fit", [
+          {
+            line: anchorLine,
+            text: `  📐 fit: ${outcome.bestFit}${exceeds ? ` (exceeds static ${staticEstimate.bigO})` : ""}`,
+            severity: exceeds ? "error" : "muted",
+            hoverMarkdown:
+              `**lcex empirical complexity fit**\n\n${verdict}\n\n| n | t |\n|---|---|\n${tableRows}\n\n**top candidates:** ${ranking}`,
+          },
+        ]);
+        vscode.window.setStatusBarMessage(
+          `lcex fit: ${outcome.bestFit}${exceeds ? ` (exceeds static ${staticEstimate.bigO})` : ""}`,
+          8000
+        );
+      } catch (e) {
+        Logger.logError("measureComplexity failed", e);
+        vscode.window.showErrorMessage(
+          `lcex fit failed: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.visualizeRecursion", async () => {
+      if (!isRecursionTreeEnabled()) {
+        vscode.window.showInformationMessage(
+          "lcex: recursion visualizer is disabled. Enable `leetcodePractice.recursionTree.enabled` and define `traceCall()` (or `trace_call()` in Python) that invokes your recursive function once."
+        );
+        return;
+      }
+      const editor = vscode.window.activeTextEditor;
+      const uri = editor?.document.uri;
+      const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
+      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+        vscode.window.setStatusBarMessage("lcex: open a solution file to visualize recursion", 5000);
+        return;
+      }
+      const lang = languageFromFileExtension(ext) ?? "typescript";
+      if (lang === "cpp") {
+        vscode.window.setStatusBarMessage("lcex: recursion visualizer doesn't support C++ yet", 5000);
+        return;
+      }
+      if (editor.document.isDirty) await editor.document.save();
+      const slug = resolveSlugForUri(uri);
+      try {
+        const outcome = await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Window, title: "lcex: tracing recursion…" },
+          () => runRecursionTrace({ source: editor.document.getText(), lang, slug })
+        );
+        if (!outcome.ok) {
+          vscode.window.showWarningMessage(`lcex recursion: ${outcome.message}`);
+          return;
+        }
+        const panel = vscode.window.createWebviewPanel(
+          "lcexRecursionTree",
+          `🌳 ${outcome.fn ?? "recursion"} · ${slug}`,
+          vscode.ViewColumn.Beside,
+          { enableScripts: false, retainContextWhenHidden: true }
+        );
+        panel.webview.html = renderRecursionTreeHtml(outcome);
+        vscode.window.setStatusBarMessage(`lcex recursion: ${outcome.message}`, 6000);
+      } catch (e) {
+        Logger.logError("visualizeRecursion failed", e);
+        vscode.window.showErrorMessage(
+          `lcex recursion failed: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.fuzzVsBruteForce", async () => {
+      if (!isFuzzerEnabled()) {
+        vscode.window.showInformationMessage(
+          "lcex: fuzzer is disabled. Enable `leetcodePractice.fuzzer.enabled` in settings, then add `bruteForce` and `fuzzInputs` (or `brute_force`/`fuzz_inputs` in Python) functions alongside your solution."
+        );
+        return;
+      }
+      const editor = vscode.window.activeTextEditor;
+      const uri = editor?.document.uri;
+      const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
+      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+        vscode.window.setStatusBarMessage("lcex: open a solution file to fuzz", 5000);
+        return;
+      }
+      const lang = languageFromFileExtension(ext) ?? "typescript";
+      if (lang === "cpp") {
+        vscode.window.setStatusBarMessage("lcex: fuzzer doesn't support C++ yet", 5000);
+        return;
+      }
+      if (editor.document.isDirty) await editor.document.save();
+      clearInlineDecorations(editor, "lcex.fuzz");
+      const slug = resolveSlugForUri(uri);
+      try {
+        const outcome = await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Window, title: "lcex: fuzzing vs brute-force…" },
+          () => runFuzz({ source: editor.document.getText(), lang, slug })
+        );
+        const blocks = parseExampleBlocks(editor.document.getText(), lang);
+        const anchorLine = blocks[0]?.callLine ? blocks[0].callLine - 1 : 0;
+        if (outcome.ok) {
+          applyInlineDecorations(editor, "lcex.fuzz", [
+            {
+              line: anchorLine,
+              text: `  🎲 fuzz: ${outcome.message}`,
+              severity: "muted",
+              hoverMarkdown: `**lcex fuzz**\n\n${outcome.message}`,
+            },
+          ]);
+          vscode.window.setStatusBarMessage(`lcex fuzz: ${outcome.message}`, 6000);
+        } else if (outcome.counterexample) {
+          const ce = outcome.counterexample;
+          applyInlineDecorations(editor, "lcex.fuzz", [
+            {
+              line: anchorLine,
+              text: `  ❌ fuzz counterexample (iter ${ce.iter})`,
+              severity: "error",
+              hoverMarkdown:
+                `**lcex fuzz · counterexample**\n\n- args: \`${ce.argsJson}\`\n- user output: \`${ce.userOut}\`\n- bruteForce output: \`${ce.bruteOut}\`\n- iteration: ${ce.iter} of ${outcome.ranCases}`,
+            },
+          ]);
+          vscode.window.setStatusBarMessage(
+            `lcex fuzz: counterexample at iter ${ce.iter} — hover for details`,
+            10000
+          );
+          if (isBugReviewEnabled()) {
+            try {
+              let title: string | undefined;
+              try { const cached = await getCachedProblem(slug); title = cached?.title; } catch { /* best-effort */ }
+              const { recordFailure } = await import("./modules/BugReviewStore");
+              recordFailure({
+                titleSlug: slug,
+                problemTitle: title,
+                language: lang,
+                source: "fuzzer",
+                input: ce.argsJson,
+                expected: ce.bruteOut,
+                actual: ce.userOut,
+                sourceSnippet: editor.document.getText(),
+                fullSource: editor.document.getText(),
+              });
+              refreshBugReviewStatusBar();
+            } catch (e) {
+              Logger.logError("fuzz: bug-review record failed", e);
+            }
+          }
+        } else {
+          applyInlineDecorations(editor, "lcex.fuzz", [
+            {
+              line: anchorLine,
+              text: `  ⚠ fuzz: ${outcome.message}`,
+              severity: "warning",
+              hoverMarkdown: `**lcex fuzz**\n\n${outcome.message}`,
+            },
+          ]);
+          vscode.window.setStatusBarMessage(`lcex fuzz: ${outcome.message}`, 8000);
+        }
+      } catch (e) {
+        Logger.logError("fuzz failed", e);
+        vscode.window.showErrorMessage(
+          `lcex fuzz failed: ${e instanceof Error ? e.message : String(e)}`
+        );
+      }
+    })
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("leetcode-practice.clearInlineDecorations", () => {
@@ -1939,6 +2427,9 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
         };
       });
       applyInlineDecorations(editor, "lcex.runExamples", items);
+      if (!handleBugReviewScratchResults(doc.uri.fsPath, results)) {
+        recordBugReviewsFromExampleResults(doc, results);
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const isTimeout = /\b(ETIMEDOUT|SIGTERM|SIGKILL|timeout|timed out|killed)\b/i.test(msg);

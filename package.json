@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
   "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -75,6 +75,26 @@
       {
         "command": "leetcode-practice.runExamples",
         "title": "LeetCode: Run Examples",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.openNextBugReview",
+        "title": "LeetCode: Open Next Bug Review",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.fuzzVsBruteForce",
+        "title": "LeetCode: Fuzz vs Brute Force",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.measureComplexity",
+        "title": "LeetCode: Measure Complexity (Empirical)",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.visualizeRecursion",
+        "title": "LeetCode: Visualize Recursion Call Tree",
         "category": "LeetCode"
       },
       {
@@ -710,6 +730,26 @@
           "type": "boolean",
           "default": true,
           "description": "On save, run the solution's example lines automatically and show results inline. Spawns a language process per save — disable if iteration feels sluggish."
+        },
+        "leetcodePractice.bugReview.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Spaced-repetition bug review: when an example fails, snapshot the failing test (input, expected, actual, full source) to ~/.lcex/bug-reviews.json and resurface it 3/7/30/90 days later as a re-attempt drill. Status bar shows count due. Off by default — enable to start building the queue."
+        },
+        "leetcodePractice.fuzzer.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Differential fuzzer: define `bruteForce` and `fuzzInputs(seed)` (or `brute_force`/`fuzz_inputs` in Python) alongside your solution; the fuzzer runs both on random inputs and reports the first divergence as a counterexample. Off by default."
+        },
+        "leetcodePractice.empiricalFit.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Empirical complexity fitter: define `benchmark(n)` (or `def benchmark(n)`) that runs your solution at size n; the fitter times it at growing N and fits a curve (const/log/sqrt/n/n log n/n²/n³/2ⁿ). Surfaces a verdict if the empirical class exceeds the static estimate. Off by default."
+        },
+        "leetcodePractice.recursionTree.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Recursion call-tree visualizer: instruments the recursive function in the open file (TS/JS via wrapper, Python via sys.setprofile), runs it, and renders the live call tree with memoization-hit edges in a webview. Off by default."
         },
         "leetcodePractice.showContests": {
           "type": "boolean",
