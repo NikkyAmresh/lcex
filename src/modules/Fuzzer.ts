@@ -164,7 +164,7 @@ function parseOutcome(stdout: string, stderr: string): FuzzOutcome {
   if (okMatch) {
     return { ok: true, ranCases: parseInt(okMatch[1], 10), message: `passed ${okMatch[1]} cases` };
   }
-  const divergeMatch = /__LCEX_FUZZ__(\{.*\})/m.exec(stdout);
+  const divergeMatch = /__LCEX_FUZZ__(\{.*\})\s*$/m.exec(stdout);
   if (divergeMatch) {
     try {
       const parsed = JSON.parse(divergeMatch[1]) as FuzzCounterexample & { ranCases?: number };
@@ -174,8 +174,12 @@ function parseOutcome(stdout: string, stderr: string): FuzzOutcome {
         message: `counterexample at iter ${parsed.iter}: user=${parsed.userOut} · brute=${parsed.bruteOut}`,
         counterexample: parsed,
       };
-    } catch {
-      /* fallthrough */
+    } catch (e) {
+      return {
+        ok: false,
+        ranCases: 0,
+        message: `harness produced an invalid counterexample marker (${e instanceof Error ? e.message : String(e)})`,
+      };
     }
   }
   return { ok: false, ranCases: 0, message: `no harness marker in output (stderr: ${stderr.trim().slice(0, 200)})` };

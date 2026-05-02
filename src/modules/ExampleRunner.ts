@@ -90,9 +90,13 @@ export async function runExamples(uri: { fsPath: string }): Promise<ExampleResul
   const blocks = parseExampleBlocks(content, lang);
   if (blocks.length === 0) return [];
   const { stdout, stderr } = await runSolutionFile(uri.fsPath, lang);
-  if (stderr) {
-    const ch = stderr.trim();
-    if (ch && !stdout) throw new Error(ch);
+  const ch = stderr?.trim() ?? "";
+  // Hard error: nothing on stdout but stderr present (typical for syntax / import errors).
+  if (ch && !stdout) throw new Error(ch);
+  // Soft error: partial stdout AND stderr — surface both so the user sees the
+  // actual exception instead of a silent partial pass/fail.
+  if (ch && stdout) {
+    throw new Error(`Solution wrote partial output before erroring:\n--- stderr ---\n${ch}\n--- stdout ---\n${stdout.trim().slice(0, 4000)}`);
   }
   return compareOutput(content, stdout, lang);
 }

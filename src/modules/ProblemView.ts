@@ -691,11 +691,15 @@ export function notifyAllProblemPanelsUiMode(context: vscode.ExtensionContext): 
   const focusCompact = context.globalState.get<boolean>(FOCUS_COMPACT_WEBVIEW_KEY) ?? false;
   const interviewMode = Boolean(getInterviewSession(context.globalState)?.active);
   for (const [, state] of problemViews) {
-    state.webviewPanel.webview.postMessage({
-      event: "uiMode",
-      focusCompact,
-      interviewMode,
-    });
+    try {
+      void state.webviewPanel.webview.postMessage({
+        event: "uiMode",
+        focusCompact,
+        interviewMode,
+      });
+    } catch {
+      // Panel disposed; cleanup happens elsewhere via onDidDispose.
+    }
   }
 }
 
@@ -1613,7 +1617,8 @@ function ensureInterviewSetupPanel(context: vscode.ExtensionContext): vscode.Web
       if (!fn) return;
       const result = await fn(m);
       if (!result.ok) {
-        panel.webview.postMessage({ type: "resetStart", message: result.message });
+        try { void panel.webview.postMessage({ type: "resetStart", message: result.message }); }
+        catch { /* panel disposed mid-await */ }
       }
       return;
     }

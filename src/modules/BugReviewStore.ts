@@ -2,7 +2,7 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import type { SupportedLanguage } from "./interface/Problem";
-import { LCEX_HOME_DIR, ensureLcexDir } from "./LcexInterviewReportStore";
+import { LCEX_HOME_DIR, atomicWriteJsonSync, ensureLcexDir } from "./LcexInterviewReportStore";
 
 export const BUG_REVIEWS_FILE = path.join(LCEX_HOME_DIR, "bug-reviews.json");
 
@@ -54,7 +54,7 @@ export function readBugReviews(): BugReviewStoreV1 {
 
 export function writeBugReviews(store: BugReviewStoreV1): void {
   ensureLcexDir();
-  fs.writeFileSync(BUG_REVIEWS_FILE, JSON.stringify(store, null, 2), "utf-8");
+  atomicWriteJsonSync(BUG_REVIEWS_FILE, store);
 }
 
 function bugId(titleSlug: string, input: string): string {

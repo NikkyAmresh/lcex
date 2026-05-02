@@ -62,6 +62,25 @@ export function ensureLcexDir(): void {
   fs.mkdirSync(LCEX_HOME_DIR, { recursive: true });
 }
 
+/**
+ * Write JSON to `absPath` atomically: serialize to a sibling temp file, then rename.
+ * `rename` is atomic on POSIX and Windows (NTFS), so readers always see a complete file.
+ * Caller is responsible for ensuring the parent directory exists.
+ */
+export function atomicWriteJsonSync(absPath: string, data: unknown): void {
+  const dir = path.dirname(absPath);
+  const base = path.basename(absPath);
+  const tmp = path.join(dir, `.${base}.${process.pid}.${Date.now()}.tmp`);
+  const payload = JSON.stringify(data, null, 2);
+  try {
+    fs.writeFileSync(tmp, payload, "utf-8");
+    fs.renameSync(tmp, absPath);
+  } catch (e) {
+    try { fs.unlinkSync(tmp); } catch { /* best-effort cleanup */ }
+    throw e;
+  }
+}
+
 /** @deprecated Prefer attempt-scoped reports under the interview folder. */
 export function reportExistsForInterviewFile(fsPath: string): boolean {
   try {
@@ -75,14 +94,14 @@ export function reportExistsForInterviewFile(fsPath: string): boolean {
 export function writeInterviewReportAtPath(absPath: string, data: LcInterviewReportFileV1): void {
   const dir = path.dirname(absPath);
   fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(absPath, JSON.stringify(data, null, 2), "utf-8");
+  atomicWriteJsonSync(absPath, data);
 }
 
 /** Legacy: write under ~/.lcex using MD5 of interview file path. */
 export function writeInterviewReportFile(data: LcInterviewReportFileV1): void {
   ensureLcexDir();
   const p = getReportPathForInterviewFile(data.sourceLcInterviewPath);
-  fs.writeFileSync(p, JSON.stringify(data, null, 2), "utf-8");
+  atomicWriteJsonSync(p, data);
 }
 
 export function readInterviewReportFile(reportPath: string): LcInterviewReportFileV1 | undefined {

@@ -204,12 +204,19 @@ export class ProblemTimer {
   private postToWebview(titleSlug: string, elapsed: number, paused: boolean, isActive: boolean): void {
     const reg = this.panels.get(titleSlug);
     if (!reg?.panel.webview) return;
-    reg.panel.webview.postMessage({
-      event: "timerUpdate",
-      elapsed,
-      paused,
-      isActive,
-    });
+    try {
+      void reg.panel.webview.postMessage({
+        event: "timerUpdate",
+        elapsed,
+        paused,
+        isActive,
+      });
+    } catch {
+      // Panel was disposed between the lookup and the post; drop the registration
+      // so subsequent ticks don't keep retrying. This happens in practice when
+      // VS Code reloads windows mid-tick.
+      this.panels.delete(titleSlug);
+    }
   }
 
   private broadcastToAllPanels(activeSlug: string | null): void {

@@ -209,7 +209,7 @@ export function parseTrace(stderr: string): { frames: TraceFrame[]; truncated: b
       /* skip malformed line */
     }
   }
-  const doneMatch = /__TRACE_DONE__(\{.*\})/m.exec(stderr);
+  const doneMatch = /__TRACE_DONE__(\{.*\})\s*$/m.exec(stderr);
   let truncated = false;
   if (doneMatch) {
     try {

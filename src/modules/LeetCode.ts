@@ -3,6 +3,26 @@ import * as Logger from "./Logger";
 
 const GRAPHQL_URL = "https://leetcode.com/graphql/";
 const REST_BASE = "https://leetcode.com";
+const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
+
+/**
+ * fetch() wrapper that aborts after `timeoutMs`. Lifts hung connections
+ * out of the UI loop — without this, a stalled LeetCode endpoint will
+ * pin a webview/sidebar load forever.
+ */
+async function fetchWithTimeout(
+  input: string,
+  init: RequestInit = {},
+  timeoutMs: number = DEFAULT_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await globalThis.fetch(input, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 const FETCH_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
@@ -61,6 +81,8 @@ export interface ProblemListItem {
   titleSlug: string;
   title: string;
   difficulty: string;
+  /** LeetCode topic tag slugs (e.g. "two-pointers", "dynamic-programming"). Best-effort: missing on internal provider. */
+  topicTags?: string[];
 }
 
 export interface DailyChallengeEntry {
@@ -214,7 +236,7 @@ function getCsrfFromCookie(cookie: string): string | undefined {
 /** Fetches csrftoken by GET leetcode.com and reading Set-Cookie. */
 async function fetchCsrfToken(cookieHeader: string): Promise<string | undefined> {
   try {
-    const res = await fetch("https://leetcode.com/", {
+    const res = await fetchWithTimeout("https://leetcode.com/", {
       method: "GET",
       headers: {
         ...FETCH_HEADERS,
@@ -278,7 +300,7 @@ export class LeetCodeProvider implements IProblemProvider {
 
   /** Returns the daily coding challenge question titleSlug, or null on failure. */
   async questionOfToday(): Promise<string | null> {
-    const res = await fetch(GRAPHQL_URL, {
+    const res = await fetchWithTimeout(GRAPHQL_URL, {
       method: "POST",
       headers: FETCH_HEADERS,
       body: JSON.stringify({
@@ -304,7 +326,7 @@ export class LeetCodeProvider implements IProblemProvider {
 
   /** Returns daily challenges for a given year and month (one API call per month). */
   async getDailyChallengeList(year: number, month: number): Promise<DailyChallengeEntry[]> {
-    const res = await fetch(GRAPHQL_URL, {
+    const res = await fetchWithTimeout(GRAPHQL_URL, {
       method: "POST",
       headers: FETCH_HEADERS,
       body: JSON.stringify({
@@ -362,7 +384,7 @@ export class LeetCodeProvider implements IProblemProvider {
 
   /** Returns ordered titleSlugs for a study plan (e.g. top-interview-150). */
   async getStudyPlanQuestionSlugs(planSlug: string): Promise<string[]> {
-    const res = await fetch(GRAPHQL_URL, {
+    const res = await fetchWithTimeout(GRAPHQL_URL, {
       method: "POST",
       headers: FETCH_HEADERS,
       body: JSON.stringify({
@@ -397,7 +419,7 @@ export class LeetCodeProvider implements IProblemProvider {
   }
 
   async getProblemList(skip: number, limit: number): Promise<ProblemListItem[]> {
-    const listRes = await fetch(GRAPHQL_URL, {
+    const listRes = await fetchWithTimeout(GRAPHQL_URL, {
       method: "POST",
       headers: FETCH_HEADERS,
       body: JSON.stringify({
@@ -406,7 +428,7 @@ export class LeetCodeProvider implements IProblemProvider {
         query: `
           query problemsetQuestionListV2($categorySlug: String, $limit: Int, $skip: Int) {
             problemsetQuestionListV2(categorySlug: $categorySlug, limit: $limit, skip: $skip) {
-              questions { questionFrontendId titleSlug title difficulty }
+              questions { questionFrontendId titleSlug title difficulty topicTags { slug } }
             }
           }
         `,
@@ -423,6 +445,7 @@ export class LeetCodeProvider implements IProblemProvider {
             titleSlug: string;
             title?: string;
             difficulty?: string;
+            topicTags?: Array<{ slug?: string }>;
           }>;
         };
       };
@@ -438,12 +461,15 @@ export class LeetCodeProvider implements IProblemProvider {
       titleSlug: q.titleSlug,
       title: q.title ?? q.titleSlug,
       difficulty: q.difficulty ?? "Unknown",
+      topicTags: Array.isArray(q.topicTags)
+        ? q.topicTags.map((t) => (typeof t?.slug === "string" ? t.slug : "")).filter(Boolean)
+        : undefined,
     }));
   }
 
   /** Returns grouped problem list for a study plan (e.g. top-interview-150), ordered by API. */
   async getStudyPlanProblemListGrouped(planSlug: string): Promise<StudyPlanGroup[]> {
-    const res = await fetch(GRAPHQL_URL, {
+    const res = await fetchWithTimeout(GRAPHQL_URL, {
       method: "POST",
       headers: FETCH_HEADERS,
       body: JSON.stringify({
@@ -507,7 +533,7 @@ export class LeetCodeProvider implements IProblemProvider {
 
   /** Upcoming weekly + biweekly contests (metadata only, no questions). */
   async getUpcomingContests(): Promise<ContestSummary[]> {
-    const res = await fetch(GRAPHQL_URL, {
+    const res = await fetchWithTimeout(GRAPHQL_URL, {
       method: "POST",
       headers: { ...FETCH_HEADERS, Referer: "https://leetcode.com/contest/" },
       body: JSON.stringify({
@@ -558,7 +584,7 @@ export class LeetCodeProvider implements IProblemProvider {
 
   /** Past contests, paginated. Returns up to `limit` contests starting at `skip`. */
   async getPastContests(skip: number, limit: number): Promise<{ totalNum: number; contests: ContestSummary[] }> {
-    const res = await fetch(GRAPHQL_URL, {
+    const res = await fetchWithTimeout(GRAPHQL_URL, {
       method: "POST",
       headers: { ...FETCH_HEADERS, Referer: "https://leetcode.com/contest/" },
       body: JSON.stringify({
@@ -618,7 +644,7 @@ export class LeetCodeProvider implements IProblemProvider {
 
   /** Fetches the problem list for a (past) contest. Caller must enforce that the contest has ended. */
   async getContestQuestionList(contestSlug: string): Promise<ContestProblemItem[]> {
-    const res = await fetch(GRAPHQL_URL, {
+    const res = await fetchWithTimeout(GRAPHQL_URL, {
       method: "POST",
       headers: { ...FETCH_HEADERS, Referer: `https://leetcode.com/contest/${contestSlug}/` },
       body: JSON.stringify({
@@ -693,7 +719,7 @@ export class LeetCodeProvider implements IProblemProvider {
     const all: ProblemListItem[] = [];
     const headers = await favoriteListRequestHeaders(favoriteSlug, cookie);
     for (let skip = 0; ; skip += PROBLEMSET_PAGE_SIZE) {
-      const res = await fetch(GRAPHQL_URL, {
+      const res = await fetchWithTimeout(GRAPHQL_URL, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -787,7 +813,7 @@ export class LeetCodeProvider implements IProblemProvider {
     };
     let username: string | undefined;
     for (const body of [userStatusQuery, globalDataQuery]) {
-      const userRes = await fetch(GRAPHQL_URL, {
+      const userRes = await fetchWithTimeout(GRAPHQL_URL, {
         method: "POST",
         headers,
         body: JSON.stringify(body),
@@ -827,7 +853,7 @@ export class LeetCodeProvider implements IProblemProvider {
       return null;
     }
 
-    const profileRes = await fetch(GRAPHQL_URL, {
+    const profileRes = await fetchWithTimeout(GRAPHQL_URL, {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -892,7 +918,7 @@ export class LeetCodeProvider implements IProblemProvider {
   async getQuestionDifficultyOnly(idOrSlug: string): Promise<string | null> {
     const slug = await this.toTitleSlug(idOrSlug);
     if (!slug) return null;
-    const res = await fetch(GRAPHQL_URL, {
+    const res = await fetchWithTimeout(GRAPHQL_URL, {
       method: "POST",
       headers: FETCH_HEADERS,
       body: JSON.stringify({
@@ -917,7 +943,7 @@ export class LeetCodeProvider implements IProblemProvider {
   async getProblem(idOrSlug: string): Promise<Problem | null> {
     const slug = await this.toTitleSlug(idOrSlug);
     if (!slug) return null;
-    const res = await fetch(GRAPHQL_URL, {
+    const res = await fetchWithTimeout(GRAPHQL_URL, {
       method: "POST",
       headers: FETCH_HEADERS,
       body: JSON.stringify({
@@ -971,23 +997,48 @@ export class LeetCodeProvider implements IProblemProvider {
 
   private async fetchSlugById(id: string): Promise<string | null> {
     const limit = 100;
-    for (let skip = 0; skip < 3000; skip += limit) {
-      const listRes = await fetch(GRAPHQL_URL, {
-        method: "POST",
-        headers: FETCH_HEADERS,
-        body: JSON.stringify({
-          operationName: "problemsetQuestionListV2",
-          variables: { categorySlug: "", skip, limit },
-          query: `
-            query problemsetQuestionListV2($categorySlug: String, $limit: Int, $skip: Int) {
-              problemsetQuestionListV2(categorySlug: $categorySlug, limit: $limit, skip: $skip) {
-                questions { questionFrontendId titleSlug }
+    const maxSkip = 3000;
+    let backoffMs = 750;
+    let consecutiveRetries = 0;
+    const maxConsecutiveRetries = 3;
+    for (let skip = 0; skip < maxSkip; ) {
+      let listRes: Response;
+      try {
+        listRes = await fetchWithTimeout(GRAPHQL_URL, {
+          method: "POST",
+          headers: FETCH_HEADERS,
+          body: JSON.stringify({
+            operationName: "problemsetQuestionListV2",
+            variables: { categorySlug: "", skip, limit },
+            query: `
+              query problemsetQuestionListV2($categorySlug: String, $limit: Int, $skip: Int) {
+                problemsetQuestionListV2(categorySlug: $categorySlug, limit: $limit, skip: $skip) {
+                  questions { questionFrontendId titleSlug }
+                }
               }
-            }
-          `,
-        }),
-      });
-      if (!listRes.ok) return null;
+            `,
+          }),
+        });
+      } catch (e) {
+        Logger.logError(`fetchSlugById network error at skip=${skip}`, e);
+        return null;
+      }
+      if (listRes.status === 429 || listRes.status === 503) {
+        if (consecutiveRetries >= maxConsecutiveRetries) {
+          Logger.logError(`fetchSlugById giving up at skip=${skip} after ${consecutiveRetries} retries (status ${listRes.status})`);
+          return null;
+        }
+        consecutiveRetries += 1;
+        const wait = backoffMs;
+        backoffMs = Math.min(backoffMs * 2, 8000);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      consecutiveRetries = 0;
+      if (!listRes.ok) {
+        Logger.logError(`fetchSlugById HTTP ${listRes.status} at skip=${skip}`);
+        return null;
+      }
       const listContentType = listRes.headers.get("content-type") ?? "";
       if (!listContentType.includes("application/json")) return null;
       let listJson: {
@@ -1006,6 +1057,7 @@ export class LeetCodeProvider implements IProblemProvider {
       const found = questions.find((q) => String(q.questionFrontendId) === id);
       if (found) return found.titleSlug;
       if (questions.length < limit) break;
+      skip += limit;
     }
     return null;
   }
@@ -1026,7 +1078,7 @@ export class LeetCodeProvider implements IProblemProvider {
     const input = dataInput !== undefined && dataInput !== null ? dataInput : (question.sampleTestCase ?? "");
     const headers = await authHeaders(cookie);
     const url = `${REST_BASE}/problems/${encodeURIComponent(titleSlug)}/interpret_solution/`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "POST",
       headers: { ...headers, Referer: `https://leetcode.com/problems/${titleSlug}/` },
       body: JSON.stringify({
@@ -1075,7 +1127,7 @@ export class LeetCodeProvider implements IProblemProvider {
     }
     const headers = await authHeaders(cookie);
     const url = `${REST_BASE}/problems/${encodeURIComponent(slug)}/submit/`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "POST",
       headers: { ...headers, Referer: `https://leetcode.com/problems/${slug}/` },
       body: JSON.stringify({
@@ -1110,7 +1162,7 @@ export class LeetCodeProvider implements IProblemProvider {
   ): Promise<{ status: number; runOutput?: string; compileError?: string } | null> {
     const headers = await authHeaders(cookie);
     const url = `${REST_BASE}/submissions/detail/${encodeURIComponent(interpretId)}/check/`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "GET",
       headers: { ...headers, Referer: "https://leetcode.com/problems/" },
     });
@@ -1155,7 +1207,7 @@ export class LeetCodeProvider implements IProblemProvider {
   } | null> {
     const headers = await authHeaders(cookie);
     const url = `${REST_BASE}/submissions/detail/${submissionId}/check/`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: "GET",
       headers: { ...headers, Referer: "https://leetcode.com/problems/" },
     });

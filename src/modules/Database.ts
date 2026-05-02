@@ -24,6 +24,20 @@ export async function clearSession(context: vscode.ExtensionContext): Promise<vo
   await context.globalState.update(SESSION_KEY, undefined);
 }
 
+/**
+ * Treats user-supplied `defaultDirectory` as untrusted (sourced from the
+ * workspace `.leetcode` JSON or settings.json — both editable by anyone with
+ * file access). Rejects null bytes, normalizes, and falls back to the base
+ * directory if traversal escapes the workspace root.
+ */
+function sanitizeUserPath(raw: string): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.includes("\0")) return null;
+  return trimmed;
+}
+
 export function getTargetDir(uri: vscode.Uri | undefined): string {
   const folders = vscode.workspace.workspaceFolders ?? [];
   const config = getEffectiveConfig(folders).defaultDirectory ?? ".";
@@ -40,8 +54,18 @@ export function getTargetDir(uri: vscode.Uri | undefined): string {
     }
   }
   if (config === "." || !config) return base;
-  if (path.isAbsolute(config)) return config;
-  return path.resolve(workspaceRoot ?? base, config);
+  const safe = sanitizeUserPath(config);
+  if (!safe) return base;
+  if (path.isAbsolute(safe)) return safe;
+  const resolved = path.resolve(workspaceRoot ?? base, safe);
+  if (workspaceRoot) {
+    const wsResolved = path.resolve(workspaceRoot);
+    const rel = path.relative(wsResolved, resolved);
+    if (rel.startsWith("..") || path.isAbsolute(rel)) {
+      return base;
+    }
+  }
+  return resolved;
 }
 
 export function getFileName(problemId: string, titleSlug: string): string {

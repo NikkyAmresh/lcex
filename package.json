@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
   "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -218,6 +218,16 @@
       {
         "command": "leetcode-practice.openRandomProblem",
         "title": "LeetCode: Open Random Problem"
+      },
+      {
+        "command": "leetcode-practice.practicePattern",
+        "title": "LeetCode: Practice Weakest Pattern",
+        "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.showPatternMasterySummary",
+        "title": "LeetCode: Pattern Mastery Summary",
+        "category": "LeetCode"
       },
       {
         "command": "leetcode-practice.viewStats",
@@ -491,6 +501,11 @@
           "id": "leetcode-practice.companiesView",
           "name": "Companies",
           "when": "leetcodePractice.hasMarker && leetcodePractice.showCompanies"
+        },
+        {
+          "id": "leetcode-practice.patternMasteryView",
+          "name": "Pattern Mastery",
+          "when": "leetcodePractice.hasMarker"
         }
       ]
     },

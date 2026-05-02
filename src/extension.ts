@@ -25,6 +25,13 @@ import {
   CompaniesTreeProvider,
   CompanyProblemTreeItem,
 } from "./modules/CompaniesProvider";
+import { PatternMasteryTreeProvider } from "./modules/PatternMasteryProvider";
+import {
+  pickWeakestPattern,
+  recordSolveForPatterns,
+  summarizePatternMastery,
+} from "./modules/PatternMastery";
+import { detectPatterns, getPatternMeta, type PatternId } from "./modules/PatternDetector";
 import type { OpenProblemWebviewOpts, ProblemPanelState } from "./modules/ProblemView";
 import {
   openProblemWebview,
@@ -795,15 +802,20 @@ function startInterviewTick(context: vscode.ExtensionContext): void {
     if (sess.endsAt <= Date.now()) {
       stopInterviewTick();
       interviewStatusBar?.hide();
-      void endInterviewSession(context.globalState, "timer").then(async (result) => {
-        notifyAllProblemPanelsUiMode(context);
-        updateGamificationStatusBars(context);
-        void refreshInterviewHubIfOpen(context, getProvider);
-        if (result) {
-          await exitFocusModeUi(context);
+      void (async () => {
+        try {
+          const result = await endInterviewSession(context.globalState, "timer");
+          notifyAllProblemPanelsUiMode(context);
+          updateGamificationStatusBars(context);
+          void refreshInterviewHubIfOpen(context, getProvider);
+          if (result) {
+            await exitFocusModeUi(context);
+          }
+          await showInterviewSessionEnded(context, result);
+        } catch (e) {
+          Logger.logError("interview-tick: failed to end session on timer expiry", e);
         }
-        await showInterviewSessionEnded(context, result);
-      });
+      })();
       return;
     }
     const rm = remainingMs(sess);
@@ -880,15 +892,20 @@ function restoreInterviewOnActivate(context: vscode.ExtensionContext): void {
     return;
   }
   if (s.endsAt <= Date.now()) {
-    void endInterviewSession(context.globalState, "timer").then(async (result) => {
-      notifyAllProblemPanelsUiMode(context);
-      updateGamificationStatusBars(context);
-      void refreshInterviewHubIfOpen(context, getProvider);
-      if (result) {
-        await exitFocusModeUi(context);
+    void (async () => {
+      try {
+        const result = await endInterviewSession(context.globalState, "timer");
+        notifyAllProblemPanelsUiMode(context);
+        updateGamificationStatusBars(context);
+        void refreshInterviewHubIfOpen(context, getProvider);
+        if (result) {
+          await exitFocusModeUi(context);
+        }
+        await showInterviewSessionEnded(context, result);
+      } catch (e) {
+        Logger.logError("restoreInterviewOnActivate: failed to end session on timer expiry", e);
       }
-      await showInterviewSessionEnded(context, result);
-    });
+    })();
     return;
   }
   void setInterviewContext(true);
@@ -921,11 +938,68 @@ async function resolveProblemContextForExplain(
 
 function handleProblemSolved(context: vscode.ExtensionContext, titleSlug: string): void {
   void (async () => {
-    const diff = getCachedProblemDifficulty(titleSlug);
-    await awardXpForFirstSolve(context.globalState, titleSlug, diff);
-    await recordInterviewSolve(context.globalState, titleSlug);
-    updateGamificationStatusBars(context);
+    try {
+      const diff = getCachedProblemDifficulty(titleSlug);
+      await awardXpForFirstSolve(context.globalState, titleSlug, diff);
+      await recordInterviewSolve(context.globalState, titleSlug);
+      updateGamificationStatusBars(context);
+      await detectAndRecordPatternMastery(context, titleSlug);
+    } catch (e) {
+      Logger.logError("handleProblemSolved failed", e);
+    }
   })();
+}
+
+/**
+ * Reads the active solution source for `titleSlug`, runs the rule-based
+ * pattern detector, and credits the user's pattern-mastery state. Best-effort:
+ * if no solution file is open or the file is empty, no patterns are recorded
+ * (we do not penalise a "mark solved" with no source).
+ */
+async function detectAndRecordPatternMastery(
+  context: vscode.ExtensionContext,
+  titleSlug: string,
+): Promise<void> {
+  let source: string | undefined;
+  let lang: ReturnType<typeof languageFromFileExtension> | undefined;
+  try {
+    const editor = vscode.window.activeTextEditor;
+    if (editor) {
+      const ext = path.extname(editor.document.fileName);
+      const detected = languageFromFileExtension(ext);
+      if (detected) {
+        source = editor.document.getText();
+        lang = detected;
+      }
+    }
+    if (!source) {
+      const visibleEditors = vscode.window.visibleTextEditors;
+      for (const ed of visibleEditors) {
+        const ext = path.extname(ed.document.fileName);
+        const detected = languageFromFileExtension(ext);
+        if (detected) {
+          source = ed.document.getText();
+          lang = detected;
+          break;
+        }
+      }
+    }
+  } catch (e) {
+    Logger.logError("pattern-mastery: could not read active solution source", e);
+    return;
+  }
+  if (!source || !lang) return;
+  const detection = detectPatterns(source, lang);
+  if (detection.matched.length === 0) return;
+  try {
+    const result = await recordSolveForPatterns(context.globalState, titleSlug, detection.matched);
+    if (result.newPatterns.length > 0) {
+      const labels = result.newPatterns.map((p) => getPatternMeta(p).label).join(", ");
+      vscode.window.setStatusBarMessage(`lcex: pattern mastery +${result.newPatterns.length} (${labels})`, 6000);
+    }
+  } catch (e) {
+    Logger.logError("pattern-mastery: failed to record solve", e);
+  }
 }
 
 async function applyLeetcodeThemeIfNeeded(): Promise<void> {
@@ -1074,10 +1148,12 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   updateAgentStatusBarVisibility();
   updateGamificationStatusBars(context);
-  void grantDailyLoginXpIfNeeded(context.globalState).then((granted) => {
-    if (granted) trackAnalytics("daily_login", "auto", "daily_login");
-    updateGamificationStatusBars(context);
-  });
+  void grantDailyLoginXpIfNeeded(context.globalState)
+    .then((granted) => {
+      if (granted) trackAnalytics("daily_login", "auto", "daily_login");
+      updateGamificationStatusBars(context);
+    })
+    .catch((e) => Logger.logError("grantDailyLoginXpIfNeeded failed", e));
   restoreInterviewOnActivate(context);
 
   context.subscriptions.push(registerProblemPlainTextDocumentProvider(context, getProvider));
@@ -2972,6 +3048,12 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
   });
   context.subscriptions.push(companiesView, { dispose: () => companiesProvider.dispose() });
 
+  const patternMasteryProvider = new PatternMasteryTreeProvider(globalState);
+  const patternMasteryView = vscode.window.createTreeView("leetcode-practice.patternMasteryView", {
+    treeDataProvider: patternMasteryProvider,
+  });
+  context.subscriptions.push(patternMasteryView);
+
   function refreshAllProblemViews(): void {
     problemsProvider.invalidate();
     studyPlanProvider.invalidate();
@@ -2979,6 +3061,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
     qotdProvider.invalidate();
     contestsProvider.invalidate();
     companiesProvider.invalidate();
+    patternMasteryProvider.refresh();
   }
   webviewOptsHolder.current = {
     onMarkSolved: (titleSlug) => {
@@ -3318,6 +3401,91 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const item = pool[Math.floor(Math.random() * pool.length)];
       await openProblemWebview(context, item, getProvider, getProblemStatus, getWebviewOpts());
     })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "leetcode-practice.practicePattern",
+      async (patternId?: PatternId, leetcodeTag?: string) => {
+        trackAnalytics("command_invoked", "command_palette", "practice_pattern");
+        let target: PatternId | undefined = patternId;
+        let tag: string | undefined = leetcodeTag;
+        if (!target) {
+          const weakest = pickWeakestPattern(globalState);
+          if (!weakest) {
+            void vscode.window.showInformationMessage("No mastery data yet — solve a few problems first.");
+            return;
+          }
+          target = weakest.patternId;
+          tag = weakest.leetcodeTag;
+        }
+        const meta = getPatternMeta(target);
+        const list = await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: `Finding ${meta.label} problems...` },
+          () => problemsProvider.getProblemList()
+        );
+        const tagLower = (tag ?? meta.leetcodeTag ?? "").toLowerCase();
+        const candidates = tagLower
+          ? list.filter((p) =>
+              Array.isArray(p.topicTags) &&
+              p.topicTags.some(
+                (t) => typeof t === "string" && t.toLowerCase().includes(tagLower)
+              )
+            )
+          : [];
+        const unsolved = candidates.filter(
+          (p) => getStoredStatus(globalState, p.titleSlug) !== "solved"
+        );
+        const pool = unsolved.length > 0 ? unsolved : candidates;
+        if (pool.length === 0) {
+          void vscode.window.showInformationMessage(
+            `No tagged problems found for ${meta.label}. Try /openProblem and pick one manually.`,
+          );
+          return;
+        }
+        const pick = pool[Math.floor(Math.random() * pool.length)];
+        await openProblemWebview(context, pick, getProvider, getProblemStatus, getWebviewOpts());
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.showPatternMasterySummary", async () => {
+      trackAnalytics("command_invoked", "command_palette", "pattern_mastery_summary");
+      const summary = summarizePatternMastery(globalState);
+      const total = summary.reduce((acc, s) => acc + s.solvedCount, 0);
+      const strong = summary.filter((s) => s.rank === "strong").length;
+      const practiced = summary.filter((s) => s.rank === "practiced").length;
+      const rusty = summary.filter((s) => s.rank === "rusty").length;
+      const untouched = summary.filter((s) => s.rank === "untouched").length;
+      const items = summary.map<vscode.QuickPickItem>((s) => ({
+        label: `${s.icon}  ${s.label}`,
+        description:
+          s.solvedCount === 0
+            ? "untouched"
+            : `${s.solvedCount} solved · mastery ${(s.masteryScore * 100).toFixed(0)}%`,
+        detail: s.blurb,
+      }));
+      const header: vscode.QuickPickItem = {
+        label: `Mastery: 🔥${strong} ·→${practiced} ··${rusty} ·✗${untouched}`,
+        description: `${total} pattern-credits across ${summary.length} patterns`,
+        kind: vscode.QuickPickItemKind.Separator,
+      };
+      const pick = await vscode.window.showQuickPick([header, ...items], {
+        placeHolder: "Pick a pattern to practice (or Esc to dismiss)",
+        matchOnDescription: true,
+        matchOnDetail: true,
+      });
+      if (!pick || pick.kind === vscode.QuickPickItemKind.Separator) return;
+      const matched = summary.find((s) => `${s.icon}  ${s.label}` === pick.label);
+      if (matched) {
+        await vscode.commands.executeCommand(
+          "leetcode-practice.practicePattern",
+          matched.patternId,
+          matched.leetcodeTag,
+        );
+      }
+    }),
   );
 
   context.subscriptions.push(

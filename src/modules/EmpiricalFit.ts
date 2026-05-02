@@ -167,13 +167,14 @@ export function fitCurve(measurements: FitMeasurement[]): { best: ComplexityClas
 function parseOutcome(stdout: string, stderr: string): { measurements: FitMeasurement[]; err?: string } {
   const errMatch = /__LCEX_FIT_ERR__(.+)/m.exec(stderr) || /__LCEX_FIT_ERR__(.+)/m.exec(stdout);
   if (errMatch) return { measurements: [], err: errMatch[1].trim() };
-  const m = /__LCEX_FIT__(\[.*\])/m.exec(stdout);
+  const m = /__LCEX_FIT__(\[.*\])\s*$/m.exec(stdout);
   if (!m) return { measurements: [], err: `no fit marker (stderr: ${stderr.trim().slice(0, 200)})` };
   try {
     const arr = JSON.parse(m[1]) as FitMeasurement[];
+    if (!Array.isArray(arr)) return { measurements: [], err: "fit marker did not parse to an array" };
     return { measurements: arr };
-  } catch {
-    return { measurements: [], err: "failed to parse fit output" };
+  } catch (e) {
+    return { measurements: [], err: `failed to parse fit output: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 

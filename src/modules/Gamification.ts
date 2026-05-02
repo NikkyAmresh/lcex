@@ -77,10 +77,21 @@ export function getTotalXp(memento: vscode.Memento): number {
   return typeof n === "number" && Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
+/** Maximum daily goal value. Anything above this is treated as corrupt persisted state. */
+const DAILY_GOAL_MAX = 1000;
+
 export function getDailyGoal(memento: vscode.Memento): DailyGoal | undefined {
   const g = memento.get<DailyGoal>(DAILY_GOAL_KEY);
   if (!g || (g.mode !== "problems" && g.mode !== "minutes")) return undefined;
-  if (typeof g.target !== "number" || g.target <= 0) return undefined;
+  if (
+    typeof g.target !== "number" ||
+    !Number.isFinite(g.target) ||
+    !Number.isInteger(g.target) ||
+    g.target <= 0 ||
+    g.target > DAILY_GOAL_MAX
+  ) {
+    return undefined;
+  }
   return g;
 }
 
@@ -188,7 +199,19 @@ export async function setDailyGoal(memento: vscode.Memento, goal: DailyGoal | un
     await memento.update(DAILY_GOAL_KEY, undefined);
     return;
   }
-  await memento.update(DAILY_GOAL_KEY, goal);
+  if (goal.mode !== "problems" && goal.mode !== "minutes") {
+    throw new Error(`invalid daily goal mode: ${String(goal.mode)}`);
+  }
+  if (
+    typeof goal.target !== "number" ||
+    !Number.isFinite(goal.target) ||
+    !Number.isInteger(goal.target) ||
+    goal.target <= 0 ||
+    goal.target > DAILY_GOAL_MAX
+  ) {
+    throw new Error(`invalid daily goal target: ${String(goal.target)}`);
+  }
+  await memento.update(DAILY_GOAL_KEY, { mode: goal.mode, target: goal.target });
 }
 
 export function dailyGoalProgressPercent(current: number, target: number): number {

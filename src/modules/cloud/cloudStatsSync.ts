@@ -45,6 +45,17 @@ export const CLOUD_SYNC_KEYS: readonly string[] = [
 const SYNC_KEY_SET = new Set(CLOUD_SYNC_KEYS);
 
 export const PUSH_INTERVAL_MS = 10 * 60 * 1000;
+const FIRESTORE_TIMEOUT_MS = 15_000;
+
+async function firestoreFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), FIRESTORE_TIMEOUT_MS);
+  try {
+    return await globalThis.fetch(input, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
 
 const LEETCODE_USERNAME_SETTING = "leetcodeUsername";
 
@@ -182,15 +193,27 @@ export async function fetchCloudStatsDocument(
   if (!idToken) return null;
 
   const url = statsDocUrl(identity.uid, id);
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${idToken}` },
-  });
+  let res: Response;
+  try {
+    res = await firestoreFetch(url, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+  } catch (e) {
+    Logger.logError("fetchCloudStats network error", e);
+    return null;
+  }
   if (res.status === 404) return null;
   if (!res.ok) {
     Logger.logError(`fetchCloudStats failed: ${res.status}`, await res.text().catch(() => ""));
     return null;
   }
-  const json = (await res.json()) as { fields?: Record<string, FsValue> };
+  let json: { fields?: Record<string, FsValue> };
+  try {
+    json = (await res.json()) as { fields?: Record<string, FsValue> };
+  } catch (e) {
+    Logger.logError("fetchCloudStats JSON parse error", e);
+    return null;
+  }
   if (!json.fields) return null;
   const flat = fsFieldsToJs(json.fields);
   const schemaVersion = flat.schemaVersion;
@@ -257,7 +280,7 @@ export async function pushStatsToCloud(
 
   const url = statsDocUrl(identity.uid, username);
   try {
-    const res = await fetch(url, {
+    const res = await firestoreFetch(url, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${idToken}`,
@@ -279,13 +302,24 @@ export async function pushStatsToCloud(
   }
 }
 
+/**
+ * Overwrites synced keys from the cloud document. Sequenced via a per-process
+ * promise chain so that two concurrent merges (e.g., manual pull + auto-pull
+ * landing in the same tick) do not interleave their await points.
+ */
+let mergeChain: Promise<void> = Promise.resolve();
+
 /** Overwrites synced keys from the cloud document. Does not clear keys missing from `doc.data`. */
 export async function applyCloudStatsMerge(
   globalState: vscode.Memento,
   doc: CloudStatsDocument
 ): Promise<void> {
-  for (const [key, value] of Object.entries(doc.data)) {
-    if (!SYNC_KEY_SET.has(key)) continue;
-    await globalState.update(key, value);
-  }
+  const next = mergeChain.then(async () => {
+    for (const [key, value] of Object.entries(doc.data)) {
+      if (!SYNC_KEY_SET.has(key)) continue;
+      await globalState.update(key, value);
+    }
+  });
+  mergeChain = next.catch(() => undefined);
+  return next;
 }
