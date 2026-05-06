@@ -2,6 +2,43 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.5.1] — Companion Chrome extension
+
+### Companion Chrome extension (`chrome-extension/`, v1.1.0)
+
+Shipped separately from the VSIX; install from the `chrome-extension` folder if you use it.
+
+- **DSA Portal (Brain) button** on LeetCode problem links opens `https://dsa-portal.algofunds.in/question/{slug}` in a new tab (alongside the existing Cursor deep-link control).
+- **Cursor control** label shortened to `</>` so both buttons fit more cleanly in tight layouts.
+- **Insertion logic** updated so the Brain button is added even when the Cursor control already exists (stable pairing per link).
+
+## [0.5.0] — Pattern Mastery Map + reliability hardening
+
+### Added
+
+- **Pattern Mastery Map.** Rule-based detector for ~20 canonical interview patterns (e.g. two pointers, sliding window, BFS/DFS, DP top-down/bottom-up, backtracking, heap, trie, union-find, topological sort, monotonic stack, bit tricks, hash map, linked list, prefix sums, tree traversals). Each pattern keeps mastery state with **21-day half-life decay**.
+- **Pattern Mastery sidebar.** Rank glyphs (strong → weak), a compact mastery bar, and a **suggested next** highlight; topic tags from GraphQL are used to relate patterns to problems.
+- **Auto-credit on solve.** Completing a problem credits the active solution toward the detected patterns.
+- **Commands:** `LeetCode: Practice Weakest Pattern`, `LeetCode: Pattern Mastery Summary`.
+- **Tests:** `test/pattern-detector.test.ts` exercises major detectors and comment-stripping invariants.
+
+### Changed / fixed
+
+- **Safer file I/O:** Bug review store and `.lcireport` snapshots use atomic temp + rename writes.
+- **Network resilience:** 15s timeouts on LeetCode GraphQL/HTTP calls; slug-by-ID fetch retries with backoff on 429/503 and clearer error logging.
+- **Cloud sync:** Timeouts, guarded JSON parsing, and serialized merge handling in stats sync.
+- **Path safety:** Target directory resolution rejects null bytes and unsafe workspace traversal.
+- **Internal API provider:** Request timeout + JSON parse guards.
+- **Example runner:** Stderr is surfaced together with partial stdout when runs fail.
+- **Harness markers** (fuzzer, empirical fit, recursion visualizer): end-of-line–anchored markers; parse failures are reported instead of swallowed.
+- **Webviews / timers:** Messages to disposed panels are handled safely; listener cleanup tightened.
+- **Interview restore / tick:** Async flows use proper `async`/`await` with `try/catch` instead of floating `.then` chains.
+- **Gamification:** Daily goal inputs validated as positive finite integers capped at 1000.
+
+### Notes
+
+- Deferred low-priority items are tracked in `docs/known-issues.md`.
+
 ## [0.4.1] — Iterative traversal visualizer
 
 ### Added

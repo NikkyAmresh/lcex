@@ -1,6 +1,8 @@
 (() => {
   const CURSOR_URI = "cursor://NikkyAmresh.leetcode-practice/open/";
+  const BRAIN_URL = "https://dsa-portal.algofunds.in/question/";
   const DATA_ATTR = "data-lcex-cursor-btn";
+  const BRAIN_DATA_ATTR = "data-lcex-brain-btn";
 
   function extractSlug(url) {
     if (!url) return null;
@@ -22,7 +24,7 @@
     const btn = document.createElement("button");
     btn.type = "button";
     btn.title = "Open in Cursor (LeetCode Practice)";
-    btn.textContent = "Cursor";
+    btn.textContent = "</>";
     btn.setAttribute(DATA_ATTR, "true");
     btn.style.cssText = `
       font-size: 11px;
@@ -49,17 +51,54 @@
     return btn;
   }
 
+  function createBrainButton(slug) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.title = "Open in DSA Portal (Brain)";
+    btn.textContent = "🧠";
+    btn.setAttribute(BRAIN_DATA_ATTR, "true");
+    btn.style.cssText = `
+      font-size: 11px;
+      padding: 2px 6px;
+      margin-left: 6px;
+      background: #2d1b4e;
+      color: #c39bff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      display: inline-block;
+      vertical-align: middle;
+    `;
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      window.open(BRAIN_URL + slug, "_blank", "noopener,noreferrer");
+    });
+    return btn;
+  }
+
   function addButtons() {
     document.querySelectorAll(`a[href*="/problems/"]`).forEach((link) => {
-      if (link.getAttribute(DATA_ATTR) === "true") return;
       const href = link.getAttribute("href") || link.href;
       if (!isProblemLink(href)) return;
       const slug = extractSlug(href);
       if (!slug) return;
-      const existing = link.parentElement?.querySelector(`[${DATA_ATTR}="true"]`);
-      if (existing) return;
-      const btn = createButton(slug);
-      link.parentElement?.insertBefore(btn, link.nextSibling);
+      const parent = link.parentElement;
+      if (!parent) return;
+
+      let anchor = link;
+      if (link.getAttribute(DATA_ATTR) !== "true" && !parent.querySelector(`[${DATA_ATTR}="true"]`)) {
+        const cursorBtn = createButton(slug);
+        parent.insertBefore(cursorBtn, anchor.nextSibling);
+        anchor = cursorBtn;
+      } else {
+        anchor = parent.querySelector(`[${DATA_ATTR}="true"]`) || link;
+      }
+
+      if (!parent.querySelector(`[${BRAIN_DATA_ATTR}="true"]`)) {
+        const brainBtn = createBrainButton(slug);
+        parent.insertBefore(brainBtn, anchor.nextSibling);
+      }
     });
   }
 

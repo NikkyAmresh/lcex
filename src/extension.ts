@@ -1259,11 +1259,11 @@ export function activate(context: vscode.ExtensionContext): void {
         const basePrompt =
           config.agentPromptHint?.trim() ||
           "Load **lcex-dsa-hint** and follow it. Nudge from the problem only—do not read or review my code. Each `coaching` value: one short line; no solution.";
-        const ctxPath = await writeHintLadderContext(args?.titleSlug);
-        const prompt = ctxPath
-          ? `${basePrompt}\n\nIf the **lcex-dsa-hint** skill supports it, load auto-detected user state from \`${ctxPath}\` (JSON: static complexity, problem-size budget, verdict, top hotspot) and tailor \`coaching.nextFocus\` to the verdict. Otherwise ignore.`
-          : basePrompt;
-        await openChatWithPrompt(prompt);
+        // const ctxPath = await writeHintLadderContext(args?.titleSlug);
+        // const prompt = ctxPath
+        //   ? `${basePrompt}\n\nIf the **lcex-dsa-hint** skill supports it, load auto-detected user state from \`${ctxPath}\` (JSON: static complexity, problem-size budget, verdict, top hotspot) and tailor \`coaching.nextFocus\` to the verdict. Otherwise ignore.`
+        //   : basePrompt;
+        await openChatWithPrompt(basePrompt);
       }
     )
   );
