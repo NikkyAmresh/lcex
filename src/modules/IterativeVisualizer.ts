@@ -216,6 +216,9 @@ export async function runIterativeTrace(opts: IterativeRunOptions): Promise<Recu
   if (opts.lang === "cpp") {
     return { ok: false, frames: [], truncated: false, message: "iterative visualizer doesn't support C++ yet" };
   }
+  if (opts.lang === "java") {
+    return { ok: false, frames: [], truncated: false, message: "iterative visualizer doesn't support Java yet" };
+  }
   const usesHelper = opts.lang === "python"
     ? /\blcex_trace\.track\s*\(|\blcexTrace\.track\s*\(/.test(opts.source)
     : /\blcexTrace\.track\s*\(/.test(opts.source);

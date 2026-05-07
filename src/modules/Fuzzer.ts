@@ -57,6 +57,7 @@ function findFunctionsPython(src: string): string[] {
 
 export function preflight(src: string, lang: SupportedLanguage): FuzzPreflight {
   if (lang === "cpp") return { ok: false, reason: "C++ fuzzer not supported in v1." };
+  if (lang === "java") return { ok: false, reason: "Java fuzzer not supported in v1." };
   const fns = lang === "python" ? findFunctionsPython(src) : findFunctionsJsLike(src);
   const hasBrute = fns.some((n) => n === "bruteForce" || n === "brute_force");
   const hasFuzzInputs = fns.some((n) => n === "fuzzInputs" || n === "fuzz_inputs");

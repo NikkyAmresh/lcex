@@ -12,7 +12,7 @@ export interface Problem {
   exampleTestCases?: string[];
 }
 
-export const SUPPORTED_LANGUAGES = ["typescript", "javascript", "python", "cpp"] as const;
+export const SUPPORTED_LANGUAGES = ["typescript", "javascript", "python", "cpp", "java"] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 
 export function isSupportedLanguage(value: string): value is SupportedLanguage {

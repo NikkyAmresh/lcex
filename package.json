@@ -1,8 +1,8 @@
 {
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
-  "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.5.1",
+  "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ / Java templates, run examples inline, track XP & streaks, and run timed mock interviews.",
+  "version": "0.6.0",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -54,6 +54,7 @@
     "python",
     "cpp",
     "c++",
+    "java",
     "study-plan",
     "top interview 150",
     "blind 75",
@@ -615,7 +616,8 @@
             "typescript",
             "javascript",
             "python",
-            "cpp"
+            "cpp",
+            "java"
           ],
           "default": "typescript",
           "description": "Language for generated solution files and run/submit."
@@ -632,7 +634,7 @@
         "leetcodePractice.suppressAiTabOnSolve": {
           "type": "boolean",
           "default": true,
-          "description": "In workspaces with a root .leetcode file, when you open/create a solution from the problem page, write workspace settings to reduce Tab/inline AI completions for that solution language (editor.inlineSuggest.enabled false and editor.tabCompletion off in [typescript]/[javascript]/[python]/[cpp])."
+          "description": "In workspaces with a root .leetcode file, when you open/create a solution from the problem page, write workspace settings to reduce Tab/inline AI completions for that solution language (editor.inlineSuggest.enabled false and editor.tabCompletion off in [typescript]/[javascript]/[python]/[cpp]/[java])."
         },
         "leetcodePractice.suppressAiTabWorkspaceWide": {
           "type": "boolean",

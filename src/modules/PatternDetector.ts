@@ -85,7 +85,7 @@ function stripCommentsAndStrings(source: string, lang: SupportedLanguage): strin
     out = out.replace(/#[^\n]*/g, "");
     out = out.replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/g, '""');
   } else {
-    // ts / js / cpp share C-style comments and double/single/template strings
+    // ts / js / cpp / java share C-style comments and double/single/template strings
     out = out.replace(/\/\*[\s\S]*?\*\//g, "");
     out = out.replace(/\/\/[^\n]*/g, "");
     out = out.replace(/`(?:\\.|\$\{[^}]*\}|[^`\\])*`/g, '""');

@@ -286,7 +286,7 @@ function getWebviewContent(config: LeetcodeConfig, webview: vscode.Webview): str
   </div>
   <div class="section">
     <h2>Agent prompts (solution file toolbar)</h2>
-    <p style="color: var(--vscode-descriptionForeground); font-size: 12px; margin: 0 0 12px 0;">When a solution file (.ts, .js, .py, .cpp) is open in a LeetCode workspace, toolbar buttons open Cursor chat with these prompts. Edit in .leetcode to customize.</p>
+    <p style="color: var(--vscode-descriptionForeground); font-size: 12px; margin: 0 0 12px 0;">When a solution file (.ts, .js, .py, .cpp, .java) is open in a LeetCode workspace, toolbar buttons open Cursor chat with these prompts. Edit in .leetcode to customize.</p>
     <div class="field">
       <label>Make runnable button</label>
       <input type="text" id="agentPromptMakeRunnable" value="${escapeHtml(config.agentPromptMakeRunnable ?? "Make this Runnable, do not give solution.")}" placeholder="Make this Runnable, do not give solution." />

@@ -1,7 +1,9 @@
 import * as fs from "fs/promises";
+import * as os from "os";
 import * as path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { readFileSync } from "fs";
 import type { Problem, SupportedLanguage } from "../interface/Problem";
 
 const execAsync = promisify(exec);
@@ -58,6 +60,18 @@ function mergeCppHeaderAfterPreamble(header: string, snippet: string): string {
 /** True if this translation unit already defines global `main` (line-start only; ignores `// int main`). */
 function cppSourceDefinesMain(source: string): boolean {
   return /^\s*int\s+main\s*\(/m.test(source);
+}
+
+const JAVA_MAIN_RE = /\bpublic\s+static\s+void\s+main\s*\(/;
+const JAVA_RUNNER_CLASS = "LCexMain";
+
+/** Find the class that declares `public static void main(...)`. Returns null if none. */
+function findJavaMainClass(source: string): string | null {
+  const idx = source.search(JAVA_MAIN_RE);
+  if (idx < 0) return null;
+  const before = source.slice(0, idx);
+  const matches = [...before.matchAll(/\bclass\s+([A-Za-z_$][\w$]*)/g)];
+  return matches.length ? matches[matches.length - 1][1] : null;
 }
 
 export interface LanguageStrategy {
@@ -335,11 +349,120 @@ const cppStrategy: LanguageStrategy = {
   },
 };
 
+const javaStrategy: LanguageStrategy = {
+  id: "java",
+  fileExtension: ".java",
+  leetcodeApiLang: "java",
+  shikiLang: "java",
+  displayName: "Java",
+
+  getSnippetFromProblem(problem: Problem): string {
+    const fromMap = problem.codeSnippets?.java;
+    if (fromMap) return fromMap;
+    return "";
+  },
+
+  isExampleOutputLine(line: string): boolean {
+    return /System\.out\.println\s*\(/.test(line);
+  },
+
+  parseExampleExpectedComment(line: string): string | null {
+    const m = line.match(/\/\/\s*(.+)$/);
+    return m ? m[1].trim() : null;
+  },
+
+  async runSolutionFile(normalizedPath: string, workDir: string): Promise<{ stdout: string; stderr: string }> {
+    const source = await fs.readFile(normalizedPath, "utf8").catch(() => "");
+    const entry = findJavaMainClass(source);
+    if (!entry) {
+      return {
+        stdout: "",
+        stderr: "lcex: no `public static void main(String[] args)` found in this file",
+      };
+    }
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "lcex-java-"));
+    try {
+      await execAsync(`javac -d "${tmpDir}" "${normalizedPath}"`, {
+        cwd: workDir,
+        timeout: 30000,
+      });
+      return execCaptured(`java -cp "${tmpDir}" ${entry}`, workDir, 15000);
+    } catch (err: unknown) {
+      const e = err as { stdout?: string; stderr?: string; message?: string };
+      return {
+        stdout: e.stdout ?? "",
+        stderr: e.stderr ?? e.message ?? String(err),
+      };
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  },
+
+  buildTerminalCommand(filePath: string): string {
+    let entry = JAVA_RUNNER_CLASS;
+    try {
+      const source = readFileSync(filePath, "utf8");
+      const found = findJavaMainClass(source);
+      if (found) entry = found;
+    } catch {
+      // fall through with default entry; user will see javac error
+    }
+    const dir = path.dirname(filePath);
+    const outDir = path.join(dir, ".lcex_java_out");
+    const qIn = quoteShellPath(filePath);
+    const qOut = quoteShellPath(outDir);
+    return `mkdir -p ${qOut} && javac -d ${qOut} ${qIn} && java -cp ${qOut} ${entry}`;
+  },
+
+  commentPrefix: "//",
+  todoPlaceholder: "// TODO",
+
+  getParamCount(snippet: string): number {
+    const m = snippet.match(/\b[A-Za-z_$][\w$<>,\s\[\]]*\s+\w+\s*\(([^)]*)\)\s*\{/);
+    if (!m) return 1;
+    const inner = m[1].trim();
+    if (!inner) return 0;
+    return inner.split(",").length;
+  },
+
+  getFunctionName(snippet: string): string {
+    const m = snippet.match(/\b(?:public|private|protected)?\s*(?:static\s+)?[A-Za-z_$][\w$<>,\s\[\]]*\s+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/);
+    return m ? m[1] : "fn";
+  },
+
+  renderExampleCall(fnName: string, argsStr: string, _snippetBody: string): string {
+    return `System.out.println(new Solution().${fnName}(${argsStr}));`;
+  },
+
+  formatExpectedSuffix(expectedTrimmed: string): string {
+    return `  // ${expectedTrimmed}`;
+  },
+
+  formatRunnableExampleSection(): string {
+    return "";
+  },
+
+  usesRunnableTemplateExamples: false,
+
+  appendLocalRunStubIfNeeded(fullSource: string): string {
+    if (JAVA_MAIN_RE.test(fullSource)) return "";
+    return (
+      "\n\n" +
+      "// LCex: local entry point for `javac`/`java` (LeetCode uses its own driver on Run/Submit).\n" +
+      `class ${JAVA_RUNNER_CLASS} {\n` +
+      "    public static void main(String[] args) {\n" +
+      "    }\n" +
+      "}\n"
+    );
+  },
+};
+
 const STRATEGIES: Record<SupportedLanguage, LanguageStrategy> = {
   typescript: typescriptStrategy,
   javascript: javascriptStrategy,
   python: pythonStrategy,
   cpp: cppStrategy,
+  java: javaStrategy,
 };
 
 export function getLanguageStrategy(lang: SupportedLanguage): LanguageStrategy {
@@ -372,6 +495,7 @@ export const LANGUAGE_SHORT: Record<SupportedLanguage, string> = {
   javascript: "js",
   python: "py",
   cpp: "cpp",
+  java: "java",
 };
 
 /** LeetCode REST `lang` field per workspace language id. */

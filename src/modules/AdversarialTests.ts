@@ -137,7 +137,7 @@ export function findSignatureLine(content: string, language: string): number {
   const patterns: RegExp[] =
     language === "python"
       ? [/^\s*class\s+Solution\b/, /^\s*def\s+\w+\s*\(/]
-      : language === "cpp"
+      : language === "cpp" || language === "java"
         ? [/^\s*(?:class|struct)\s+Solution\b/, /\b[A-Za-z_][A-Za-z0-9_]*\s+\w+\s*\([^)]*\)\s*\{/]
         : [/^\s*function\s+\w+\s*\(/, /^\s*const\s+\w+\s*=\s*\(/, /^\s*(var|let)\s+\w+\s*=/];
   for (const pat of patterns) {

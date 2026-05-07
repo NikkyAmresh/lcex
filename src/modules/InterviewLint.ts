@@ -63,8 +63,8 @@ export function extractParamNames(source: string, lang: SupportedLanguage): stri
       .map((p) => p.trim().split(":")[0].replace(/^\*+/, "").split("=")[0].trim())
       .filter((p) => p && p !== "self" && p !== "cls");
   }
-  if (lang === "cpp") {
-    const m = source.match(/\b\w[\w:<>*&\s,]*\s+\w+\s*\(([^)]*)\)\s*(?:const)?\s*\{/);
+  if (lang === "cpp" || lang === "java") {
+    const m = source.match(/\b\w[\w:<>*&\s,]*\s+\w+\s*\(([^)]*)\)\s*(?:const|throws[^{]*)?\s*\{/);
     paramBlob = m?.[1] ?? "";
     return paramBlob
       .split(",")
@@ -93,6 +93,7 @@ export function extractParamNames(source: string, lang: SupportedLanguage): stri
 function printRegex(lang: SupportedLanguage): RegExp {
   if (lang === "python") return /\bprint\s*\(/;
   if (lang === "cpp") return /(?:std::)?cout\s*<</;
+  if (lang === "java") return /\bSystem\.out\.println\s*\(/;
   return /\bconsole\.log\s*\(/;
 }
 

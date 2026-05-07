@@ -2,6 +2,22 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.6.0] — Java support
+
+### Added
+
+- **Java solution language.** New `.java` strategy alongside TypeScript / JavaScript / Python / C++.
+  - `leetcodePractice.language` accepts `"java"`; problem webview "Create File" generates a `.java` from the LeetCode `class Solution { ... }` snippet, plus a `LCexMain` runner stub when no `public static void main` is present.
+  - **Run examples / Run in terminal** compiles with `javac` to a temp dir, runs `java -cp <tmp> <EntryClass>`, where the entry class is whichever class declares `main`. Requires a JDK on PATH.
+  - **Syntax highlighting:** `langJava` added to the curated shiki bundle.
+  - **Interview lint** detects `System.out.println` debug calls and reuses the C++ parameter extractor for mutation/sort heuristics.
+  - **Adversarial probes** + **complexity budget** + **AI-tab suppression** (`[java]` scope) wired through.
+  - **Analytics** language bucket adds `"java"`.
+
+### Not yet supported on Java
+
+- Fuzzer, complexity fitter, recursion visualizer, iterative visualizer — gated with a "doesn't support Java yet" status message (parity with C++ phase-2 status).
+
 ## [0.5.1] — Companion Chrome extension
 
 ### Companion Chrome extension (`chrome-extension/`, v1.1.0)

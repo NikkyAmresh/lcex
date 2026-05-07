@@ -62,6 +62,7 @@ export interface FitPreflight {
 
 export function preflight(src: string, lang: SupportedLanguage): FitPreflight {
   if (lang === "cpp") return { ok: false, reason: "complexity fitter doesn't support C++ yet" };
+  if (lang === "java") return { ok: false, reason: "complexity fitter doesn't support Java yet" };
   const fns = lang === "python" ? findFunctionsPython(src) : findFunctionsJsLike(src);
   const has = fns.some((n) => n === "benchmark");
   if (!has) {

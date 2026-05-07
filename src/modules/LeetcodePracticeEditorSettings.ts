@@ -41,6 +41,7 @@ const LANG_SCOPE: Record<SupportedLanguage, string> = {
   javascript: "javascript",
   python: "python",
   cpp: "cpp",
+  java: "java",
 };
 
 export function workspaceHasLeetcodeMarker(): boolean {

@@ -2157,7 +2157,7 @@ async function executeCode(
   const strategy = languageStrategyFromExtension(ext);
   if (!editor || !strategy) {
     vscode.window.showWarningMessage(
-      "Open a solution file (.ts, .js, .py, or .cpp) and try again."
+      "Open a solution file (.ts, .js, .py, .cpp, or .java) and try again."
     );
     return;
   }

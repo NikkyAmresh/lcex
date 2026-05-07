@@ -44,10 +44,10 @@ The extension activates automatically when a workspace contains a `.leetcode` fi
 
 ## Features
 
-- **Browse and solve** — Full problemset, study plans, curated problem lists, and Question of the Day in sidebar views. Rich problem webview with "Create File" in TypeScript, JavaScript, Python, or C++.
+- **Browse and solve** — Full problemset, study plans, curated problem lists, and Question of the Day in sidebar views. Rich problem webview with "Create File" in TypeScript, JavaScript, Python, C++, or Java.
 - **Companies sidebar** — Browse problems grouped by 463 companies with per-company **frequency**, global **acceptance rate**, color-coded difficulty dots, and topics in the row tooltip. Click to open in the editor. Topics + companies are also surfaced inside the problem webview as collapsible chips. Toggle via `leetcodePractice.showCompanies`.
 - **Inline feedback on save** — Every save runs all enabled features at once, rendered as ghost text on the relevant line with a trusted-markdown hover and a one-click "turn off" link per feature. No popups.
-  - **Interview anti-pattern lint** — flags `mutate-input`, built-in `.sort()` on sorting problems, magic numbers (`26` / `128` / `1000000007`), and indented debug `print`/`console.log` across py/ts/js/cpp. Emits a real VS Code diagnostic (squiggle + Problems panel) and an inline hint. Suppressible per line with `// lcex-lint-ignore: <rule>`.
+  - **Interview anti-pattern lint** — flags `mutate-input`, built-in `.sort()` on sorting problems, magic numbers (`26` / `128` / `1000000007`), and indented debug `print`/`console.log`/`System.out.println` across py/ts/js/cpp/java. Emits a real VS Code diagnostic (squiggle + Problems panel) and an inline hint. Suppressible per line with `// lcex-lint-ignore: <rule>`.
   - **Complexity budget** — parses the problem's `Constraints:` section, derives a target Big-O from the largest size cap, estimates loop nesting by indent, and paints 🟢 / 🟡 / 🔴 on the function signature plus a `nest k× → O(nᵏ)` badge on each loop.
   - **Adversarial edge-case probes** — turns parsed constraints into candidate edge cases (empty, single, max-size, boundary values, negatives, zeros, charset / sorted / distinct flags) and surfaces them inline on the signature. Advisory in this release.
   - **Run examples on save** — parses `// Expected:` / `# expected:` comments and diffs against `console.log` / `print` output; results render inline as `✓` or `✗ expected X · got Y` with a dedicated timeout message for >15s runs. Also available on-demand.
@@ -192,7 +192,7 @@ All commands are available under the **LeetCode** category in the command palett
 | --- | --- |
 | `leetcodePractice.defaultDirectory` | Where new solution files are created |
 | `leetcodePractice.fileNamePattern` | `id` (e.g. `1.ts`) or `slug` (e.g. `two-sum.ts`) |
-| `leetcodePractice.language` | `typescript`, `javascript`, `python`, or `cpp` |
+| `leetcodePractice.language` | `typescript`, `javascript`, `python`, `cpp`, or `java` |
 | `leetcodePractice.problemViewMode` | Layout for the problem webview |
 | `leetcodePractice.suppressAiTabOnSolve` | Don't reopen AI tab after marking solved |
 | `leetcodePractice.suppressAiTabWorkspaceWide` | Workspace-wide version of the above |
@@ -226,7 +226,7 @@ help prioritise which features to improve. This is opt-outable at any time.
 - A pseudonymous per-install UUID (generated on first launch, never linked to your identity).
 - Which feature you used (e.g. `run_examples`, `interview_start`, `agent_hint`).
 - Where it was triggered (command palette, sidebar, webview…).
-- Coarse dimensions: language bucket (`ts`/`js`/`py`/`cpp`), difficulty bucket (`E`/`M`/`H`),
+- Coarse dimensions: language bucket (`ts`/`js`/`py`/`cpp`/`java`), difficulty bucket (`E`/`M`/`H`),
   duration bucket (`0_5m` / `5_15m` / `15_60m` / `60m+`), count bucket.
 - Extension version, VS Code version, OS platform, locale, local hour of day.
 
@@ -272,6 +272,7 @@ Any setting above can be overridden per-workspace in the `.leetcode` file. Works
 - Node.js — for TypeScript / JavaScript execution
 - Python 3 — optional, for Python solutions
 - A C++ toolchain — optional, for C++ solutions
+- A JDK (`javac` + `java`) — optional, for Java solutions
 
 ## Development
 

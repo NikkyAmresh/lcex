@@ -217,7 +217,7 @@ const IS_SOLUTION_FILE_CONTEXT = "leetcodePractice.isSolutionFile";
 
 const SOLUTION_EXTENSIONS = new Set(SOLUTION_FILE_EXTENSIONS);
 
-const NUMBERED_FILE_PATTERN = /^(\d+)\.(ts|js|py|cpp)$/i;
+const NUMBERED_FILE_PATTERN = /^(\d+)\.(ts|js|py|cpp|java)$/i;
 
 /** Shows problem name as tooltip on numbered solution files in LeetCode workspaces. */
 class LeetCodeFileDecorationProvider implements vscode.FileDecorationProvider {
@@ -1764,7 +1764,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const ext = uri ? path.extname(uri.fsPath) : "";
       if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext.toLowerCase())) {
         vscode.window.setStatusBarMessage(
-          "lcex: open a .ts/.js/.py/.cpp solution file to run examples",
+          "lcex: open a .ts/.js/.py/.cpp/.java/.java solution file to run examples",
           5000
         );
         return;
@@ -2090,6 +2090,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
           case "javascript": return ".js";
           case "python": return ".py";
           case "cpp": return ".cpp";
+          case "java": return ".java";
           default: return ".ts";
         }
       })();
@@ -2145,8 +2146,9 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
         return;
       }
       const lang = languageFromFileExtension(ext) ?? "typescript";
-      if (lang === "cpp") {
-        vscode.window.setStatusBarMessage("lcex: complexity fitter doesn't support C++ yet", 5000);
+      if (lang === "cpp" || lang === "java") {
+        const label = lang === "cpp" ? "C++" : "Java";
+        vscode.window.setStatusBarMessage(`lcex: complexity fitter doesn't support ${label} yet`, 5000);
         return;
       }
       if (editor.document.isDirty) await editor.document.save();
@@ -2233,8 +2235,9 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
         return;
       }
       const lang = languageFromFileExtension(ext) ?? "typescript";
-      if (lang === "cpp") {
-        vscode.window.setStatusBarMessage("lcex: recursion visualizer doesn't support C++ yet", 5000);
+      if (lang === "cpp" || lang === "java") {
+        const label = lang === "cpp" ? "C++" : "Java";
+        vscode.window.setStatusBarMessage(`lcex: recursion visualizer doesn't support ${label} yet`, 5000);
         return;
       }
       if (editor.document.isDirty) await editor.document.save();
@@ -2281,8 +2284,9 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
         return;
       }
       const lang = languageFromFileExtension(ext) ?? "typescript";
-      if (lang === "cpp") {
-        vscode.window.setStatusBarMessage("lcex: iterative visualizer doesn't support C++ yet", 5000);
+      if (lang === "cpp" || lang === "java") {
+        const label = lang === "cpp" ? "C++" : "Java";
+        vscode.window.setStatusBarMessage(`lcex: iterative visualizer doesn't support ${label} yet`, 5000);
         return;
       }
       if (editor.document.isDirty) await editor.document.save();
@@ -2329,8 +2333,9 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
         return;
       }
       const lang = languageFromFileExtension(ext) ?? "typescript";
-      if (lang === "cpp") {
-        vscode.window.setStatusBarMessage("lcex: fuzzer doesn't support C++ yet", 5000);
+      if (lang === "cpp" || lang === "java") {
+        const label = lang === "cpp" ? "C++" : "Java";
+        vscode.window.setStatusBarMessage(`lcex: fuzzer doesn't support ${label} yet`, 5000);
         return;
       }
       if (editor.document.isDirty) await editor.document.save();
@@ -2604,7 +2609,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
       if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
         vscode.window.setStatusBarMessage(
-          "lcex: open a .ts/.js/.py/.cpp solution file for a complexity budget",
+          "lcex: open a .ts/.js/.py/.cpp/.java solution file for a complexity budget",
           5000
         );
         return;
@@ -2617,7 +2622,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
       if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
         vscode.window.setStatusBarMessage(
-          "lcex: open a .ts/.js/.py/.cpp solution file for adversarial probes",
+          "lcex: open a .ts/.js/.py/.cpp/.java solution file for adversarial probes",
           5000
         );
         return;
@@ -2730,7 +2735,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const ext = filePath ? path.extname(filePath) : "";
       if (!filePath || !SOLUTION_FILE_EXTENSIONS.includes(ext.toLowerCase())) {
         vscode.window.showWarningMessage(
-          "Open a supported solution file (.ts, .js, .py, .cpp) to run."
+          "Open a supported solution file (.ts, .js, .py, .cpp, .java) to run."
         );
         return;
       }

@@ -245,6 +245,9 @@ export async function runRecursionTrace(opts: TraceRunOptions): Promise<Recursio
   if (opts.lang === "cpp") {
     return { ok: false, frames: [], truncated: false, message: "recursion visualizer doesn't support C++ yet" };
   }
+  if (opts.lang === "java") {
+    return { ok: false, frames: [], truncated: false, message: "recursion visualizer doesn't support Java yet" };
+  }
   const fn = opts.lang === "python" ? detectRecursiveFnPython(opts.source) : detectRecursiveFnJsLike(opts.source);
   if (!fn) {
     return { ok: false, frames: [], truncated: false, message: "no recursive top-level function detected (a function whose body calls itself)" };

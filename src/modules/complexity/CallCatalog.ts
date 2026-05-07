@@ -62,6 +62,9 @@ export function lookupCallCost(name: string, lang: SupportedLanguage): CallCost 
   if (lang === "cpp" && (n === "std.sort" || n === "sort" || n.endsWith(".sort"))) {
     return { kind: "linearithmic" };
   }
+  if (lang === "java" && (n === "Arrays.sort" || n === "Collections.sort" || n.endsWith(".sort"))) {
+    return { kind: "linearithmic" };
+  }
 
   // Linear-cost array ops (these are the famous "looks O(n) but is O(n²) when nested" cases)
   if ((lang === "typescript" || lang === "javascript")

@@ -2,7 +2,7 @@ import type { SupportedLanguage } from "../interface/Problem";
 import type { CallNode, FuncNode, LoopNode, ProgramIR, Span } from "./IR";
 
 /**
- * Hand-rolled lightweight tokenizer-parsers for TS/JS/Python/C++.
+ * Hand-rolled lightweight tokenizer-parsers for TS/JS/Python/C++/Java.
  *
  * These are NOT full parsers — they extract just the IR shapes the complexity
  * engine needs: function definitions, loops (for/while), and call expressions.
@@ -59,7 +59,7 @@ function stripStringsAndComments(source: string, lang: SupportedLanguage): Strip
       }
       continue;
     }
-    if (c === '"' || c === "'" || (lang !== "cpp" && c === "`")) {
+    if (c === '"' || c === "'" || ((lang === "typescript" || lang === "javascript") && c === "`")) {
       const quote = c;
       out.push(c);
       i++;

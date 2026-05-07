@@ -194,7 +194,7 @@ const FEATURES: ReadonlySet<AnalyticsFeature> = new Set<AnalyticsFeature>([
 // Props are a tiny, strongly-typed bag. Keys outside this union are dropped.
 export interface AnalyticsProps {
   difficulty?: "E" | "M" | "H";
-  language?: "ts" | "js" | "py" | "cpp";
+  language?: "ts" | "js" | "py" | "cpp" | "java";
   result?: "ok" | "err";
   durationBucket?: "0_5m" | "5_15m" | "15_60m" | "60m+";
   countBucket?: "1_5" | "6_15" | "16_50" | "50+";
@@ -212,7 +212,7 @@ const PROP_KEYS: ReadonlySet<keyof AnalyticsProps> = new Set([
 
 const PROP_VALUES: Record<keyof AnalyticsProps, ReadonlySet<string>> = {
   difficulty: new Set(["E", "M", "H"]),
-  language: new Set(["ts", "js", "py", "cpp"]),
+  language: new Set(["ts", "js", "py", "cpp", "java"]),
   result: new Set(["ok", "err"]),
   durationBucket: new Set(["0_5m", "5_15m", "15_60m", "60m+"]),
   countBucket: new Set(["1_5", "6_15", "16_50", "50+"]),
@@ -232,13 +232,14 @@ export function bucketDifficulty(raw: string | undefined): "E" | "M" | "H" | und
   return undefined;
 }
 
-export function bucketLanguage(raw: string | undefined): "ts" | "js" | "py" | "cpp" | undefined {
+export function bucketLanguage(raw: string | undefined): "ts" | "js" | "py" | "cpp" | "java" | undefined {
   if (!raw) return undefined;
   const s = raw.toLowerCase();
   if (s === "typescript" || s === "ts") return "ts";
   if (s === "javascript" || s === "js") return "js";
   if (s === "python" || s === "py" || s === "python3") return "py";
   if (s === "cpp" || s === "c++") return "cpp";
+  if (s === "java") return "java";
   return undefined;
 }
 
