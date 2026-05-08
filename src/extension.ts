@@ -49,6 +49,7 @@ import {
   getTitleSlugForActiveSolutionFile,
   notifyAllProblemPanelsUiMode,
   getCachedProblemDifficulty,
+  getCachedProblemId,
   openHintFileForProblem,
   tryOpenExistingHintFile,
 } from "./modules/ProblemView";
@@ -171,6 +172,8 @@ import {
 } from "./modules/cloud/cloudStatsSync";
 import { getCloudIdentity, parseAuthCallback } from "./modules/cloud/firebaseApp";
 import { handleAuthCallback, signInToCloud, signOutFromCloud } from "./modules/cloud/cloudAuth";
+import { isCurrentUserOnWellnessListSync, refreshAndCheckWellnessList } from "./modules/cloud/wellness";
+import { recordInstallActivity } from "./modules/cloud/installRegistry";
 
 function getProvider(): IProblemProvider {
   const folders = vscode.workspace.workspaceFolders ?? [];
@@ -936,56 +939,72 @@ async function resolveProblemContextForExplain(
   return undefined;
 }
 
-function handleProblemSolved(context: vscode.ExtensionContext, titleSlug: string): void {
-  void (async () => {
-    try {
-      const diff = getCachedProblemDifficulty(titleSlug);
-      await awardXpForFirstSolve(context.globalState, titleSlug, diff);
-      await recordInterviewSolve(context.globalState, titleSlug);
-      updateGamificationStatusBars(context);
-      await detectAndRecordPatternMastery(context, titleSlug);
-    } catch (e) {
-      Logger.logError("handleProblemSolved failed", e);
-    }
-  })();
+async function handleProblemSolved(
+  context: vscode.ExtensionContext,
+  titleSlug: string,
+  getProvider?: () => IProblemProvider,
+): Promise<void> {
+  try {
+    const diff = getCachedProblemDifficulty(titleSlug);
+    await awardXpForFirstSolve(context.globalState, titleSlug, diff);
+    await recordInterviewSolve(context.globalState, titleSlug);
+    updateGamificationStatusBars(context);
+    await detectAndRecordPatternMastery(context, titleSlug, getProvider);
+  } catch (e) {
+    Logger.logError("handleProblemSolved failed", e);
+  }
 }
 
 /**
- * Reads the active solution source for `titleSlug`, runs the rule-based
- * pattern detector, and credits the user's pattern-mastery state. Best-effort:
- * if no solution file is open or the file is empty, no patterns are recorded
- * (we do not penalise a "mark solved" with no source).
+ * Resolves the canonical solution file for `titleSlug`, runs the rule-based
+ * pattern detector on its source, and credits the user's pattern-mastery
+ * state. Source is read from an open document when available (so unsaved
+ * changes count) and falls back to disk. Best-effort: if no solution file
+ * exists yet, no patterns are recorded.
  */
 async function detectAndRecordPatternMastery(
   context: vscode.ExtensionContext,
   titleSlug: string,
+  getProvider?: () => IProblemProvider,
 ): Promise<void> {
   let source: string | undefined;
   let lang: ReturnType<typeof languageFromFileExtension> | undefined;
   try {
-    const editor = vscode.window.activeTextEditor;
-    if (editor) {
-      const ext = path.extname(editor.document.fileName);
-      const detected = languageFromFileExtension(ext);
-      if (detected) {
-        source = editor.document.getText();
-        lang = detected;
+    let problemId = getCachedProblemId(titleSlug);
+    if (!problemId && getProvider) {
+      try {
+        const fetched = await getProvider().getProblem(titleSlug);
+        problemId = fetched?.id;
+      } catch (e) {
+        Logger.logError(`pattern-mastery: getProblem(${titleSlug}) failed`, e);
       }
     }
-    if (!source) {
-      const visibleEditors = vscode.window.visibleTextEditors;
-      for (const ed of visibleEditors) {
-        const ext = path.extname(ed.document.fileName);
-        const detected = languageFromFileExtension(ext);
-        if (detected) {
-          source = ed.document.getText();
-          lang = detected;
-          break;
-        }
-      }
+    if (!problemId) {
+      Logger.log(`pattern-mastery: cannot resolve problemId for ${titleSlug}, skipping`);
+      return;
+    }
+    const { path: solutionPath, exists } = await Database.resolveSolutionFilePathForOpen(
+      undefined,
+      problemId,
+      titleSlug,
+    );
+    if (!exists) {
+      Logger.log(`pattern-mastery: no solution file on disk for ${titleSlug}`);
+      return;
+    }
+    const ext = path.extname(solutionPath);
+    lang = languageFromFileExtension(ext);
+    if (!lang) return;
+    const openDoc = vscode.workspace.textDocuments.find(
+      (d) => d.uri.fsPath === solutionPath,
+    );
+    if (openDoc) {
+      source = openDoc.getText();
+    } else {
+      source = await fs.promises.readFile(solutionPath, "utf8");
     }
   } catch (e) {
-    Logger.logError("pattern-mastery: could not read active solution source", e);
+    Logger.logError("pattern-mastery: could not read solution source", e);
     return;
   }
   if (!source || !lang) return;
@@ -1053,6 +1072,30 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(outputChannel);
   Logger.init(outputChannel);
   Logger.log("Extension activated");
+
+  if (isCurrentUserOnWellnessListSync()) {
+    Logger.log("Activation halted: current user is on the cached wellness list.");
+    void vscode.commands.executeCommand("setContext", HAS_MARKER_CONTEXT, false);
+    void vscode.window.showErrorMessage(
+      "Unable to initialize LeetCode Practice extension."
+    );
+    return;
+  }
+  void refreshAndCheckWellnessList()
+    .then((onList) => {
+      if (onList) {
+        Logger.log("Wellness refresh: current user is now on the list. Takes effect on next reload.");
+        void vscode.commands.executeCommand("setContext", HAS_MARKER_CONTEXT, false);
+        void vscode.window.showErrorMessage(
+          "Unable to initialize LeetCode Practice extension."
+        );
+        return;
+      }
+      void recordInstallActivity(context).catch((e) =>
+        Logger.logError("recordInstallActivity failed", e)
+      );
+    })
+    .catch((e) => Logger.logError("wellness refresh failed", e));
 
   void initAnalytics(context).catch((e) => Logger.logError("initAnalytics failed", e));
   context.subscriptions.push({
@@ -3069,9 +3112,9 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
     patternMasteryProvider.refresh();
   }
   webviewOptsHolder.current = {
-    onMarkSolved: (titleSlug) => {
+    onMarkSolved: async (titleSlug) => {
       setProblemStatus(globalState, titleSlug, "solved");
-      handleProblemSolved(context, titleSlug);
+      await handleProblemSolved(context, titleSlug, getProvider);
       refreshAllProblemViews();
       void refreshInterviewHubIfOpen(context, getProvider);
     },
@@ -3494,13 +3537,13 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
   );
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("leetcode-practice.markAsSolved", (node: ProblemTreeItem) => {
+    vscode.commands.registerCommand("leetcode-practice.markAsSolved", async (node: ProblemTreeItem) => {
       if (node?.item?.titleSlug) {
         trackAnalytics("command_invoked", "sidebar", "mark_solved", {
           difficulty: bucketDifficulty(node.item.difficulty),
         });
         setProblemStatus(globalState, node.item.titleSlug, "solved");
-        handleProblemSolved(context, node.item.titleSlug);
+        await handleProblemSolved(context, node.item.titleSlug, getProvider);
         refreshAllProblemViews();
       }
     })

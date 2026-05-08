@@ -60,5 +60,47 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if false;
     }
+
+    // Admin-managed wellness checks. Stored as MD5 hashes of lowercased
+    // usernames so the publicly readable doc never reveals plaintext
+    // identifiers. Clients hash their own system username at activation and
+    // refuse to start when the hash is in the list. Only the admin uid may
+    // modify the document.
+    match /wellness/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == 'DLtoYwNBJaRK2iE7se5HmP1d6Q23';
+    }
+
+    // Per-install activity registry: installs/<sanitizedUsername>__<platform>
+    // Clients (anon-authed) PATCH their own row each activation so the admin
+    // can pick usernames to ban. Reads are admin-only to prevent enumeration.
+    match /installs/{docId} {
+      allow create, update: if request.auth != null
+        && request.resource.data.keys().hasOnly([
+          'username', 'platform', 'hostname', 'release', 'arch',
+          'extVersion', 'vscodeVersion', 'lastAccessAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'username', 'platform', 'hostname', 'release', 'arch',
+          'extVersion', 'vscodeVersion', 'lastAccessAt'
+        ])
+        && request.resource.data.username is string
+        && request.resource.data.username.size() <= 64
+        && request.resource.data.platform is string
+        && request.resource.data.platform.size() <= 16
+        && request.resource.data.hostname is string
+        && request.resource.data.hostname.size() <= 128
+        && request.resource.data.release is string
+        && request.resource.data.release.size() <= 64
+        && request.resource.data.arch is string
+        && request.resource.data.arch.size() <= 16
+        && request.resource.data.extVersion is string
+        && request.resource.data.extVersion.size() <= 32
+        && request.resource.data.vscodeVersion is string
+        && request.resource.data.vscodeVersion.size() <= 32
+        && request.resource.data.lastAccessAt is int;
+      allow read, delete: if request.auth != null
+        && request.auth.uid == 'DLtoYwNBJaRK2iE7se5HmP1d6Q23';
+    }
   }
 }

@@ -687,6 +687,11 @@ export function getCachedProblemDifficulty(titleSlug: string): string | undefine
   return getCachedProblem(titleSlug)?.difficulty;
 }
 
+/** Sync lookup of the numeric problem ID for a titleSlug from the session cache. */
+export function getCachedProblemId(titleSlug: string): string | undefined {
+  return getCachedProblem(titleSlug)?.id;
+}
+
 export function notifyAllProblemPanelsUiMode(context: vscode.ExtensionContext): void {
   const focusCompact = context.globalState.get<boolean>(FOCUS_COMPACT_WEBVIEW_KEY) ?? false;
   const interviewMode = Boolean(getInterviewSession(context.globalState)?.active);
@@ -1793,7 +1798,7 @@ async function softReload(
 interface SetupPanelMessageHandlerOpts {
   getProvider?: () => IProblemProvider;
   getProblemStatus?: (titleSlug: string) => ProblemStatus | undefined;
-  onMarkSolved?: (titleSlug: string) => void;
+  onMarkSolved?: (titleSlug: string) => void | Promise<void>;
   onMarkInterviewSolved?: (titleSlug: string) => void | Promise<void>;
 }
 
@@ -1869,7 +1874,7 @@ function setupPanelMessageHandler(
         });
         getProblemTimer()?.handlePause(msgSlug);
         if (opts?.onMarkSolved) {
-          opts.onMarkSolved(msgSlug);
+          await Promise.resolve(opts.onMarkSolved(msgSlug));
         } else {
           setProblemStatus(context.globalState, msgSlug, "solved");
         }
@@ -1910,7 +1915,7 @@ function setupPanelMessageHandler(
 }
 
 export interface OpenProblemWebviewOpts {
-  onMarkSolved?: (titleSlug: string) => void;
+  onMarkSolved?: (titleSlug: string) => void | Promise<void>;
   onMarkInterviewSolved?: (titleSlug: string) => void | Promise<void>;
 }
 

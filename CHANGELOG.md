@@ -2,6 +2,15 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.6.1] Pattern Mastery fix
+
+### Fixed
+
+- **Pattern Mastery sidebar always showed `0 solved`.** Two bugs combining:
+  1. The detector read source from the active text editor, but when "Mark as solved" is clicked from the problem webview the active editor often points at the wrong file (or none at all), so `recordSolveForPatterns` never ran.
+  2. The tree view refreshed before pattern recording finished, so even successful records didn't appear until the next manual refresh.
+- **Resolution:** the detector now resolves the canonical solution file for the marked problem, prefers an open document (so unsaved changes still count) and falls back to disk; mark-solved handlers await pattern recording before refreshing the tree, so counts update immediately. Falls back gracefully when the problem isn't in the in-memory cache by fetching once via the active provider.
+
 ## [0.6.0] — Java support
 
 ### Added
