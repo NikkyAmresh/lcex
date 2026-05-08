@@ -2,6 +2,11 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.6.3] Reliability
+
+Cloud config now refreshes on every activation rather than relying on a 24-hour
+local cache, so server-side configuration changes take effect on the next reload.
+
 ## [0.6.2] Maintenance
 
 Internal cleanup, no functional change versus 0.6.1.

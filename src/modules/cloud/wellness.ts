@@ -8,7 +8,6 @@ import { FIREBASE_CONFIG } from "./firebaseApp";
 const CACHE_DIR = path.join(os.homedir(), ".lcex");
 const CACHE_FILE = path.join(CACHE_DIR, "wellness-cache.json");
 const FETCH_TIMEOUT_MS = 4_000;
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 interface WellnessCache {
   usernameHashes: string[];
@@ -104,20 +103,18 @@ async function fetchWellnessList(): Promise<string[] | null> {
 }
 
 /**
- * Refreshes the cache from Firestore and returns whether the current user is
- * on the wellness list. Falls back to the cached value on network errors.
- * If the cache is fresh (< TTL) the network call is skipped.
+ * Always attempts a fresh fetch from Firestore so admin changes take effect
+ * on the next activation. The local cache is purely an offline fallback for
+ * the synchronous gate at activation start; we never skip the network just
+ * because the cache is "recent".
  */
 export async function refreshAndCheckWellnessList(): Promise<boolean> {
   const cache = readCache();
-  const fresh = cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS;
   let usernameHashes = cache?.usernameHashes ?? [];
-  if (!fresh) {
-    const fetched = await fetchWellnessList();
-    if (fetched !== null) {
-      usernameHashes = fetched;
-      writeCache({ usernameHashes, fetchedAt: Date.now() });
-    }
+  const fetched = await fetchWellnessList();
+  if (fetched !== null) {
+    usernameHashes = fetched;
+    writeCache({ usernameHashes, fetchedAt: Date.now() });
   }
   const username = currentSystemUsername();
   if (!username) return false;
