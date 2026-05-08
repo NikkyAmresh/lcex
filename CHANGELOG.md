@@ -2,6 +2,10 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.6.2] Maintenance
+
+Internal cleanup, no functional change versus 0.6.1.
+
 ## [0.6.1] Pattern Mastery fix
 
 ### Fixed
