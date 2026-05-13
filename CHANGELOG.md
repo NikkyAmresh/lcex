@@ -2,6 +2,20 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.7.0] Sandboxed example runs
+
+### Changed
+
+- **On-save example runs are now sandboxed on macOS.** Saving a solution previously spawned `node` / `python3` / `g++` / `javac` / `java` against the file with the user's full network and filesystem access. The runner now wraps each invocation in `sandbox-exec` with a deny-default profile: no network, no writes outside the toolchain's scratch directories. Solutions still see stdout/stderr identically; the only behavioural change is that misbehaving code can no longer reach the network or modify files outside scratch.
+- **New setting `leetcodePractice.runExamples.sandbox`** with values `auto` (default), `sandbox`, `off`. `auto` enables the sandbox on macOS and runs unsandboxed elsewhere. `sandbox` forces sandboxing (fails clearly on platforms without a backend). `off` restores the previous unsandboxed behaviour.
+- **C++ build output moved to a temp directory.** `g++` now writes the compiled binary into `mktemp`'d scratch rather than the workspace, so the sandbox can deny workspace writes without breaking compile-and-run.
+- **Python runs use `python3 -B`** to suppress `__pycache__` writes that would otherwise be denied by the sandbox.
+
+### Notes
+
+- When a run fails with a tell-tale syscall denial (EPERM, ENOTFOUND, ECONNREFUSED, etc.), the inline error includes a hint pointing to the `runExamples.sandbox` setting.
+- TypeScript uses `npx --yes tsx`; if `tsx` is not already cached in `~/.npm`, the first sandboxed run will fail because npx needs network to install it. Pre-warm once with `npx tsx --version` outside the sandbox, or set `runExamples.sandbox` to `off`.
+
 ## [0.6.3] Reliability
 
 Cloud config now refreshes on every activation rather than relying on a 24-hour

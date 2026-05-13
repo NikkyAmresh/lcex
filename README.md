@@ -211,6 +211,7 @@ All commands are available under the **LeetCode** category in the command palett
 | `leetcodePractice.complexityBudget.enabled` | Derive target Big-O from constraints and paint 🟢/🟡/🔴 on save (default: on) |
 | `leetcodePractice.adversarialTests.enabled` | Surface edge-case probes on save (default: off — run `LeetCode: Surface Adversarial Edge Cases` on demand) |
 | `leetcodePractice.runExamplesOnSave.enabled` | Run example lines automatically on save (default: on) |
+| `leetcodePractice.runExamples.sandbox` | Sandbox solution execution: `auto` (sandbox on macOS, normal elsewhere), `sandbox` (force), `off` (default: `auto`) |
 | `leetcodePractice.bugReview.enabled` | Spaced-repetition queue of failed examples; resurfaces 3/7/30/90 days later (default: off) |
 | `leetcodePractice.fuzzer.enabled` | Differential fuzzer vs `bruteForce` + `fuzzInputs(seed)` (default: off) |
 | `leetcodePractice.empiricalFit.enabled` | Empirical complexity fitter; needs `benchmark(n)` (default: off) |

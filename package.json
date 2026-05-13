@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
   "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ / Java templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -752,6 +752,12 @@
           "type": "boolean",
           "default": true,
           "description": "On save, run the solution's example lines automatically and show results inline. Spawns a language process per save — disable if iteration feels sluggish."
+        },
+        "leetcodePractice.runExamples.sandbox": {
+          "type": "string",
+          "enum": ["auto", "sandbox", "off"],
+          "default": "auto",
+          "markdownDescription": "Sandbox solution execution. `auto` (default) uses macOS `sandbox-exec` on Darwin, normal execution elsewhere. `sandbox` forces sandbox (fails on platforms without a backend). `off` runs the solution unsandboxed (legacy behaviour). The sandbox blocks network access and writes outside the toolchain's scratch directories."
         },
         "leetcodePractice.bugReview.enabled": {
           "type": "boolean",

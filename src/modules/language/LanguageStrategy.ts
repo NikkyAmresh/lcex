@@ -1,12 +1,9 @@
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
-import { exec } from "child_process";
-import { promisify } from "util";
 import { readFileSync } from "fs";
 import type { Problem, SupportedLanguage } from "../interface/Problem";
-
-const execAsync = promisify(exec);
+import { runSandboxed } from "../Sandbox";
 
 function quoteShellPath(p: string): string {
   return p.includes(" ") ? `"${p.replace(/"/g, '\\"')}"` : p;
@@ -15,17 +12,19 @@ function quoteShellPath(p: string): string {
 async function execCaptured(
   cmd: string,
   cwd: string,
-  timeout: number
+  timeout: number,
+  writePaths?: string[]
 ): Promise<{ stdout: string; stderr: string }> {
+  const { stdout, stderr } = await runSandboxed(cmd, { cwd, timeout, writePaths });
+  return { stdout, stderr };
+}
+
+async function fileExists(p: string): Promise<boolean> {
   try {
-    const { stdout, stderr } = await execAsync(cmd, { cwd, timeout });
-    return { stdout: stdout ?? "", stderr: stderr ?? "" };
-  } catch (err: unknown) {
-    const e = err as { stdout?: string; stderr?: string; message?: string };
-    return {
-      stdout: e.stdout ?? "",
-      stderr: e.stderr ?? e.message ?? String(err),
-    };
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -215,7 +214,7 @@ const pythonStrategy: LanguageStrategy = {
   },
 
   runSolutionFile(normalizedPath: string, workDir: string): Promise<{ stdout: string; stderr: string }> {
-    return execCaptured(`python3 ${quoteShellPath(normalizedPath)}`, workDir, 15000);
+    return execCaptured(`python3 -B ${quoteShellPath(normalizedPath)}`, workDir, 15000);
   },
 
   buildTerminalCommand(filePath: string): string {
@@ -285,24 +284,24 @@ const cppStrategy: LanguageStrategy = {
 
   async runSolutionFile(normalizedPath: string, workDir: string): Promise<{ stdout: string; stderr: string }> {
     const exeSuffix = process.platform === "win32" ? ".exe" : "";
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "lcex-cpp-"));
     const outPath = path.join(
-      workDir,
+      tmpDir,
       `${path.basename(normalizedPath, ".cpp")}.lcex_run${exeSuffix}`
     );
     try {
-      await execAsync(`g++ -std=c++17 -O2 -Wall -o "${outPath}" "${normalizedPath}"`, {
-        cwd: workDir,
-        timeout: 30000,
-      });
-      return execCaptured(`"${outPath}"`, workDir, 15000);
-    } catch (err: unknown) {
-      const e = err as { stdout?: string; stderr?: string; message?: string };
-      return {
-        stdout: e.stdout ?? "",
-        stderr: e.stderr ?? e.message ?? String(err),
-      };
+      const compile = await execCaptured(
+        `g++ -std=c++17 -O2 -Wall -o ${quoteShellPath(outPath)} ${quoteShellPath(normalizedPath)}`,
+        tmpDir,
+        30000,
+        [tmpDir]
+      );
+      if (!(await fileExists(outPath))) {
+        return { stdout: compile.stdout, stderr: compile.stderr || "lcex: g++ produced no binary" };
+      }
+      return execCaptured(quoteShellPath(outPath), tmpDir, 15000, [tmpDir]);
     } finally {
-      await fs.unlink(outPath).catch(() => {});
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   },
 
@@ -382,17 +381,19 @@ const javaStrategy: LanguageStrategy = {
     }
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "lcex-java-"));
     try {
-      await execAsync(`javac -d "${tmpDir}" "${normalizedPath}"`, {
-        cwd: workDir,
-        timeout: 30000,
-      });
-      return execCaptured(`java -cp "${tmpDir}" ${entry}`, workDir, 15000);
-    } catch (err: unknown) {
-      const e = err as { stdout?: string; stderr?: string; message?: string };
-      return {
-        stdout: e.stdout ?? "",
-        stderr: e.stderr ?? e.message ?? String(err),
-      };
+      const compile = await execCaptured(
+        `javac -d ${quoteShellPath(tmpDir)} ${quoteShellPath(normalizedPath)}`,
+        tmpDir,
+        30000,
+        [tmpDir]
+      );
+      if (!(await fileExists(path.join(tmpDir, `${entry}.class`)))) {
+        return {
+          stdout: compile.stdout,
+          stderr: compile.stderr || "lcex: javac produced no class file",
+        };
+      }
+      return execCaptured(`java -cp ${quoteShellPath(tmpDir)} ${entry}`, tmpDir, 15000, [tmpDir]);
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
