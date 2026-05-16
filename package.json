@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
   "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ / Java templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"

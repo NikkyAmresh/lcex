@@ -99,6 +99,9 @@ export interface LanguageStrategy {
   formatExpectedSuffix(expectedTrimmed: string): string;
   formatRunnableExampleSection(exampleLines: string[]): string;
 
+  /** Translate a JSON-ish LeetCode expected value (e.g. "true", "null") into the literal the language's stdout print would produce. */
+  localizeExpectedLiteral(jsonish: string): string;
+
   /** When false, templates are snippet + optional local stub only (no console.log / print examples). */
   readonly usesRunnableTemplateExamples: boolean;
   appendLocalRunStubIfNeeded(fullSource: string): string;
@@ -163,6 +166,10 @@ function createTypeScriptLikeStrategy(
     formatRunnableExampleSection(exampleLines: string[]): string {
       if (exampleLines.length === 0) return "";
       return "\n\n" + exampleLines.map((line) => `{\n  ${line}\n}`).join("\n\n") + "\n";
+    },
+
+    localizeExpectedLiteral(jsonish: string): string {
+      return jsonish;
     },
 
     usesRunnableTemplateExamples: true,
@@ -253,6 +260,10 @@ const pythonStrategy: LanguageStrategy = {
     return "\n\n" + exampleLines.join("\n") + "\n";
   },
 
+  localizeExpectedLiteral(jsonish: string): string {
+    return jsonish.replace(/\btrue\b/g, "True").replace(/\bfalse\b/g, "False").replace(/\bnull\b/g, "None");
+  },
+
   usesRunnableTemplateExamples: true,
 
   appendLocalRunStubIfNeeded(_fullSource: string): string {
@@ -330,6 +341,10 @@ const cppStrategy: LanguageStrategy = {
 
   formatRunnableExampleSection(): string {
     return "";
+  },
+
+  localizeExpectedLiteral(jsonish: string): string {
+    return jsonish.replace(/\btrue\b/g, "1").replace(/\bfalse\b/g, "0");
   },
 
   usesRunnableTemplateExamples: false,
@@ -441,6 +456,10 @@ const javaStrategy: LanguageStrategy = {
 
   formatRunnableExampleSection(): string {
     return "";
+  },
+
+  localizeExpectedLiteral(jsonish: string): string {
+    return jsonish;
   },
 
   usesRunnableTemplateExamples: false,

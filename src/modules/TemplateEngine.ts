@@ -3,10 +3,13 @@ import { getLanguageStrategy } from "./language/LanguageStrategy";
 
 function parseTestInputs(problem: Problem, snippet: string, paramCount: number): string[][] {
   const blocks: string[] = [];
-  if (problem.sampleTestCase?.trim()) blocks.push(problem.sampleTestCase.trim());
-  for (const ex of problem.exampleTestCases ?? []) {
-    const t = String(ex).trim();
-    if (t) blocks.push(t);
+  const examples = (problem.exampleTestCases ?? [])
+    .map((ex) => String(ex).trim())
+    .filter(Boolean);
+  if (examples.length > 0) {
+    blocks.push(...examples);
+  } else if (problem.sampleTestCase?.trim()) {
+    blocks.push(problem.sampleTestCase.trim());
   }
   const allLines = blocks.flatMap((block) =>
     block.split("\n").map((s) => s.trim()).filter(Boolean)
@@ -18,6 +21,29 @@ function parseTestInputs(problem: Problem, snippet: string, paramCount: number):
     if (chunk.length === n) result.push(chunk);
   }
   return result;
+}
+
+/** Extract expected outputs (one per example) from the problem HTML content. */
+function parseExpectedOutputs(content: string): string[] {
+  if (!content) return [];
+  const text = content
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+  const results: string[] = [];
+  const re = /Output\s*:\s*([^\n]*)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const val = m[1].trim();
+    if (val) results.push(val);
+  }
+  return results;
 }
 
 function renderExampleWithExpected(
@@ -67,9 +93,12 @@ export function generateTemplate(
 
   const fnName = s.getFunctionName(snippet);
   const testInputs = parseTestInputs(problem, snippet, s.getParamCount(snippet));
-  const exampleBlocks = testInputs.map((args) =>
-    renderExampleWithExpected(args, fnName, lang, snippet, undefined)
-  );
+  const expectedOutputs = parseExpectedOutputs(problem.content || "");
+  const exampleBlocks = testInputs.map((args, i) => {
+    const raw = expectedOutputs[i];
+    const expected = raw ? s.localizeExpectedLiteral(raw) : undefined;
+    return renderExampleWithExpected(args, fnName, lang, snippet, expected);
+  });
   const examplesSection = s.formatRunnableExampleSection(exampleBlocks);
   return `${header}\n\n${snippet}${examplesSection}`;
 }
