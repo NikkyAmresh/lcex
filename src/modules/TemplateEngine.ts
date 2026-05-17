@@ -40,8 +40,16 @@ function parseExpectedOutputs(content: string): string[] {
   const re = /Output\s*:\s*([^\n]*)/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
-    const val = m[1].trim();
-    if (val) results.push(val);
+    let val = m[1].trim();
+    if (!val) continue;
+    if (val.length >= 2) {
+      const first = val[0];
+      const last = val[val.length - 1];
+      if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+        val = val.slice(1, -1);
+      }
+    }
+    results.push(val);
   }
   return results;
 }
