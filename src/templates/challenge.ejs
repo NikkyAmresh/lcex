@@ -62,9 +62,10 @@
         font-variant-numeric: tabular-nums;
         font-size: 18px;
         color: var(--text-muted);
-        min-width: 4ch;
+        min-width: 6ch;
       }
       .timer.timer-paused { opacity: 0.7; }
+      .timer.timer-overtime { color: #dc3545; font-weight: 600; }
       .timer-btn {
         font-size: 12px;
         padding: 4px 8px;
@@ -393,6 +394,10 @@
         const s = sec % 60;
         return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
       }
+      function fmtSigned(sec) {
+        const sign = sec < 0 ? "-" : "";
+        return sign + fmt(Math.abs(sec));
+      }
       function applyUiMode(focusC, interviewM) {
         document.body.classList.toggle("focus-compact", !!focusC);
         document.body.classList.toggle("interview-mode", !!interviewM);
@@ -401,8 +406,11 @@
       window.addEventListener("message", function (ev) {
         const msg = ev.data;
         if (msg.event === "timerUpdate") {
-          timerEl.textContent = fmt(msg.elapsed);
+          const reverse = msg.mode === "reverse" && typeof msg.budget === "number" && msg.budget > 0;
+          const remaining = reverse ? msg.budget - msg.elapsed : msg.elapsed;
+          timerEl.textContent = reverse ? fmtSigned(remaining) : fmt(msg.elapsed);
           timerEl.classList.toggle("timer-paused", msg.paused);
+          timerEl.classList.toggle("timer-overtime", reverse && remaining < 0);
           pauseBtn.textContent = msg.paused ? "Resume" : "Pause";
         } else if (msg.event === "uiMode") {
           applyUiMode(msg.focusCompact, msg.interviewMode);

@@ -732,7 +732,7 @@ export class LeetCodeProvider implements IProblemProvider {
             filter: null,
             filtersV2: FAVORITE_LIST_FILTERS_V2,
             searchKeyword: "",
-            sortBy: { sortField: "DIFFICULTY", sortOrder: "ASCENDING" },
+            sortBy: { sortField: "CUSTOM", sortOrder: "ASCENDING" },
             version: "v2",
           },
         }),

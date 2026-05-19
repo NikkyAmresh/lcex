@@ -30,10 +30,45 @@ function colorForElapsed(sec: number): string {
   return `#${BLACK.toString(16).padStart(6, "0")}`;
 }
 
+function colorForReverse(elapsed: number, budget: number): string {
+  if (budget <= 0) return colorForElapsed(elapsed);
+  if (elapsed >= budget) return `#${BLACK.toString(16).padStart(6, "0")}`;
+  const used = elapsed / budget;
+  if (used <= 0.4) return lerpHex(GREEN, AMBER, used / 0.4);
+  if (used <= 0.7) return lerpHex(AMBER, RED, (used - 0.4) / 0.3);
+  return lerpHex(RED, BLACK, (used - 0.7) / 0.3);
+}
+
 function formatTime(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return `${m < 10 ? "0" : ""}${m}:${s < 10 ? "0" : ""}${s}`;
+}
+
+function formatTimeSigned(sec: number): string {
+  const sign = sec < 0 ? "-" : "";
+  const abs = Math.abs(sec);
+  return `${sign}${formatTime(abs)}`;
+}
+
+const BUDGET_BY_DIFFICULTY: Record<string, number> = {
+  easy: 15 * 60,
+  medium: 30 * 60,
+  hard: 45 * 60,
+};
+
+function normalizeDifficulty(d: string | undefined): "easy" | "medium" | "hard" {
+  const s = (d ?? "").toLowerCase();
+  if (s === "easy") return "easy";
+  if (s === "hard") return "hard";
+  return "medium";
+}
+
+export type TimerMode = "auto" | "reverse";
+
+export function getTimerMode(): TimerMode {
+  const v = vscode.workspace.getConfiguration("leetcodePractice").get<string>("timerMode");
+  return v === "reverse" ? "reverse" : "auto";
 }
 
 interface TimerEntry {
@@ -44,6 +79,7 @@ interface TimerEntry {
 interface RegisteredPanel {
   panel: vscode.WebviewPanel;
   problemTitle: string;
+  difficulty: "easy" | "medium" | "hard";
 }
 
 let instance: ProblemTimer | null = null;
@@ -195,9 +231,19 @@ export class ProblemTimer {
     const problemTitle = reg?.problemTitle ?? "—";
     const paused = titleSlug ? this.isPaused(titleSlug) : true;
     const displayElapsed = displaySlug ? this.getElapsed(displaySlug) : 0;
-    this.statusBarItem.text = `$(watch) ${paused && !isActive && displayElapsed === 0 ? "—" : formatTime(displayElapsed)}`;
-    this.statusBarItem.tooltip = `Problem: ${problemTitle} • ${formatTime(displayElapsed)} elapsed${paused ? " (paused)" : ""}`;
-    this.statusBarItem.color = colorForElapsed(displayElapsed);
+    const mode = getTimerMode();
+    const budget = reg ? BUDGET_BY_DIFFICULTY[reg.difficulty] : 0;
+    const inReverse = mode === "reverse" && budget > 0;
+    const displayText = inReverse ? formatTimeSigned(budget - displayElapsed) : formatTime(displayElapsed);
+    const elapsedText = formatTime(displayElapsed);
+    const tooltipExtra = inReverse
+      ? ` (reverse: ${formatTimeSigned(budget - displayElapsed)} of ${formatTime(budget)})`
+      : "";
+    this.statusBarItem.text = `$(watch) ${paused && !isActive && displayElapsed === 0 ? (inReverse ? formatTime(budget) : "—") : displayText}`;
+    this.statusBarItem.tooltip = `Problem: ${problemTitle} • ${elapsedText} elapsed${tooltipExtra}${paused ? " (paused)" : ""}`;
+    this.statusBarItem.color = inReverse
+      ? colorForReverse(displayElapsed, budget)
+      : colorForElapsed(displayElapsed);
     this.statusBarItem.show();
   }
 
@@ -205,11 +251,15 @@ export class ProblemTimer {
     const reg = this.panels.get(titleSlug);
     if (!reg?.panel.webview) return;
     try {
+      const mode = getTimerMode();
+      const budget = BUDGET_BY_DIFFICULTY[reg.difficulty] ?? 0;
       void reg.panel.webview.postMessage({
         event: "timerUpdate",
         elapsed,
         paused,
         isActive,
+        mode,
+        budget,
       });
     } catch {
       // Panel was disposed between the lookup and the post; drop the registration
@@ -294,8 +344,18 @@ export class ProblemTimer {
     }
   }
 
-  registerPanel(titleSlug: string, panel: vscode.WebviewPanel, problemTitle: string, solved?: boolean): void {
-    this.panels.set(titleSlug, { panel, problemTitle });
+  registerPanel(
+    titleSlug: string,
+    panel: vscode.WebviewPanel,
+    problemTitle: string,
+    solved?: boolean,
+    difficulty?: string
+  ): void {
+    this.panels.set(titleSlug, {
+      panel,
+      problemTitle,
+      difficulty: normalizeDifficulty(difficulty),
+    });
     if (solved) {
       void this.setPaused(titleSlug, true);
     }

@@ -1986,7 +1986,7 @@ export async function openProblemWebview(
       onMarkSolved: opts?.onMarkSolved,
       onMarkInterviewSolved: opts?.onMarkInterviewSolved,
     });
-    getProblemTimer()?.registerPanel(item.titleSlug, panel, cached.title, status === "solved");
+    getProblemTimer()?.registerPanel(item.titleSlug, panel, cached.title, status === "solved", cached.difficulty);
     void setInterviewFocusProblem(context.globalState, item.titleSlug);
     softReload(context, item.titleSlug, getProvider, getProblemStatus).catch(
       () => {}
@@ -2029,7 +2029,7 @@ export async function openProblemWebview(
     onMarkSolved: opts?.onMarkSolved,
     onMarkInterviewSolved: opts?.onMarkInterviewSolved,
   });
-  getProblemTimer()?.registerPanel(item.titleSlug, panel, problem.title, status === "solved");
+  getProblemTimer()?.registerPanel(item.titleSlug, panel, problem.title, status === "solved", problem.difficulty);
   void setInterviewFocusProblem(context.globalState, item.titleSlug);
 }
 
@@ -2093,7 +2093,7 @@ export async function restoreProblemPanel(
       onMarkSolved: opts?.onMarkSolved,
       onMarkInterviewSolved: opts?.onMarkInterviewSolved,
     });
-    getProblemTimer()?.registerPanel(titleSlug, panel, problem.title, status === "solved");
+    getProblemTimer()?.registerPanel(titleSlug, panel, problem.title, status === "solved", problem.difficulty);
     void setInterviewFocusProblem(context.globalState, titleSlug);
   } catch (e) {
     Logger.logError("restoreProblemPanel failed", e);
