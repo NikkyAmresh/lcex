@@ -13,6 +13,7 @@ import {
   LANGUAGE_CHOICES,
   LANGUAGE_SHORT,
   getLanguageStrategy,
+  languageFromFileExtension,
   languageStrategyFromExtension,
   leetcodeApiLangFor,
   SOLUTION_FILE_EXTENSIONS,
@@ -429,13 +430,15 @@ export function getTitleSlugForActiveSolutionFile(context: vscode.ExtensionConte
   if (!SOLUTION_EXTENSIONS.has(ext)) return null;
   const editorPath = path.resolve(editor.document.uri.fsPath);
   const solutionBase = interviewSolutionBaseDir(context.globalState);
+  const lang = languageFromFileExtension(ext);
   for (const [, state] of problemViews) {
     const { idPath, slugPath } = Database.getSolutionPathSet(
       editor.document.uri,
       state.problem.id,
       state.problem.titleSlug,
       solutionBase,
-      interviewSolutionAttemptHex(context.globalState)
+      interviewSolutionAttemptHex(context.globalState),
+      lang
     );
     if (editorPath === path.resolve(idPath) || editorPath === path.resolve(slugPath)) {
       return state.problem.titleSlug;
