@@ -174,14 +174,60 @@
         background: rgba(240, 173, 78, 0.2);
         color: #f0ad4e;
       }
+      .pill.tag {
+        background: rgba(255, 161, 22, 0.15);
+        color: var(--accent);
+        font-weight: 500;
+        text-transform: lowercase;
+      }
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 0 0 16px;
+      }
+      .src-pane {
+        margin-top: 8px;
+      }
+      .hub-actions {
+        margin: 0 0 20px;
+      }
+      button.end-btn {
+        font-size: 13px;
+        padding: 8px 16px;
+        border: 1px solid rgba(244, 135, 113, 0.6);
+        border-radius: 6px;
+        background: rgba(244, 135, 113, 0.12);
+        color: #f48771;
+        font-weight: 600;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      button.end-btn:hover {
+        background: rgba(244, 135, 113, 0.2);
+      }
+      button.end-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
     </style>
   </head>
   <body>
     <% if (sessionMode && session && hubRows) { %>
     <h1>Interview in progress</h1>
     <p class="lead">Planned problems and progress for this session. Practice status is separate from whether you solved the problem during this interview.</p>
+    <% if (typeof tags !== "undefined" && tags && tags.length > 0) { %>
+    <div class="tag-row" aria-label="Interview tags">
+      <% tags.forEach(function (t) { %>
+      <span class="pill tag"><%= t %></span>
+      <% }); %>
+    </div>
+    <% } %>
     <div class="timer" id="hubTimer" aria-live="polite">—:—</div>
     <p class="timer-note">Click a problem to open it in the problem panel.</p>
+    <div class="actions hub-actions">
+      <button type="button" id="endBtn" class="end-btn">End interview</button>
+    </div>
     <p class="hub-section-title">Problems</p>
     <div class="hub-list" role="list">
       <% hubRows.forEach(function (row) { %>
@@ -216,6 +262,14 @@
           if (!btn || !btn.dataset.slug) return;
           vscode.postMessage({ type: "openProblem", titleSlug: btn.dataset.slug });
         });
+        var endBtn = document.getElementById("endBtn");
+        if (endBtn) {
+          endBtn.addEventListener("click", function () {
+            if (!confirm("End this interview now?")) return;
+            endBtn.disabled = true;
+            vscode.postMessage({ type: "endInterview" });
+          });
+        }
         window.addEventListener("message", function (e) {
           var d = e.data;
           if (!d || d.type !== "hubTimerEndsAt") return;
@@ -226,7 +280,7 @@
     </script>
     <% } else { %>
     <h1>Interview setup</h1>
-    <p class="lead">Choose duration and how many problems to draw (mixed Easy / Medium / Hard). Timer starts when you press Start now.</p>
+    <p class="lead">Choose duration, how many problems to draw, and where to draw them from. Timer starts when you press Start now.</p>
 
     <label for="dur">Duration</label>
     <select id="dur" aria-label="Interview duration">
@@ -238,10 +292,65 @@
     <label for="count">Number of problems</label>
     <input type="number" id="count" min="1" max="50" value="2" aria-label="Problem count" />
 
+    <label for="src">Problem source</label>
+    <select id="src" aria-label="Problem source">
+      <option value="random">Random (mixed difficulty)</option>
+      <option value="company">By company</option>
+      <option value="list">By LeetCode list</option>
+      <option value="plan">By study plan</option>
+    </select>
+
+    <div id="srcCompany" class="src-pane" hidden>
+      <label for="company">Company</label>
+      <% if (companyNames && companyNames.length > 0) { %>
+      <select id="company" aria-label="Company">
+        <% companyNames.forEach(function (c) { %>
+        <option value="<%= c %>"><%= c %></option>
+        <% }); %>
+      </select>
+      <% } else { %>
+      <p style="color: var(--text-muted); font-size: 12px; margin: 6px 0 0;">
+        No companies dataset found. Install the extension's companies dataset to use this mode.
+      </p>
+      <% } %>
+    </div>
+
+    <div id="srcList" class="src-pane" hidden>
+      <label for="list">LeetCode list</label>
+      <select id="list" aria-label="LeetCode list">
+        <% (problemLists || []).forEach(function (p) { %>
+        <option value="<%= p.slug %>"><%= p.name %> (<%= p.slug %>)</option>
+        <% }); %>
+        <option value="__custom__">Other (enter slug)</option>
+      </select>
+      <input
+        type="text"
+        id="listSlug"
+        placeholder="e.g. graph"
+        aria-label="LeetCode list slug"
+        style="margin-top: 8px;<% if ((problemLists || []).length > 0) { %> display: none;<% } %>"
+      />
+    </div>
+
+    <div id="srcPlan" class="src-pane" hidden>
+      <label for="plan">Study plan</label>
+      <% if (studyPlans && studyPlans.length > 0) { %>
+      <select id="plan" aria-label="Study plan">
+        <% studyPlans.forEach(function (p) { %>
+        <option value="<%= p.slug %>"><%= p.name %> (<%= p.slug %>)</option>
+        <% }); %>
+      </select>
+      <% } else { %>
+      <p style="color: var(--text-muted); font-size: 12px; margin: 6px 0 0;">
+        No study plans configured. Add a <code>studyPlans</code> entry to your <code>.leetcode</code> file.
+      </p>
+      <% } %>
+    </div>
+
     <details>
-      <summary>Custom slugs (optional)</summary>
+      <summary>Custom slugs (override)</summary>
       <p style="color: var(--text-muted); font-size: 12px; margin: 10px 0 8px;">
-        Comma-separated LeetCode title slugs. If set, these are used instead of random picks.
+        Comma-separated LeetCode title slugs. If set, these are used instead of the selected source.
       </p>
       <textarea id="custom" placeholder="e.g. two-sum, add-two-numbers" aria-label="Custom slugs"></textarea>
     </details>
@@ -256,13 +365,75 @@
         const vscode = acquireVsCodeApi();
         const durEl = document.getElementById("dur");
         const countEl = document.getElementById("count");
+        const srcEl = document.getElementById("src");
+        const companyEl = document.getElementById("company");
+        const listEl = document.getElementById("list");
+        const listSlugEl = document.getElementById("listSlug");
+        const planEl = document.getElementById("plan");
         const customEl = document.getElementById("custom");
         const btn = document.getElementById("startBtn");
         const errEl = document.getElementById("err");
 
+        const panes = {
+          random: null,
+          company: document.getElementById("srcCompany"),
+          list: document.getElementById("srcList"),
+          plan: document.getElementById("srcPlan"),
+        };
+
+        function updatePane() {
+          var k = srcEl.value;
+          for (var key in panes) {
+            var el = panes[key];
+            if (el) el.hidden = key !== k;
+          }
+        }
+        srcEl.addEventListener("change", updatePane);
+        updatePane();
+
+        if (listEl) {
+          listEl.addEventListener("change", function () {
+            if (!listSlugEl) return;
+            listSlugEl.style.display = listEl.value === "__custom__" ? "block" : "none";
+          });
+        }
+
         function showErr(msg) {
           errEl.textContent = msg || "";
           errEl.classList.toggle("show", !!msg);
+        }
+
+        function buildSource() {
+          var customRaw = (customEl.value || "").trim();
+          if (customRaw) {
+            return { kind: "custom", slugsRaw: customRaw };
+          }
+          var k = srcEl.value;
+          if (k === "company") {
+            if (!companyEl || !companyEl.value) {
+              return { error: "Pick a company." };
+            }
+            return { kind: "company", company: companyEl.value };
+          }
+          if (k === "list") {
+            var slug;
+            if (listEl && listEl.value === "__custom__") {
+              slug = (listSlugEl && listSlugEl.value || "").trim();
+            } else {
+              slug = listEl && listEl.value || "";
+            }
+            if (!slug) {
+              return { error: "Enter or pick a LeetCode list slug." };
+            }
+            return { kind: "list", listSlug: slug };
+          }
+          if (k === "plan") {
+            if (!planEl || !planEl.value) {
+              return { error: "Pick a study plan." };
+            }
+            return { kind: "plan", planSlug: planEl.value };
+          }
+          return { kind: "random" };
         }
 
         btn.addEventListener("click", function () {
@@ -277,12 +448,17 @@
             showErr("Enter a problem count between 1 and 50.");
             return;
           }
+          var source = buildSource();
+          if (source.error) {
+            showErr(source.error);
+            return;
+          }
           btn.disabled = true;
           vscode.postMessage({
             type: "start",
             durationMinutes: d,
             problemCount: n,
-            customSlugsRaw: (customEl.value || "").trim(),
+            source: source,
           });
         });
 

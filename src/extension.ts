@@ -145,7 +145,8 @@ import {
   type EndInterviewSessionResult,
   type PlannedInterviewProblem,
 } from "./modules/InterviewMode";
-import type { InterviewSetupStartMessage } from "./modules/ProblemView";
+import type { InterviewSetupSource, InterviewSetupStartMessage } from "./modules/ProblemView";
+import { loadCompaniesDataset } from "./modules/CompaniesData";
 import {
   normalizeInterviewFilePath,
   readInterviewReportFile,
@@ -632,14 +633,21 @@ async function showInterviewSessionEnded(
   void vscode.window.showInformationMessage(msg);
 }
 
+type PlannedProblemsResult =
+  | { ok: true; planned: PlannedInterviewProblem[]; tags?: string[] }
+  | { ok: false; message: string };
+
 async function plannedProblemsFromSetup(
   context: vscode.ExtensionContext,
-  msg: { problemCount: number; customSlugsRaw: string }
-): Promise<{ ok: true; planned: PlannedInterviewProblem[] } | { ok: false; message: string }> {
-  const custom = msg.customSlugsRaw.trim();
+  msg: { problemCount: number; source: InterviewSetupSource }
+): Promise<PlannedProblemsResult> {
   const gs = context.globalState;
+  const n = Math.min(50, Math.max(1, Math.floor(msg.problemCount)));
+  const isSolved = (slug: string) => getStoredStatus(gs, slug) === "solved";
+  const source = msg.source;
 
-  if (custom) {
+  if (source.kind === "custom") {
+    const custom = source.slugsRaw.trim();
     const slugs = [...new Set(custom.split(/[,\s]+/).map((s) => s.trim()).filter(Boolean))];
     if (slugs.length === 0) {
       return { ok: false, message: "Enter at least one valid slug." };
@@ -661,6 +669,100 @@ async function plannedProblemsFromSetup(
     return { ok: true, planned };
   }
 
+  if (source.kind === "company") {
+    const company = source.company.trim();
+    if (!company) {
+      return { ok: false, message: "Pick a company." };
+    }
+    const dataset = loadCompaniesDataset(context.extensionPath);
+    if (!dataset) {
+      return { ok: false, message: "Companies dataset is not available." };
+    }
+    const edges = dataset.companies[company] ?? [];
+    if (edges.length === 0) {
+      return { ok: false, message: `No problems found for ${company}.` };
+    }
+    const sortedEdges = [...edges].sort((a, b) => (b.freq ?? 0) - (a.freq ?? 0));
+    const list = sortedEdges
+      .map((edge) => {
+        const p = dataset.problems[edge.i];
+        if (!p) return null;
+        return {
+          titleSlug: p.slug,
+          difficulty: (p.difficulty || "MEDIUM").toUpperCase(),
+        };
+      })
+      .filter((x): x is { titleSlug: string; difficulty: string } => x !== null);
+    if (list.length === 0) {
+      return { ok: false, message: `No problems found for ${company}.` };
+    }
+    const picks = pickPlannedInterviewProblems(list, n, isSolved);
+    if (picks.length === 0) {
+      return { ok: false, message: "Could not pick any problems." };
+    }
+    return {
+      ok: true,
+      planned: picks,
+      tags: [`company:${company.toLowerCase()}`],
+    };
+  }
+
+  if (source.kind === "list") {
+    const slug = source.listSlug.trim();
+    if (!slug) {
+      return { ok: false, message: "Enter a LeetCode list slug." };
+    }
+    const lc = getProvider();
+    if (!(lc instanceof LeetCodeProvider)) {
+      return {
+        ok: false,
+        message: "By-list mode needs the default LeetCode source (leave internalApiUrl empty).",
+      };
+    }
+    const cookie = context.globalState.get<string>("leetcodeSession") ?? undefined;
+    const items = await lc.getFavoriteProblemList(slug, cookie);
+    if (!items.length) {
+      return { ok: false, message: `LeetCode list "${slug}" had no problems or could not load.` };
+    }
+    const picks = pickPlannedInterviewProblems(
+      items.map((q) => ({ titleSlug: q.titleSlug, difficulty: q.difficulty })),
+      n,
+      isSolved
+    );
+    if (picks.length === 0) {
+      return { ok: false, message: "Could not pick any problems." };
+    }
+    return { ok: true, planned: picks, tags: [`list:${slug.toLowerCase()}`] };
+  }
+
+  if (source.kind === "plan") {
+    const slug = source.planSlug.trim();
+    if (!slug) {
+      return { ok: false, message: "Pick a study plan." };
+    }
+    const lc = getProvider();
+    if (!(lc instanceof LeetCodeProvider)) {
+      return {
+        ok: false,
+        message: "By-plan mode needs the default LeetCode source (leave internalApiUrl empty).",
+      };
+    }
+    const items = await lc.getStudyPlanProblemList(slug);
+    if (!items.length) {
+      return { ok: false, message: `Study plan "${slug}" had no problems or could not load.` };
+    }
+    const picks = pickPlannedInterviewProblems(
+      items.map((q) => ({ titleSlug: q.titleSlug, difficulty: q.difficulty })),
+      n,
+      isSolved
+    );
+    if (picks.length === 0) {
+      return { ok: false, message: "Could not pick any problems." };
+    }
+    return { ok: true, planned: picks, tags: [`plan:${slug.toLowerCase()}`] };
+  }
+
+  // Default: random from the full problemset.
   const lc = getProvider();
   if (!(lc instanceof LeetCodeProvider)) {
     return {
@@ -673,11 +775,10 @@ async function plannedProblemsFromSetup(
   if (!list.length) {
     return { ok: false, message: "Could not load the problem list. Check your network." };
   }
-  const n = Math.min(50, Math.max(1, Math.floor(msg.problemCount)));
   const picks = pickPlannedInterviewProblems(
     list.map((q) => ({ titleSlug: q.titleSlug, difficulty: q.difficulty })),
     n,
-    (slug) => getStoredStatus(gs, slug) === "solved"
+    isSolved
   );
   if (picks.length === 0) {
     return { ok: false, message: "Could not pick any problems." };
@@ -721,6 +822,7 @@ async function runInterviewSessionAfterPlan(
     solutionFolderPath?: string;
     attemptHex?: string;
     kind?: "contest";
+    tags?: string[];
     /** When set, this problem is opened first instead of planned[0]. Must be in planned. */
     firstProblemSlug?: string;
   }
@@ -743,6 +845,7 @@ async function runInterviewSessionAfterPlan(
     ...(opts.solutionFolderPath ? { solutionFolderPath: opts.solutionFolderPath } : {}),
     ...(opts.attemptHex ? { attemptHex: opts.attemptHex } : {}),
     ...(opts.kind ? { kind: opts.kind } : {}),
+    ...(opts.tags && opts.tags.length > 0 ? { tags: opts.tags } : {}),
   });
   trackAnalytics("interview_started", "auto", "interview_start", {
     durationBucket: bucketDurationMin(opts.durationMinutes),
@@ -1472,12 +1575,13 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         const count = Math.min(50, Math.max(1, Math.floor(msg.problemCount)));
 
+        const source: InterviewSetupSource = msg.source ?? { kind: "random" };
         const plannedResult = await vscode.window.withProgress(
           { location: vscode.ProgressLocation.Notification, title: "Preparing interview…" },
           () =>
             plannedProblemsFromSetup(context, {
               problemCount: count,
-              customSlugsRaw: msg.customSlugsRaw,
+              source,
             })
         );
 
@@ -1488,6 +1592,9 @@ export function activate(context: vscode.ExtensionContext): void {
           durationMinutes: dur,
           planned: plannedResult.planned,
           interviewName: defaultInterviewNameFromDate(),
+          ...(plannedResult.tags && plannedResult.tags.length > 0
+            ? { tags: plannedResult.tags }
+            : {}),
         });
       };
       const onOpenProblem = async (titleSlug: string) => {
@@ -1510,7 +1617,10 @@ export function activate(context: vscode.ExtensionContext): void {
             };
         await openProblemWebview(context, item, getProvider, getProblemStatus, getWebviewOpts());
       };
-      openInterviewSetupWebview(context, { onStart, onOpenProblem }, getProvider);
+      const onEnd = async () => {
+        await vscode.commands.executeCommand("leetcode-practice.interviewModeStop");
+      };
+      openInterviewSetupWebview(context, { onStart, onOpenProblem, onEnd }, getProvider);
     })
   );
 

@@ -38,7 +38,7 @@ import {
   track as trackAnalytics,
 } from "./cloud/analytics";
 import { createDefaultHintFileJson } from "./HintFile";
-import { lookupProblem as lookupCompaniesProblem } from "./CompaniesData";
+import { lookupProblem as lookupCompaniesProblem, loadCompaniesDataset } from "./CompaniesData";
 import { getProblemTimer, TIMER_BY_DAY_KEY, TIMER_ELAPSED_KEY, type TimerByDay } from "./ProblemTimer";
 import {
   FOCUS_COMPACT_WEBVIEW_KEY,
@@ -197,11 +197,18 @@ async function openProblemAsPlainText(
 /** Single stats webview (reused + refresh command target). */
 let statsWebviewPanel: vscode.WebviewPanel | null = null;
 
+export type InterviewSetupSource =
+  | { kind: "random" }
+  | { kind: "custom"; slugsRaw: string }
+  | { kind: "company"; company: string }
+  | { kind: "list"; listSlug: string }
+  | { kind: "plan"; planSlug: string };
+
 export type InterviewSetupStartMessage = {
   type: "start";
   durationMinutes: 45 | 60 | 180;
   problemCount: number;
-  customSlugsRaw: string;
+  source: InterviewSetupSource;
 };
 
 export type InterviewSetupOpenProblemMessage = {
@@ -212,6 +219,7 @@ export type InterviewSetupOpenProblemMessage = {
 export type InterviewSetupHandlers = {
   onStart: (msg: InterviewSetupStartMessage) => Promise<{ ok: true } | { ok: false; message: string }>;
   onOpenProblem: (titleSlug: string) => Promise<void>;
+  onEnd?: () => Promise<void>;
 };
 
 export interface InterviewHubRow {
@@ -368,6 +376,7 @@ let interviewSetupOnStart:
   | ((msg: InterviewSetupStartMessage) => Promise<{ ok: true } | { ok: false; message: string }>)
   | null = null;
 let interviewSetupOnOpenProblem: ((titleSlug: string) => Promise<void>) | null = null;
+let interviewSetupOnEnd: (() => Promise<void>) | null = null;
 let interviewSetupGetProvider: (() => IProblemProvider) | null = null;
 let interviewHubExtensionContext: vscode.ExtensionContext | null = null;
 
@@ -1515,6 +1524,26 @@ async function buildInterviewHubRows(
   return rows;
 }
 
+function buildInterviewSetupContext(context: vscode.ExtensionContext): {
+  companyNames: string[];
+  studyPlans: Array<{ slug: string; name: string }>;
+  problemLists: Array<{ slug: string; name: string }>;
+} {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const cfg = getEffectiveConfig(folders);
+  const dataset = loadCompaniesDataset(context.extensionPath);
+  const companyNames = dataset
+    ? Object.keys(dataset.companies).sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: "base" })
+      )
+    : [];
+  return {
+    companyNames,
+    studyPlans: cfg.studyPlans ?? [],
+    problemLists: cfg.problemLists ?? [],
+  };
+}
+
 async function renderInterviewSetupHtml(
   context: vscode.ExtensionContext,
   getProvider: () => IProblemProvider
@@ -1522,8 +1551,14 @@ async function renderInterviewSetupHtml(
   const templatesDir = getTemplatesDir(context);
   const session = getInterviewSession(context.globalState);
   if (!session?.active) {
+    const setupCtx = buildInterviewSetupContext(context);
     return String(
-      await ejs.renderFile(path.join(templatesDir, "interview-setup.ejs"), { sessionMode: false })
+      await ejs.renderFile(path.join(templatesDir, "interview-setup.ejs"), {
+        sessionMode: false,
+        companyNames: setupCtx.companyNames,
+        studyPlans: setupCtx.studyPlans,
+        problemLists: setupCtx.problemLists,
+      })
     );
   }
   const hubRows = await buildInterviewHubRows(context, getProvider, session);
@@ -1533,6 +1568,7 @@ async function renderInterviewSetupHtml(
       session,
       hubRows,
       endsAt: session.endsAt,
+      tags: session.tags ?? [],
     })
   );
 }
@@ -1618,22 +1654,32 @@ function ensureInterviewSetupPanel(context: vscode.ExtensionContext): vscode.Web
   );
   interviewSetupPanel = panel;
   panel.webview.onDidReceiveMessage(async (raw: unknown) => {
-    const m = raw as InterviewSetupStartMessage | InterviewSetupOpenProblemMessage;
+    const m = raw as
+      | InterviewSetupStartMessage
+      | InterviewSetupOpenProblemMessage
+      | { type: "endInterview" };
     if (!m || typeof m !== "object") return;
     if (m.type === "start") {
       const fn = interviewSetupOnStart;
       if (!fn) return;
-      const result = await fn(m);
+      const result = await fn(m as InterviewSetupStartMessage);
       if (!result.ok) {
         try { void panel.webview.postMessage({ type: "resetStart", message: result.message }); }
         catch { /* panel disposed mid-await */ }
       }
       return;
     }
-    if (m.type === "openProblem" && m.titleSlug) {
+    if (m.type === "openProblem" && (m as InterviewSetupOpenProblemMessage).titleSlug) {
       const openFn = interviewSetupOnOpenProblem;
       if (openFn) {
-        await openFn(m.titleSlug.trim());
+        await openFn((m as InterviewSetupOpenProblemMessage).titleSlug.trim());
+      }
+      return;
+    }
+    if (m.type === "endInterview") {
+      const endFn = interviewSetupOnEnd;
+      if (endFn) {
+        await endFn();
       }
     }
   });
@@ -1651,7 +1697,11 @@ function ensureInterviewSetupPanel(context: vscode.ExtensionContext): vscode.Web
         if (!interviewSetupOnStart || !interviewSetupOnOpenProblem) return;
         openInterviewSetupWebview(
           ctx,
-          { onStart: interviewSetupOnStart, onOpenProblem: interviewSetupOnOpenProblem },
+          {
+            onStart: interviewSetupOnStart,
+            onOpenProblem: interviewSetupOnOpenProblem,
+            ...(interviewSetupOnEnd ? { onEnd: interviewSetupOnEnd } : {}),
+          },
           gp
         );
       });
@@ -1678,6 +1728,7 @@ export function openInterviewSetupWebview(
 ): void {
   interviewSetupOnStart = handlers.onStart;
   interviewSetupOnOpenProblem = handlers.onOpenProblem;
+  interviewSetupOnEnd = handlers.onEnd ?? null;
   interviewSetupGetProvider = getProvider;
   interviewHubExtensionContext = context;
   const panel = ensureInterviewSetupPanel(context);

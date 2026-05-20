@@ -33,6 +33,8 @@ export interface InterviewSessionState {
   attemptHex?: string;
   /** Distinguishes contest re-runs from regular timed interviews (drives the (contest) badge). */
   kind?: "contest";
+  /** Optional source tags (e.g. ["company:meta"], ["plan:top-interview-150"]). */
+  tags?: string[];
 }
 
 /** Per planned problem on the interview report (time + interview-only XP). */
@@ -119,6 +121,10 @@ function migrateRawSession(raw: unknown): InterviewSessionState | undefined {
       ? extra.interviewFocusSlug.trim()
       : undefined;
   const kind = (s as { kind?: unknown }).kind === "contest" ? ("contest" as const) : undefined;
+  const rawTags = (s as { tags?: unknown }).tags;
+  const tags = Array.isArray(rawTags)
+    ? rawTags.filter((t) => typeof t === "string" && t.trim().length > 0).map((t) => String(t))
+    : undefined;
   return {
     active: true,
     startedAt: s.startedAt,
@@ -133,6 +139,7 @@ function migrateRawSession(raw: unknown): InterviewSessionState | undefined {
     ...(solutionFolderPath ? { solutionFolderPath } : {}),
     ...(attemptHex ? { attemptHex } : {}),
     ...(kind ? { kind } : {}),
+    ...(tags && tags.length > 0 ? { tags } : {}),
   };
 }
 
@@ -156,6 +163,7 @@ export type StartInterviewSessionOptions = {
   solutionFolderPath?: string;
   attemptHex?: string;
   kind?: "contest";
+  tags?: string[];
 };
 
 export async function startInterviewSession(
@@ -190,6 +198,10 @@ export async function startInterviewSession(
     typeof options?.attemptHex === "string" ? options.attemptHex.trim().toLowerCase() : "";
   const attemptHex = /^[0-9a-f]{3}$/.test(rawOptHex) ? rawOptHex : undefined;
   const kind = options?.kind === "contest" ? ("contest" as const) : undefined;
+  const tags =
+    Array.isArray(options?.tags) && options.tags.length > 0
+      ? options.tags.map((t) => String(t)).filter((t) => t.trim().length > 0)
+      : undefined;
   const state: InterviewSessionState = {
     active: true,
     startedAt: now,
@@ -203,6 +215,7 @@ export async function startInterviewSession(
     ...(solutionFolderPath ? { solutionFolderPath } : {}),
     ...(attemptHex ? { attemptHex } : {}),
     ...(kind ? { kind } : {}),
+    ...(tags && tags.length > 0 ? { tags } : {}),
   };
   await memento.update(INTERVIEW_SESSION_KEY, state);
   await setInterviewContext(true);

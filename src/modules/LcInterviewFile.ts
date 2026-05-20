@@ -15,8 +15,12 @@ export interface LcInterviewFileV1 {
   name: string;
   durationMinutes: 45 | 60 | 180;
   problems: PlannedInterviewProblem[];
+  tags?: string[];
   attempts?: LcInterviewAttemptEntry[];
 }
+
+const TAG_RE = /^[a-z0-9][a-z0-9:_\-.\s]{0,63}$/i;
+const MAX_TAGS = 16;
 
 const ALLOWED_DURATION = new Set<number>([45, 60, 180]);
 
@@ -49,6 +53,21 @@ function normalizeProblems(raw: unknown): PlannedInterviewProblem[] {
     }
   }
   return out;
+}
+
+function normalizeTags(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const t = item.trim().toLowerCase();
+    if (!t || !TAG_RE.test(t) || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+    if (out.length >= MAX_TAGS) break;
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 function normalizeAttempts(raw: unknown): LcInterviewAttemptEntry[] | undefined {
@@ -97,6 +116,7 @@ export function parseLcInterviewFile(text: string): { ok: true; data: LcIntervie
       typeof parsed.name === "string" && parsed.name.trim()
         ? parsed.name.trim()
         : defaultInterviewNameFromDate();
+    const tags = normalizeTags(parsed.tags);
     const attempts = normalizeAttempts(parsed.attempts);
     return {
       ok: true,
@@ -105,6 +125,7 @@ export function parseLcInterviewFile(text: string): { ok: true; data: LcIntervie
         name,
         durationMinutes: dm as 45 | 60 | 180,
         problems,
+        ...(tags !== undefined ? { tags } : {}),
         ...(attempts !== undefined ? { attempts } : {}),
       },
     };
