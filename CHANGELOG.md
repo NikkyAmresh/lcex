@@ -2,6 +2,47 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.8.1] Semantic example-output comparison
+
+### Fixed
+
+- Inline example runner no longer flags cosmetically different but semantically equal outputs as failures. Numeric values are compared as numbers (`2.00000` matches `2`), list/array whitespace is ignored (`[3, 4]` matches `[3,4]`), and Python-style literals match their JSON equivalents (`'()'` matches `"()"`, `True/False/None` match `true/false/null`). Genuine mismatches (e.g. `0.00000` vs `nan`, or numerically different values) still fail.
+
+## [0.8.0] Interview setup modes
+
+### Added
+
+- Mock interview setup now supports three problem-source modes: pick by company, pick from a problem list, or pick from a study plan. Picker UI adapts to the selected mode.
+- "End interview" button on the interview webview for ending a session without waiting for the timer.
+
+## [0.7.4] Timer for non-TypeScript files
+
+### Fixed
+
+- Practice timer now activates for solution files in any supported language, not just TypeScript.
+
+## [0.7.3] Reverse timer mode
+
+### Added
+
+- Optional reverse (countdown) mode for the practice timer.
+
+### Fixed
+
+- Problem list ordering preserved as configured rather than re-sorted.
+
+## [0.7.2] String expected-output cleanup
+
+### Fixed
+
+- Default test-case comments strip surrounding quotes from string expected outputs so the inline comparison matches what `print` actually emits.
+
+## [0.7.1] Inline expected-output comments
+
+### Added
+
+- Generated default test cases now include an inline `# Expected:` (or language equivalent) comment next to each call, so the example runner can compare without a separate expected block.
+
 ## [0.7.0] Sandboxed example runs
 
 ### Changed
