@@ -58,12 +58,81 @@ function parseStdoutLines(stdout: string): string[] {
     .filter((x) => x.length > 0);
 }
 
-function normalizeExpected(s: string): string {
+function normalizeWhitespace(s: string): string {
   return s.trim().replace(/\s+/g, " ");
 }
 
-function normalizeActual(s: string): string {
-  return s.trim().replace(/\s+/g, " ");
+function tryParseNumber(s: string): number | null {
+  const trimmed = s.trim();
+  if (trimmed === "") return null;
+  // Reject things like "[1]" that Number() coerces leniently
+  if (!/^-?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(trimmed)) return null;
+  const n = Number(trimmed);
+  return Number.isFinite(n) ? n : null;
+}
+
+function tryParseStructured(s: string): unknown {
+  const trimmed = s.trim();
+  if (!trimmed) return undefined;
+  // Only attempt structural parse on things that look like lists/objects/strings/bools/null
+  if (!/^[\[\{"'`tfnTFN]/.test(trimmed)) return undefined;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // ignore
+  }
+  // Normalize Python-style literals to JSON: single quotes → double, True/False/None → true/false/null
+  const pyToJson = trimmed
+    .replace(/'/g, '"')
+    .replace(/\bTrue\b/g, "true")
+    .replace(/\bFalse\b/g, "false")
+    .replace(/\bNone\b/g, "null");
+  try {
+    return JSON.parse(pyToJson);
+  } catch {
+    return undefined;
+  }
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a === "number" && typeof b === "number") {
+    if (Number.isNaN(a) || Number.isNaN(b)) return false;
+    return Math.abs(a - b) < 1e-5;
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    return a.every((v, i) => deepEqual(v, b[i]));
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const ka = Object.keys(a as object);
+    const kb = Object.keys(b as object);
+    if (ka.length !== kb.length) return false;
+    return ka.every((k) =>
+      deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k])
+    );
+  }
+  return false;
+}
+
+export function semanticallyEqual(expected: string, actual: string): boolean {
+  const e = normalizeWhitespace(expected);
+  const a = normalizeWhitespace(actual);
+  if (e === a) return true;
+
+  const en = tryParseNumber(e);
+  const an = tryParseNumber(a);
+  if (en !== null && an !== null) {
+    return Math.abs(en - an) < 1e-5;
+  }
+
+  const ep = tryParseStructured(e);
+  const ap = tryParseStructured(a);
+  if (ep !== undefined && ap !== undefined) {
+    return deepEqual(ep, ap);
+  }
+
+  return false;
 }
 
 export function compareOutput(
@@ -76,8 +145,7 @@ export function compareOutput(
   return blocks.map((block, index) => {
     const actual = actualLines[index] ?? "";
     const expected = block.expected;
-    const pass =
-      expected === null ? true : normalizeExpected(expected) === normalizeActual(actual);
+    const pass = expected === null ? true : semanticallyEqual(expected, actual);
     return { lineIndex: block.callLine, pass, expected, actual };
   });
 }
