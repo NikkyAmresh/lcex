@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
   "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ / Java templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -67,6 +67,12 @@
         "command": "leetcode-practice.openProblem",
         "title": "LeetCode: Open/Create Problem",
         "category": "LeetCode"
+      },
+      {
+        "command": "leetcode-practice.openSolutionFromText",
+        "title": "LeetCode: Open Solution",
+        "category": "LeetCode",
+        "icon": "$(code)"
       },
       {
         "command": "leetcode-practice.openQotd",
@@ -342,6 +348,11 @@
     ],
     "menus": {
       "editor/title": [
+        {
+          "command": "leetcode-practice.openSolutionFromText",
+          "when": "leetcodePractice.hasMarker && resourceScheme == 'leetcode-problem-plain'",
+          "group": "navigation"
+        },
         {
           "command": "leetcode-practice.agentMakeRunnable",
           "when": "leetcodePractice.hasMarker && leetcodePractice.isSolutionFile",

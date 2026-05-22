@@ -52,6 +52,9 @@ import {
   getCachedProblemId,
   openHintFileForProblem,
   tryOpenExistingHintFile,
+  openOrCreateSolution,
+  plainProblemSlugFromUri,
+  getCachedProblem as getProblemFromViewCache,
 } from "./modules/ProblemView";
 import { HintEditorProvider } from "./modules/HintEditorProvider";
 import { runExamples as runExamplesImpl, parseExampleBlocks, type ExampleResult } from "./modules/ExampleRunner";
@@ -1869,6 +1872,30 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
         }
       );
     })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "leetcode-practice.openSolutionFromText",
+      async (arg?: vscode.Uri) => {
+        const uri = arg instanceof vscode.Uri ? arg : vscode.window.activeTextEditor?.document.uri;
+        const slug = plainProblemSlugFromUri(uri);
+        if (!slug) {
+          vscode.window.showWarningMessage(
+            "Open a LeetCode problem (text view) first, then use Open Solution."
+          );
+          return;
+        }
+        trackAnalytics("command_invoked", "command_palette", "open_problem");
+        const provider = getProvider();
+        const problem = (await provider.getProblem(slug)) ?? getProblemFromViewCache(slug);
+        if (!problem) {
+          vscode.window.showErrorMessage("Could not load problem.");
+          return;
+        }
+        await openOrCreateSolution(context, problem);
+      }
+    )
   );
 
   context.subscriptions.push(

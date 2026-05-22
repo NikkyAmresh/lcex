@@ -2,6 +2,18 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.9.0] Class-design templates + Open Solution shortcut
+
+### Added
+
+- Class-design problems (e.g. #295 Find Median from Data Stream, LRU Cache, Trie) now generate a runnable driver. The template detects the design class and emits an `_lcex_run` / `_lcexRun` helper plus one `print` / `console.log` call per example pair (`ops`, `args`), so Run Examples compares the result array against the expected `[null, ...]` output instead of trying to call `__init__([...])`.
+- "LeetCode: Open Solution" command + editor-title icon on the plain-text problem view, so the solution file can be opened from the text view without going through the sidebar.
+
+### Fixed
+
+- Expected-output extraction now also matches the class-design HTML shape (`Output\n[null,...]` on a separate line), not just `Output: <val>`.
+- `getTargetDir` falls back to the workspace root for non-`file` URIs (the plain-text problem view used to confuse path resolution).
+
 ## [0.8.1] Semantic example-output comparison
 
 ### Fixed

@@ -43,7 +43,7 @@ export function getTargetDir(uri: vscode.Uri | undefined): string {
   const config = getEffectiveConfig(folders).defaultDirectory ?? ".";
   const workspaceRoot = folders[0]?.uri.fsPath;
   let base: string;
-  if (!uri) {
+  if (!uri || uri.scheme !== "file") {
     base = workspaceRoot ?? process.cwd();
   } else {
     const ws = vscode.workspace.getWorkspaceFolder(uri);

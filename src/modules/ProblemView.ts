@@ -74,7 +74,13 @@ export interface ProblemViewState {
 
 const problemViews = new Map<string, ProblemViewState>();
 
-const PROBLEM_PLAIN_DOC_SCHEME = "leetcode-problem-plain";
+export const PROBLEM_PLAIN_DOC_SCHEME = "leetcode-problem-plain";
+
+export function plainProblemSlugFromUri(uri: vscode.Uri | undefined): string | null {
+  if (!uri || uri.scheme !== PROBLEM_PLAIN_DOC_SCHEME) return null;
+  const slug = uri.path.replace(/^\//, "").replace(/\.txt$/i, "").trim();
+  return slug || null;
+}
 
 let plainProblemDocEmitter: vscode.EventEmitter<vscode.Uri> | undefined;
 
@@ -110,6 +116,7 @@ function formatProblemPlainText(problem: Problem): string {
   const lines: string[] = [
     problem.title,
     `LeetCode #${problem.id} · ${problem.difficulty || "Unknown"}`,
+    "Open Solution: editor title bar (code icon), or run command 'LeetCode: Open Solution'.",
     "",
     problemHtmlToPlainText(problem.content || "") || "(No description.)",
   ];
@@ -685,7 +692,7 @@ function getCacheUri(context: vscode.ExtensionContext): vscode.Uri {
   return vscode.Uri.joinPath(context.globalStorageUri, CACHE_FILENAME);
 }
 
-function getCachedProblem(titleSlug: string): Problem | undefined {
+export function getCachedProblem(titleSlug: string): Problem | undefined {
   return problemCache.get(titleSlug);
 }
 

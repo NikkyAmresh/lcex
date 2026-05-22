@@ -32,6 +32,24 @@ function isPythonClassBased(snippet: string): boolean {
   return /class\s+Solution\s*:/.test(snippet);
 }
 
+const DESIGN_CLASS_SKIP = new Set(["Solution", "ListNode", "TreeNode", "Node", "GraphNode"]);
+
+function detectPythonDesignClass(snippet: string): string | null {
+  const matches = [...snippet.matchAll(/^\s*class\s+([A-Za-z_]\w*)\s*[:(]/gm)];
+  for (const m of matches) {
+    if (!DESIGN_CLASS_SKIP.has(m[1])) return m[1];
+  }
+  return null;
+}
+
+function detectJsLikeDesignClass(snippet: string): string | null {
+  const matches = [...snippet.matchAll(/\bclass\s+([A-Za-z_$][\w$]*)\b/g)];
+  for (const m of matches) {
+    if (!DESIGN_CLASS_SKIP.has(m[1])) return m[1];
+  }
+  return null;
+}
+
 function jsLikeParamCount(snippet: string): number {
   const match = snippet.match(/\bfunction\s+\w+\s*\(([^)]*)\)/);
   if (!match) return 1;
@@ -43,6 +61,12 @@ function jsLikeParamCount(snippet: string): number {
 function jsLikeFunctionName(snippet: string): string {
   const match = snippet.match(/\bfunction\s+(\w+)\s*\(/);
   return match ? match[1] : "fn";
+}
+
+export interface DesignExampleInput {
+  opsJson: string;
+  argsJson: string;
+  expected?: string;
 }
 
 /** Keeps `#include` / `#pragma` / file comments at top; places LCex metadata before `class Solution`. */
@@ -98,6 +122,11 @@ export interface LanguageStrategy {
   renderExampleCall(fnName: string, argsStr: string, snippetBody: string): string;
   formatExpectedSuffix(expectedTrimmed: string): string;
   formatRunnableExampleSection(exampleLines: string[]): string;
+
+  /** Detect a class-design problem (e.g. MedianFinder, LRUCache). Returns class name or null. */
+  getDesignClassName(snippet: string): string | null;
+  /** Generate a runnable section that drives a class-design problem with (ops, args) pairs. */
+  renderDesignExampleSection(className: string, examples: DesignExampleInput[]): string;
 
   /** Translate a JSON-ish LeetCode expected value (e.g. "true", "null") into the literal the language's stdout print would produce. */
   localizeExpectedLiteral(jsonish: string): string;
@@ -176,6 +205,39 @@ function createTypeScriptLikeStrategy(
 
     appendLocalRunStubIfNeeded(_fullSource: string): string {
       return "";
+    },
+
+    getDesignClassName: detectJsLikeDesignClass,
+
+    renderDesignExampleSection(className: string, examples: DesignExampleInput[]): string {
+      if (examples.length === 0) return "";
+      const ts = id === "typescript";
+      const ctorParam = ts ? "Ctor: any" : "Ctor";
+      const opsParam = ts ? "ops: string[]" : "ops";
+      const argsParam = ts ? "args: any[][]" : "args";
+      const objDecl = ts ? "let obj: any;" : "let obj;";
+      const outDecl = ts ? "const out: any[] = [];" : "const out = [];";
+      const helper =
+        `function _lcexRun(${ctorParam}, ${opsParam}, ${argsParam}) {\n` +
+        `  ${objDecl}\n` +
+        `  ${outDecl}\n` +
+        `  for (let i = 0; i < ops.length; i++) {\n` +
+        `    if (i === 0) {\n` +
+        `      obj = new Ctor(...args[i]);\n` +
+        `      out.push(null);\n` +
+        `    } else {\n` +
+        `      out.push(obj[ops[i]](...args[i]));\n` +
+        `    }\n` +
+        `  }\n` +
+        `  return out;\n` +
+        `}`;
+      const calls = examples
+        .map(({ opsJson, argsJson, expected }) => {
+          const line = `console.log(_lcexRun(${className}, ${opsJson}, ${argsJson}));`;
+          return expected ? `${line}  // ${expected}` : line;
+        })
+        .join("\n");
+      return `\n\n${helper}\n\n${calls}\n`;
     },
   };
 }
@@ -269,6 +331,30 @@ const pythonStrategy: LanguageStrategy = {
   appendLocalRunStubIfNeeded(_fullSource: string): string {
     return "";
   },
+
+  getDesignClassName: detectPythonDesignClass,
+
+  renderDesignExampleSection(className: string, examples: DesignExampleInput[]): string {
+    if (examples.length === 0) return "";
+    const helper =
+      `def _lcex_run(cls, ops, args):\n` +
+      `    obj = None\n` +
+      `    out = []\n` +
+      `    for i, op in enumerate(ops):\n` +
+      `        if i == 0:\n` +
+      `            obj = cls(*args[i])\n` +
+      `            out.append(None)\n` +
+      `        else:\n` +
+      `            out.append(getattr(obj, op)(*args[i]))\n` +
+      `    return out`;
+    const calls = examples
+      .map(({ opsJson, argsJson, expected }) => {
+        const line = `print(_lcex_run(${className}, ${opsJson}, ${argsJson}))`;
+        return expected ? `${line}  # ${expected}` : line;
+      })
+      .join("\n");
+    return `\n\n${helper}\n\n${calls}\n`;
+  },
 };
 
 const cppStrategy: LanguageStrategy = {
@@ -360,6 +446,14 @@ const cppStrategy: LanguageStrategy = {
       "    return 0;\n" +
       "}\n"
     );
+  },
+
+  getDesignClassName(_snippet: string): string | null {
+    return null;
+  },
+
+  renderDesignExampleSection(): string {
+    return "";
   },
 };
 
@@ -474,6 +568,14 @@ const javaStrategy: LanguageStrategy = {
       "    }\n" +
       "}\n"
     );
+  },
+
+  getDesignClassName(_snippet: string): string | null {
+    return null;
+  },
+
+  renderDesignExampleSection(): string {
+    return "";
   },
 };
 

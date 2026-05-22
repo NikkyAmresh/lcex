@@ -1,7 +1,7 @@
 import type { Problem, SupportedLanguage } from "./interface/Problem";
 import { getLanguageStrategy } from "./language/LanguageStrategy";
 
-function parseTestInputs(problem: Problem, snippet: string, paramCount: number): string[][] {
+function collectExampleLines(problem: Problem): string[] {
   const blocks: string[] = [];
   const examples = (problem.exampleTestCases ?? [])
     .map((ex) => String(ex).trim())
@@ -11,9 +11,13 @@ function parseTestInputs(problem: Problem, snippet: string, paramCount: number):
   } else if (problem.sampleTestCase?.trim()) {
     blocks.push(problem.sampleTestCase.trim());
   }
-  const allLines = blocks.flatMap((block) =>
+  return blocks.flatMap((block) =>
     block.split("\n").map((s) => s.trim()).filter(Boolean)
   );
+}
+
+function parseTestInputs(problem: Problem, _snippet: string, paramCount: number): string[][] {
+  const allLines = collectExampleLines(problem);
   const n = Math.max(1, paramCount);
   const result: string[][] = [];
   for (let i = 0; i < allLines.length; i += n) {
@@ -21,6 +25,15 @@ function parseTestInputs(problem: Problem, snippet: string, paramCount: number):
     if (chunk.length === n) result.push(chunk);
   }
   return result;
+}
+
+function parseDesignExamples(problem: Problem): Array<{ opsJson: string; argsJson: string }> {
+  const lines = collectExampleLines(problem);
+  const out: Array<{ opsJson: string; argsJson: string }> = [];
+  for (let i = 0; i + 1 < lines.length; i += 2) {
+    out.push({ opsJson: lines[i], argsJson: lines[i + 1] });
+  }
+  return out;
 }
 
 /** Extract expected outputs (one per example) from the problem HTML content. */
@@ -37,7 +50,10 @@ function parseExpectedOutputs(content: string): string[] {
     .replace(/&#39;/g, "'")
     .replace(/&amp;/g, "&");
   const results: string[] = [];
-  const re = /Output\s*:\s*([^\n]*)/gi;
+  // Class-design problems render as "Output\n[null,...]" (no colon); regular
+  // problems use "Output: <val>". Accept both, but require a separator so
+  // prose like "the Output will be" doesn't match.
+  const re = /\bOutput(?:\s*:\s*|\s*\n+\s*)([^\n]+)/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     let val = m[1].trim();
@@ -99,9 +115,25 @@ export function generateTemplate(
     return `${merged}${s.appendLocalRunStubIfNeeded(merged)}`;
   }
 
+  const expectedOutputs = parseExpectedOutputs(problem.content || "");
+
+  const designClass = s.getDesignClassName(snippet);
+  if (designClass) {
+    const pairs = parseDesignExamples(problem);
+    const examples = pairs.map((p, i) => {
+      const raw = expectedOutputs[i];
+      return {
+        opsJson: p.opsJson,
+        argsJson: p.argsJson,
+        expected: raw ? s.localizeExpectedLiteral(raw) : undefined,
+      };
+    });
+    const section = s.renderDesignExampleSection(designClass, examples);
+    return `${header}\n\n${snippet}${section}`;
+  }
+
   const fnName = s.getFunctionName(snippet);
   const testInputs = parseTestInputs(problem, snippet, s.getParamCount(snippet));
-  const expectedOutputs = parseExpectedOutputs(problem.content || "");
   const exampleBlocks = testInputs.map((args, i) => {
     const raw = expectedOutputs[i];
     const expected = raw ? s.localizeExpectedLiteral(raw) : undefined;
