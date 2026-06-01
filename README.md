@@ -162,6 +162,7 @@ All commands are available under the **LeetCode** category in the command palett
 | Command | Description |
 | --- | --- |
 | `LeetCode: Interview Mode — Start` / `Stop` | Run an ad-hoc timed session |
+| `LeetCode: Pattern Recognition Drill` | Read a random problem with the pattern scrubbed out, recall the approach within 5 minutes, then reveal and self-grade; tracks accuracy and streak |
 | `LeetCode: Generate LC Interview (AI)` | Scaffold a planned `.lcInterview` |
 | `LeetCode: Open LC Interview Report…` | Browse `.lcireport` history |
 

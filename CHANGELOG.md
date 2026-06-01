@@ -2,6 +2,12 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.10.0] Pattern Recognition Drill
+
+### Added
+
+- "LeetCode: Pattern Recognition Drill" command. Picks a random problem, scrubs the pattern hints from the statement, and gives you up to five minutes to recall which algorithmic pattern you'd reach for before revealing the answer (derived for free from the problem's LeetCode topic tags). Self-grade each one; the header tracks running accuracy and your current/best streak. Drill history persists in global state. Needs the default LeetCode source (problems must carry topic tags).
+
 ## [0.9.0] Class-design templates + Open Solution shortcut
 
 ### Added

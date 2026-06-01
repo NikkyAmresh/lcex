@@ -138,7 +138,8 @@ export type AnalyticsFeature =
   | "analytics_opt_in"
   | "analytics_opt_out"
   | "practice_pattern"
-  | "pattern_mastery_summary";
+  | "pattern_mastery_summary"
+  | "pattern_drill";
 
 const FEATURES: ReadonlySet<AnalyticsFeature> = new Set<AnalyticsFeature>([
   "open_problem",
@@ -189,6 +190,7 @@ const FEATURES: ReadonlySet<AnalyticsFeature> = new Set<AnalyticsFeature>([
   "analytics_opt_out",
   "practice_pattern",
   "pattern_mastery_summary",
+  "pattern_drill",
 ]);
 
 // Props are a tiny, strongly-typed bag. Keys outside this union are dropped.

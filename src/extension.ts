@@ -32,6 +32,7 @@ import {
   summarizePatternMastery,
 } from "./modules/PatternMastery";
 import { detectPatterns, getPatternMeta, type PatternId } from "./modules/PatternDetector";
+import { openPatternDrillWebview } from "./modules/PatternDrillView";
 import type { OpenProblemWebviewOpts, ProblemPanelState } from "./modules/ProblemView";
 import {
   openProblemWebview,
@@ -3585,6 +3586,22 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       }
       const item = pool[Math.floor(Math.random() * pool.length)];
       await openProblemWebview(context, item, getProvider, getProblemStatus, getWebviewOpts());
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.patternDrill", async () => {
+      trackAnalytics("command_invoked", "command_palette", "pattern_drill");
+      if (!(getProvider() instanceof LeetCodeProvider)) {
+        void vscode.window.showInformationMessage(
+          "Pattern Drill needs the default LeetCode source (problems must carry topic tags). Leave internalApiUrl empty.",
+        );
+        return;
+      }
+      await openPatternDrillWebview(context, {
+        getProvider,
+        loadItems: () => problemsProvider.getProblemList(),
+      });
     })
   );
 
