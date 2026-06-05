@@ -2,11 +2,22 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.10.1] Pattern Drill refinements
+
+### Changed
+
+- Pattern Drill now selects problems by mapped-pattern count and acceptance rate instead of difficulty: only problems mapping to 1-2 distinct patterns and with a community acceptance rate of at least 45% are drilled, so single/dual-pattern Mediums are included while decomposition-heavy problems are excluded. The difficulty tag is no longer shown.
+
+### Added
+
+- Three-way self-grade (got it / got some / missed). "Got some" gives half credit on multi-pattern problems, and the header now tracks partials alongside accuracy and streak.
+- "Solve this" button on each drill question to open the actual problem.
+
 ## [0.10.0] Pattern Recognition Drill
 
 ### Added
 
-- "LeetCode: Pattern Recognition Drill" command. Picks a random recognition-friendly problem, scrubs the pattern hints from the statement, and gives you up to five minutes to recall which algorithmic pattern you'd reach for before revealing the answer (derived for free from the problem's LeetCode topic tags). The pool is gated for clean grading: only problems mapping to 1-2 distinct patterns and with a community acceptance rate of at least 45% (difficulty itself is not a gate, so single/dual-pattern Mediums are included). Self-grade each one as got-it / got-some / missed; "Got some" gives half credit on multi-pattern problems. The header tracks running accuracy, partials, and your current/best streak. A "Solve this" button opens the actual problem if you want to go solve it. Drill history persists in global state. Needs the default LeetCode source (problems must carry topic tags).
+- "LeetCode: Pattern Recognition Drill" command. Picks a random problem, scrubs the pattern hints from the statement, and gives you up to five minutes to recall which algorithmic pattern you'd reach for before revealing the answer (derived for free from the problem's LeetCode topic tags). Self-grade each one; the header tracks running accuracy and your current/best streak. Drill history persists in global state. Needs the default LeetCode source (problems must carry topic tags).
 
 ## [0.9.0] Class-design templates + Open Solution shortcut
 
