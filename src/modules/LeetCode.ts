@@ -83,6 +83,8 @@ export interface ProblemListItem {
   difficulty: string;
   /** LeetCode topic tag slugs (e.g. "two-pointers", "dynamic-programming"). Best-effort: missing on internal provider. */
   topicTags?: string[];
+  /** Community acceptance rate as a fraction 0-1 (e.g. 0.5755). Best-effort: only the problemset list carries it. */
+  acRate?: number;
 }
 
 export interface DailyChallengeEntry {
@@ -428,7 +430,7 @@ export class LeetCodeProvider implements IProblemProvider {
         query: `
           query problemsetQuestionListV2($categorySlug: String, $limit: Int, $skip: Int) {
             problemsetQuestionListV2(categorySlug: $categorySlug, limit: $limit, skip: $skip) {
-              questions { questionFrontendId titleSlug title difficulty topicTags { slug } }
+              questions { questionFrontendId titleSlug title difficulty acRate topicTags { slug } }
             }
           }
         `,
@@ -445,6 +447,7 @@ export class LeetCodeProvider implements IProblemProvider {
             titleSlug: string;
             title?: string;
             difficulty?: string;
+            acRate?: number;
             topicTags?: Array<{ slug?: string }>;
           }>;
         };
@@ -461,6 +464,7 @@ export class LeetCodeProvider implements IProblemProvider {
       titleSlug: q.titleSlug,
       title: q.title ?? q.titleSlug,
       difficulty: q.difficulty ?? "Unknown",
+      ...(typeof q.acRate === "number" ? { acRate: q.acRate } : {}),
       topicTags: Array.isArray(q.topicTags)
         ? q.topicTags.map((t) => (typeof t?.slug === "string" ? t.slug : "")).filter(Boolean)
         : undefined,

@@ -3601,6 +3601,20 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       await openPatternDrillWebview(context, {
         getProvider,
         loadItems: () => problemsProvider.getProblemList(),
+        openProblem: async (slug: string) => {
+          const problem = await getProvider().getProblem(slug);
+          if (!problem) {
+            void vscode.window.showErrorMessage("Could not fetch problem. Check network.");
+            return;
+          }
+          const item = {
+            id: problem.id,
+            titleSlug: problem.titleSlug,
+            title: problem.title,
+            difficulty: problem.difficulty,
+          };
+          await openProblemWebview(context, item, getProvider, getProblemStatus, getWebviewOpts());
+        },
       });
     })
   );

@@ -9,15 +9,20 @@ import {
   pickRandomDrillItem,
   readPatternDrillState,
   recordDrillResult,
+  type DrillGrade,
   type DrillQuestion,
   type PatternDrillStats,
 } from "./PatternDrill";
+
+const DRILL_GRADES: readonly DrillGrade[] = ["full", "partial", "miss"];
 
 let drillPanel: vscode.WebviewPanel | null = null;
 
 interface DrillDeps {
   getProvider: () => IProblemProvider;
   loadItems: () => Promise<ProblemListItem[]>;
+  /** Opens the actual problem so a curious user can go solve it. */
+  openProblem: (titleSlug: string) => Promise<void>;
 }
 
 function nonce(): string {
@@ -65,7 +70,7 @@ export async function openPatternDrillWebview(
 
   const panel = vscode.window.createWebviewPanel(
     "leetcodePatternDrill",
-    "LeetCode — Pattern Drill",
+    "Pattern Drill",
     vscode.ViewColumn.One,
     { enableScripts: true, retainContextWhenHidden: true } as vscode.WebviewPanelOptions,
   );
@@ -81,8 +86,14 @@ export async function openPatternDrillWebview(
     const m = raw as
       | { type: "ready"; prevSlug?: string }
       | { type: "next"; prevSlug?: string }
-      | { type: "grade"; patternIds?: string[]; correct?: boolean };
+      | { type: "grade"; patternIds?: string[]; grade?: string }
+      | { type: "solve"; titleSlug?: string };
     if (!m || typeof m !== "object") return;
+
+    if (m.type === "solve" && typeof m.titleSlug === "string" && m.titleSlug) {
+      await deps.openProblem(m.titleSlug);
+      return;
+    }
 
     if (m.type === "ready" || m.type === "next") {
       const q = await vscode.window.withProgress(
@@ -102,10 +113,13 @@ export async function openPatternDrillWebview(
     }
 
     if (m.type === "grade" && Array.isArray(m.patternIds)) {
+      const grade: DrillGrade = DRILL_GRADES.includes(m.grade as DrillGrade)
+        ? (m.grade as DrillGrade)
+        : "miss";
       const updated: PatternDrillStats = await recordDrillResult(
         context.globalState,
         m.patternIds as never[],
-        m.correct === true,
+        grade,
       );
       try {
         await panel.webview.postMessage({ type: "stats", stats: updated });
@@ -154,7 +168,6 @@ function renderShell(webview: vscode.Webview, stats: PatternDrillStats): string 
   #timer { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 13px; padding: 3px 10px; border-radius: 6px; border: 1px solid var(--vscode-panel-border); }
   #timer.urgent { color: var(--vscode-errorForeground); border-color: var(--vscode-errorForeground); }
   .title { font-size: 18px; font-weight: 600; margin: 20px 0 4px; }
-  .diff { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; opacity: .75; }
   .prompt { margin: 14px 0; padding: 10px 14px; border-left: 3px solid var(--vscode-textLink-foreground); background: var(--vscode-textBlockQuote-background); font-size: 13px; }
   .statement { margin-top: 16px; font-size: 14px; }
   .statement pre { white-space: pre-wrap; background: var(--vscode-textCodeBlock-background); padding: 10px; border-radius: 6px; overflow-x: auto; }
@@ -182,6 +195,7 @@ function renderShell(webview: vscode.Webview, stats: PatternDrillStats): string 
   <h1>🧩 Pattern Drill</h1>
   <span class="stat">Accuracy <b id="acc">${stats.accuracyPct}%</b></span>
   <span class="stat">Solved <b id="solved">${stats.totalCorrect}/${stats.totalAsked}</b></span>
+  <span class="stat">Partial <b id="partial">${stats.totalPartial}</b></span>
   <span class="stat">Streak <b id="streak">${stats.currentStreak}</b> (best <b id="best">${stats.bestStreak}</b>)</span>
   <span id="timer">5:00</span>
 </header>
@@ -195,22 +209,23 @@ function renderShell(webview: vscode.Webview, stats: PatternDrillStats): string 
   </div>
 
   <div id="question" class="hidden">
-    <div class="diff" id="q-diff"></div>
     <div class="title" id="q-title"></div>
     <div class="prompt">Read the statement and decide: <b>which algorithmic pattern would you reach for?</b> Think it through, then reveal the answer.</div>
     <div class="statement" id="q-statement"></div>
 
     <div class="row" id="recall-row">
       <button id="reveal-btn">Reveal pattern</button>
+      <button id="solve-btn" class="secondary">Solve this →</button>
       <button id="skip-btn" class="secondary">Skip</button>
     </div>
 
     <div id="answer-block" class="hidden">
       <div class="answers" id="q-answers"></div>
-      <div class="muted">How did you do?</div>
+      <div class="muted" id="grade-prompt">How did you do?</div>
       <div class="row">
-        <button id="got-btn">✓ I got it</button>
-        <button id="missed-btn" class="secondary">✗ I missed it</button>
+        <button id="got-btn">✓ Got it</button>
+        <button id="partial-btn" class="secondary hidden">◐ Got some</button>
+        <button id="missed-btn" class="secondary">✗ Missed it</button>
       </div>
     </div>
 
@@ -264,7 +279,6 @@ function renderShell(webview: vscode.Webview, stats: PatternDrillStats): string 
     revealed = false;
     hide('loading'); hide('empty'); hide('answer-block'); hide('next-block');
     show('question'); show('recall-row');
-    $('q-diff').textContent = q.difficulty || '';
     $('q-title').textContent = q.title || q.titleSlug;
     $('q-statement').innerHTML = q.statementHtml || '<em>(no statement available)</em>';
     $('q-answers').innerHTML = q.answers.map((a) =>
@@ -272,6 +286,12 @@ function renderShell(webview: vscode.Webview, stats: PatternDrillStats): string 
       '<span><span class="label">' + a.label + '</span> ' +
       '<span class="blurb">— ' + a.blurb + '</span></span></div>'
     ).join('');
+    // "Got some" only makes sense when more than one distinct pattern is required.
+    const multi = (q.patternCount || 0) > 1;
+    if (multi) show('partial-btn'); else hide('partial-btn');
+    $('grade-prompt').textContent = multi
+      ? 'How did you do? (◐ if you named at least one but not all)'
+      : 'How did you do?';
     startTimer();
   }
 
@@ -283,9 +303,9 @@ function renderShell(webview: vscode.Webview, stats: PatternDrillStats): string 
     show('answer-block');
   }
 
-  function grade(correct) {
+  function grade(g) {
     if (!current) return;
-    vscode.postMessage({ type: 'grade', patternIds: current.answers.map((a) => a.id), correct: correct });
+    vscode.postMessage({ type: 'grade', patternIds: current.answers.map((a) => a.id), grade: g });
     hide('answer-block');
     show('next-block');
   }
@@ -298,10 +318,17 @@ function renderShell(webview: vscode.Webview, stats: PatternDrillStats): string 
     vscode.postMessage({ type: 'next', prevSlug: prev });
   }
 
+  function solveCurrent() {
+    if (!current || !current.titleSlug) return;
+    vscode.postMessage({ type: 'solve', titleSlug: current.titleSlug });
+  }
+
   $('reveal-btn').addEventListener('click', reveal);
+  $('solve-btn').addEventListener('click', solveCurrent);
   $('skip-btn').addEventListener('click', requestNext);
-  $('got-btn').addEventListener('click', () => grade(true));
-  $('missed-btn').addEventListener('click', () => grade(false));
+  $('got-btn').addEventListener('click', () => grade('full'));
+  $('partial-btn').addEventListener('click', () => grade('partial'));
+  $('missed-btn').addEventListener('click', () => grade('miss'));
   $('next-btn').addEventListener('click', requestNext);
 
   window.addEventListener('message', (event) => {
@@ -312,6 +339,7 @@ function renderShell(webview: vscode.Webview, stats: PatternDrillStats): string 
     else if (m.type === 'stats') {
       $('acc').textContent = m.stats.accuracyPct + '%';
       $('solved').textContent = m.stats.totalCorrect + '/' + m.stats.totalAsked;
+      $('partial').textContent = m.stats.totalPartial;
       $('streak').textContent = m.stats.currentStreak;
       $('best').textContent = m.stats.bestStreak;
     }
