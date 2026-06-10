@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import type { Session } from "./interface/Session";
 import { getEffectiveConfig } from "./LeetcodeConfig";
 import type { SupportedLanguage } from "./interface/Problem";
-import { getLanguageStrategy } from "./language/LanguageStrategy";
+import { getLanguageStrategy, solutionFileBaseName } from "./language/LanguageStrategy";
 
 const SESSION_KEY = "leetcodeSession";
 
@@ -75,7 +75,7 @@ export function getFileName(problemId: string, titleSlug: string): string {
   const lang = config.language ?? "typescript";
   const ext = getLanguageStrategy(lang).fileExtension;
   const base = pattern === "slug" ? titleSlug : problemId;
-  return base + ext;
+  return solutionFileBaseName(lang, base) + ext;
 }
 
 const ATTEMPT_HEX = /^[0-9a-f]{3}$/i;
@@ -102,8 +102,8 @@ export function getSolutionPathSet(
     typeof attemptHex === "string" && ATTEMPT_HEX.test(attemptHex.trim())
       ? `-${attemptHex.trim().toLowerCase()}`
       : "";
-  const idPath = path.join(targetDir, `${problemId}${suffix}${ext}`);
-  const slugPath = path.join(targetDir, `${titleSlug}${suffix}${ext}`);
+  const idPath = path.join(targetDir, solutionFileBaseName(lang, problemId, suffix) + ext);
+  const slugPath = path.join(targetDir, solutionFileBaseName(lang, titleSlug, suffix) + ext);
   const preferredNewPath = pattern === "slug" ? slugPath : idPath;
   return { idPath, slugPath, preferredNewPath };
 }

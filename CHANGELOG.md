@@ -2,6 +2,19 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.11.0] Runnable Java
+
+### Added
+
+- Problem panels now show a branded loading screen (animated lcex logo + the problem title) while the statement is fetched, instead of a bare "Loading problem…" line. The panel opens immediately so a slow network no longer blocks the tab from appearing.
+
+### Fixed
+
+- Java solutions are now actually runnable. Solution files are named after their entry class (`LCexMain<id>.java`, e.g. `LCexMain1.java`; slug naming gives `LCexMainTwoSum.java`), and the template generates that class with a `main` that calls `new Solution().method(...)` for each sample test case, converted to typed Java literals (`new int[]{2, 7, 11, 15}`), with the expected output as an inline comment so Run Examples can compare results. Array results print via `Arrays.toString`/`deepToString`; `import java.util.*;` is added for local compilation.
+- Class-design problems in Java (e.g. LRU Cache) generate a direct driver in `main` (`LRUCache obj1 = new LRUCache(2); obj1.put(1, 1); System.out.println(obj1.get(1));  // 1`).
+- Java in-place problems (`void` methods like Rotate Array) run by printing the mutated argument; examples that need non-constructible inputs (`ListNode`, `TreeNode`) fall back to a comment instead of generating uncompilable code.
+- Commented-out `console.log`/`print`/`cout`/`System.out.println` lines no longer count as examples in Run Examples (all languages).
+
 ## [0.10.1] Pattern Drill refinements
 
 ### Changed

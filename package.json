@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
   "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ / Java templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -771,7 +771,11 @@
         },
         "leetcodePractice.runExamples.sandbox": {
           "type": "string",
-          "enum": ["auto", "sandbox", "off"],
+          "enum": [
+            "auto",
+            "sandbox",
+            "off"
+          ],
           "default": "auto",
           "markdownDescription": "Sandbox solution execution. `auto` (default) uses macOS `sandbox-exec` on Darwin, normal execution elsewhere. `sandbox` forces sandbox (fails on platforms without a backend). `off` runs the solution unsandboxed (legacy behaviour). The sandbox blocks network access and writes outside the toolchain's scratch directories."
         },
@@ -890,7 +894,7 @@
     "compile": "npm run typecheck && npm run bundle",
     "build:companies-data": "node scripts/build-companies-data.mjs",
     "watch": "node esbuild.config.mjs --watch",
-    "test": "node --test --import tsx test/integration.test.ts",
+    "test": "node --test --import tsx test/integration.test.ts test/java-template.test.ts",
     "package": "npm run compile && npx vsce package",
     "install-extension": "npm run package && node -e \"const v=require('./package.json').version;require('child_process').execSync('code --install-extension leetcode-practice-'+v+'.vsix --force',{stdio:'inherit'})\""
   },

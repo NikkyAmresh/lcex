@@ -650,9 +650,34 @@ export const PROBLEM_WEBVIEW_VIEWTYPE = "leetcodeProblem";
 /** Avoid hanging forever on network during panel restore after window reload. */
 const RESTORE_FETCH_TIMEOUT_MS = 30_000;
 
-const RESTORE_LOADING_HTML = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><style>body{font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:12px;}</style></head>
-<body><p>Loading problem…</p></body></html>`;
+function renderProblemLoadingHtml(
+  context: vscode.ExtensionContext,
+  webview: vscode.Webview,
+  title: string
+): string {
+  const logoUri = webview
+    .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, "icons", "logo-dark.png"))
+    .toString();
+  const safeTitle = title
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><style>
+  html, body { height: 100%; margin: 0; }
+  body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); display: flex; align-items: center; justify-content: center; }
+  .lcex-loading { display: flex; flex-direction: column; align-items: center; gap: 16px; opacity: 0.95; }
+  .lcex-loading img { width: 88px; height: 88px; animation: lcex-pulse 1.6s ease-in-out infinite; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3)); }
+  .lcex-loading .lcex-title { font-size: 14px; font-weight: 600; opacity: 0.92; max-width: 320px; text-align: center; }
+  .lcex-loading .lcex-sub { font-size: 12px; opacity: 0.65; }
+  @keyframes lcex-pulse { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.06); opacity: 1; } }
+</style></head>
+<body><div class="lcex-loading">
+  <img src="${logoUri}" alt="lcex"/>
+  <div class="lcex-title">${safeTitle}</div>
+  <div class="lcex-sub">Loading problem…</div>
+</div></body></html>`;
+}
 
 async function fetchProblemForRestore(
   getProvider: () => IProblemProvider,
@@ -2055,14 +2080,6 @@ export async function openProblemWebview(
     return;
   }
 
-  const problem = await getProvider().getProblem(item.titleSlug);
-  if (!problem) {
-    vscode.window.showErrorMessage("Could not load problem.");
-    return;
-  }
-  setCachedProblem(item.titleSlug, problem, context);
-  const status = getProblemStatus?.(problem.titleSlug);
-  const isLoggedIn = Database.isLoggedIn(context);
   const panel = vscode.window.createWebviewPanel(
     PROBLEM_WEBVIEW_VIEWTYPE,
     item.title,
@@ -2070,6 +2087,27 @@ export async function openProblemWebview(
     getProblemWebviewOptions(context)
   );
   panel.iconPath = { light: LOGO_URI(context), dark: LOGO_URI(context) };
+  panel.webview.html = renderProblemLoadingHtml(context, panel.webview, item.title);
+
+  let disposed = false;
+  panel.onDidDispose(() => {
+    disposed = true;
+    getProblemTimer()?.unregisterPanel(item.titleSlug);
+    const s = problemViews.get(item.titleSlug);
+    s?.testcasesPanel?.dispose();
+    problemViews.delete(item.titleSlug);
+  });
+
+  const problem = await getProvider().getProblem(item.titleSlug);
+  if (disposed) return;
+  if (!problem) {
+    panel.webview.html = `<!DOCTYPE html><html><body style="font-family:var(--vscode-font-family);color:var(--vscode-foreground);padding:16px;"><p>Could not load this problem. Check your network or session, then close this tab and reopen the problem from the sidebar.</p></body></html>`;
+    vscode.window.showErrorMessage("Could not load problem.");
+    return;
+  }
+  setCachedProblem(item.titleSlug, problem, context);
+  const status = getProblemStatus?.(problem.titleSlug);
+  const isLoggedIn = Database.isLoggedIn(context);
   panel.webview.html = await renderChallengeHtml(
     context,
     problem,
@@ -2078,12 +2116,6 @@ export async function openProblemWebview(
     panel.webview
   );
   problemViews.set(item.titleSlug, { webviewPanel: panel, problem });
-  panel.onDidDispose(() => {
-    getProblemTimer()?.unregisterPanel(item.titleSlug);
-    const s = problemViews.get(item.titleSlug);
-    s?.testcasesPanel?.dispose();
-    problemViews.delete(item.titleSlug);
-  });
   setupPanelMessageHandler(context, item.titleSlug, {
     getProvider,
     getProblemStatus,
@@ -2112,7 +2144,7 @@ export async function restoreProblemPanel(
     panel.webview.html = "<p>Unable to restore: no problem state.</p>";
     return;
   }
-  panel.webview.html = RESTORE_LOADING_HTML;
+  panel.webview.html = renderProblemLoadingHtml(context, panel.webview, titleSlug);
   try {
     await ensureProblemCacheLoaded(context);
     let problem = getCachedProblem(titleSlug);
@@ -2194,7 +2226,10 @@ export async function openOrCreateSolution(
     lang
   );
   if (!exists) {
-    const content = generateTemplate(problem, { language: lang });
+    const content = generateTemplate(problem, {
+      language: lang,
+      fileBaseName: path.basename(filePath, path.extname(filePath)),
+    });
     await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), Buffer.from(content, "utf8"));
   }
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));

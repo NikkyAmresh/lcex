@@ -75,6 +75,7 @@ import {
 import {
   SOLUTION_FILE_EXTENSIONS,
   languageFromFileExtension,
+  problemKeyFromSolutionFileBase,
 } from "./modules/language/LanguageStrategy";
 import {
   applyInlineDecorations,
@@ -225,7 +226,8 @@ const IS_SOLUTION_FILE_CONTEXT = "leetcodePractice.isSolutionFile";
 
 const SOLUTION_EXTENSIONS = new Set(SOLUTION_FILE_EXTENSIONS);
 
-const NUMBERED_FILE_PATTERN = /^(\d+)\.(ts|js|py|cpp|java)$/i;
+// Java solution files are named after their entry class (`LCexMain2.java`); see LanguageStrategy.
+const NUMBERED_FILE_PATTERN = /^(?:LCexMain)?(\d+)\.(ts|js|py|cpp|java)$/i;
 
 /** Shows problem name as tooltip on numbered solution files in LeetCode workspaces. */
 class LeetCodeFileDecorationProvider implements vscode.FileDecorationProvider {
@@ -1033,7 +1035,9 @@ async function resolveProblemContextForExplain(
   }
   const editor = vscode.window.activeTextEditor;
   if (!editor) return undefined;
-  const base = path.basename(editor.document.fileName, path.extname(editor.document.fileName));
+  const base = problemKeyFromSolutionFileBase(
+    path.basename(editor.document.fileName, path.extname(editor.document.fileName))
+  );
   const num = base.match(/^(\d+)$/);
   if (num) {
     const p = await getProvider().getProblem(num[1]);
@@ -1945,7 +1949,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const ext = uri ? path.extname(uri.fsPath) : "";
       if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext.toLowerCase())) {
         vscode.window.setStatusBarMessage(
-          "lcex: open a .ts/.js/.py/.cpp/.java/.java solution file to run examples",
+          "lcex: open a .ts/.js/.py/.cpp/.java solution file to run examples",
           5000
         );
         return;
@@ -2079,7 +2083,10 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
   };
   const resolveSlugForUri = (uri: vscode.Uri): string => {
     const ext = path.extname(uri.fsPath);
-    return getTitleSlugForActiveSolutionFile(context) ?? path.basename(uri.fsPath, ext);
+    return (
+      getTitleSlugForActiveSolutionFile(context) ??
+      problemKeyFromSolutionFileBase(path.basename(uri.fsPath, ext))
+    );
   };
 
   const BUG_REVIEW_SCRATCH_DIR = path.join(require("os").homedir(), ".lcex", "reviews");

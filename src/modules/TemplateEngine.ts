@@ -86,7 +86,7 @@ function renderExampleWithExpected(
     }
   });
   const argsStr = args.map((a) => JSON.stringify(a)).join(", ");
-  const code = s.renderExampleCall(fnName, argsStr, snippet);
+  const code = s.renderExampleCall(fnName, argsStr, snippet, args);
   if (expectedLine?.trim()) {
     return `${code}${s.formatExpectedSuffix(expectedLine.trim())}`;
   }
@@ -95,7 +95,7 @@ function renderExampleWithExpected(
 
 export function generateTemplate(
   problem: Problem,
-  options?: { includeExpected?: boolean; language?: SupportedLanguage }
+  options?: { includeExpected?: boolean; language?: SupportedLanguage; fileBaseName?: string }
 ): string {
   const lang: SupportedLanguage = options?.language ?? "typescript";
   const s = getLanguageStrategy(lang);
@@ -115,6 +115,7 @@ export function generateTemplate(
     return `${merged}${s.appendLocalRunStubIfNeeded(merged)}`;
   }
 
+  const entryClassName = options?.fileBaseName?.trim() || undefined;
   const expectedOutputs = parseExpectedOutputs(problem.content || "");
 
   const designClass = s.getDesignClassName(snippet);
@@ -128,8 +129,8 @@ export function generateTemplate(
         expected: raw ? s.localizeExpectedLiteral(raw) : undefined,
       };
     });
-    const section = s.renderDesignExampleSection(designClass, examples);
-    return `${header}\n\n${snippet}${section}`;
+    const section = s.renderDesignExampleSection(designClass, examples, { snippet, entryClassName });
+    return `${merged}${section}`;
   }
 
   const fnName = s.getFunctionName(snippet);
@@ -139,6 +140,6 @@ export function generateTemplate(
     const expected = raw ? s.localizeExpectedLiteral(raw) : undefined;
     return renderExampleWithExpected(args, fnName, lang, snippet, expected);
   });
-  const examplesSection = s.formatRunnableExampleSection(exampleBlocks);
-  return `${header}\n\n${snippet}${examplesSection}`;
+  const examplesSection = s.formatRunnableExampleSection(exampleBlocks, entryClassName);
+  return `${merged}${examplesSection}`;
 }
