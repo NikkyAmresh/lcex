@@ -435,84 +435,134 @@ function createUriHandler(
 
 /** Opens Cursor/IDE agent, pastes the prompt into chat, and triggers submit so the agent runs. */
 async function openChatWithPrompt(prompt: string): Promise<void> {
-  const withPromptCommands: Array<{ id: string; args?: unknown[] }> = [
-    { id: "aichat.newchat", args: [prompt] },
-    { id: "cursor.chat.new", args: [prompt] },
-  ];
-  for (const { id, args } of withPromptCommands) {
-    try {
-      await vscode.commands.executeCommand(id, ...(args ?? []));
-      return;
-    } catch {
-      // Command may not exist or not accept args; try next
-    }
-  }
+  let promptHandled = false;
+  let autoSubmitted = false;
 
-  // No command accepts prompt: open new agent chat, paste, then submit
-  const previousClipboard = await vscode.env.clipboard.readText();
-  await vscode.env.clipboard.writeText(prompt);
-
-  const openCommands = ["composer.newAgentChat", "aichat.newchat", "aichat.focus"];
-  let opened = false;
-  for (const id of openCommands) {
-    try {
-      await vscode.commands.executeCommand(id);
-      opened = true;
-      break;
-    } catch {
-      // try next
-    }
-  }
-  if (!opened) {
-    await vscode.env.clipboard.writeText(previousClipboard);
-    vscode.window.showWarningMessage("LeetCode Practice: Could not open agent chat.");
-    return;
-  }
-
-  await delay(600);
-
+  // 1. VS Code: opens, fills, and automatically submits
   try {
-    await vscode.commands.executeCommand("editor.action.clipboardPasteAction");
-  } catch {
-    // Paste may not work in chat input; restore clipboard and inform
-    await vscode.env.clipboard.writeText(previousClipboard);
-    vscode.window.showInformationMessage(
-      "LeetCode Practice: Chat opened. Paste (Cmd+V) and press Enter to run."
-    );
-    return;
+    await vscode.commands.executeCommand("workbench.action.chat.open", { query: prompt });
+    promptHandled = true;
+    autoSubmitted = true;
+  } catch (e) {
   }
 
-  await delay(400);
+  // 2. Cursor & Antigravity: opens and fills/submits natively
+  if (!promptHandled) {
+    // We try all known variants for passing a prompt directly
+    const withPromptCommands = [
+      { id: "antigravity.sendPromptToAgentPanel", args: [prompt] },
+      { id: "antigravity.sendPromptToAgentPanel", args: [{ prompt }] },
+      { id: "antigravity.sendPromptToAgentPanel", args: [{ text: prompt }] },
+      { id: "aichat.newchat", args: [prompt] },
+      { id: "cursor.chat.new", args: [prompt] }
+    ];
 
-  const submitCommands = [
-    "aichat.submit",
-    "cursor.chat.submit",
-    "workbench.action.chat.acceptInput",
-    "composer.submit",
-  ];
-  for (const id of submitCommands) {
-    try {
-      await vscode.commands.executeCommand(id);
-      await vscode.env.clipboard.writeText(previousClipboard);
-      return;
-    } catch {
-      // try next
+    for (const cmd of withPromptCommands) {
+      try {
+        await vscode.commands.executeCommand(cmd.id, ...cmd.args);
+        promptHandled = true;
+        // Assume Antigravity auto-submits, but Cursor does not.
+        if (cmd.id.includes("antigravity")) {
+          autoSubmitted = true;
+        } else {
+          autoSubmitted = false;
+        }
+        break;
+      } catch (e) {
+      }
     }
   }
 
-  await delay(100);
-  try {
-    await vscode.commands.executeCommand("type", { text: "\r" });
-  } catch {
+  // 3. Fallback: Open chat manually, paste, and submit
+  let clipboardWorks = false;
+  let previousClipboard = "";
+
+  if (!promptHandled) {
     try {
-      await vscode.commands.executeCommand("type", { text: "\n" });
-    } catch {
+      previousClipboard = await vscode.env.clipboard.readText();
+      await vscode.env.clipboard.writeText(prompt);
+      clipboardWorks = true;
+    } catch (e) {
+      clipboardWorks = false;
+    }
+
+    const openCommands = [
+      "antigravity.startNewConversation",
+      "antigravity.agentSidePanel.focus",
+      "composer.newAgentChat", 
+      "aichat.focus", 
+      "antigravity.chat.open", 
+      "workbench.action.chat.newChat",
+      "workbench.action.chat.open",
+      "workbench.action.openChat",
+      "chat.action.focus"
+    ];
+    let opened = false;
+    for (const id of openCommands) {
+      try {
+        await vscode.commands.executeCommand(id);
+        opened = true;
+        break;
+      } catch (e) {
+      }
+    }
+
+    if (!opened) {
+      if (clipboardWorks) {
+        await vscode.env.clipboard.writeText(previousClipboard);
+      }
+      vscode.window.showWarningMessage("LeetCode Practice: Could not open agent chat.");
+      return;
+    }
+
+    await delay(600);
+
+    try {
+      await vscode.commands.executeCommand("editor.action.clipboardPasteAction");
+      promptHandled = true;
+    } catch (e) {
+      if (clipboardWorks) {
+        await vscode.env.clipboard.writeText(previousClipboard);
+      }
       vscode.window.showInformationMessage(
-        "LeetCode Practice: Prompt pasted. Press Enter to run the agent."
+        "LeetCode Practice: Chat opened. Paste (Cmd+V) and press Enter to run."
       );
+      return;
     }
   }
-  await vscode.env.clipboard.writeText(previousClipboard);
+
+  // 4. Submit if it was not auto-submitted
+  if (!autoSubmitted) {
+    await delay(400);
+
+    const submitCommands = [
+      "workbench.action.chat.submit",
+      "aichat.submit",
+      "cursor.chat.submit",
+      "workbench.action.chat.acceptInput",
+      "composer.submit",
+    ];
+    
+    let submitted = false;
+    for (const id of submitCommands) {
+      try {
+        await vscode.commands.executeCommand(id);
+        submitted = true;
+        break;
+      } catch (e) {
+      }
+    }
+  }
+
+  // 5. Restore clipboard if we used the paste fallback
+  if (clipboardWorks && !autoSubmitted) {
+    await delay(200);
+    try {
+      await vscode.env.clipboard.writeText(previousClipboard);
+    } catch {
+      // Ignore
+    }
+  }
 }
 
 async function enterFocusWorkbenchLayout(): Promise<void> {
@@ -1177,7 +1227,11 @@ async function applyLeetcodeWorkspaceAppearanceIfNeeded(context: vscode.Extensio
 
 let extensionContextForBars: vscode.ExtensionContext | null = null;
 
-export function activate(context: vscode.ExtensionContext): void {
+export async function activate(context: vscode.ExtensionContext) {
+  Logger.log("LeetCode Practice activating...");
+
+
+
   extensionContextForBars = context;
   const outputChannel = vscode.window.createOutputChannel("LeetCode Practice");
   context.subscriptions.push(outputChannel);

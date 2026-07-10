@@ -2252,10 +2252,29 @@ async function executeCode(
     );
     return;
   }
-  const editor = vscode.window.activeTextEditor;
-  const fileName = editor?.document.fileName ?? "";
-  const ext = path.extname(fileName);
-  const strategy = languageStrategyFromExtension(ext);
+  let editor = vscode.window.activeTextEditor;
+  let fileName = editor?.document.fileName ?? "";
+  let ext = path.extname(fileName);
+  let strategy = languageStrategyFromExtension(ext);
+
+  if (!editor || !strategy) {
+    const slugLower = problem.titleSlug.toLowerCase();
+    const slugNoDash = slugLower.replace(/-/g, "");
+    let possibleEditor = vscode.window.visibleTextEditors.find((e) => {
+      const p = e.document.fileName.toLowerCase();
+      return (p.includes(slugLower) || p.includes(slugNoDash)) && !!languageStrategyFromExtension(path.extname(e.document.fileName));
+    });
+    if (!possibleEditor) {
+      possibleEditor = vscode.window.visibleTextEditors.find((e) => !!languageStrategyFromExtension(path.extname(e.document.fileName)));
+    }
+    if (possibleEditor) {
+      editor = possibleEditor;
+      fileName = editor.document.fileName;
+      ext = path.extname(fileName);
+      strategy = languageStrategyFromExtension(ext);
+    }
+  }
+
   if (!editor || !strategy) {
     vscode.window.showWarningMessage(
       "Open a solution file (.ts, .js, .py, .cpp, or .java) and try again."

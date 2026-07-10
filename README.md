@@ -110,6 +110,10 @@ The extension activates automatically when a workspace contains a `.leetcode` fi
   </tr>
 </table>
 
+## Known Limitations
+
+**Cloudflare 403 Errors:** LeetCode uses Cloudflare to protect its legacy REST APIs (`runCode` and `submitCode`). If you consistently receive "Just a moment..." 403 errors when trying to run or submit code from within the extension, this is because Cloudflare is blocking the Node.js network request. In this case, please use the official **LeetCode** or **LeetCode Debug** extensions to run and submit your code.
+
 ## Commands
 
 All commands are available under the **LeetCode** category in the command palette.

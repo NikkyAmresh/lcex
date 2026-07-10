@@ -102,14 +102,17 @@ export function generateTemplate(
   const snippet = s.getSnippetFromProblem(problem).trim() || s.todoPlaceholder;
   const link = `https://leetcode.com/problems/${problem.titleSlug}/`;
   const header = [
-    `${s.commentPrefix} ${problem.id}. ${problem.title}`,
+    `${s.commentPrefix} @lc app=leetcode id=${problem.id} lang=${s.leetcodeApiLang}`,
+    `${s.commentPrefix}`,
+    `${s.commentPrefix} [${problem.id}] ${problem.title}`,
     problem.difficulty ? `${s.commentPrefix} Difficulty: ${problem.difficulty}` : null,
     `${s.commentPrefix} ${link}`,
   ]
     .filter(Boolean)
     .join("\n");
 
-  const merged = s.mergeHeaderWithSnippet?.(header, snippet) ?? `${header}\n\n${snippet}`;
+  const wrappedSnippet = `${s.commentPrefix} @lc code=start\n${snippet}\n${s.commentPrefix} @lc code=end`;
+  const merged = s.mergeHeaderWithSnippet?.(header, wrappedSnippet) ?? `${header}\n\n${wrappedSnippet}`;
 
   if (!s.usesRunnableTemplateExamples) {
     return `${merged}${s.appendLocalRunStubIfNeeded(merged)}`;
