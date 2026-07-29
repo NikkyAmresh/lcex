@@ -139,7 +139,8 @@ export type AnalyticsFeature =
   | "analytics_opt_out"
   | "practice_pattern"
   | "pattern_mastery_summary"
-  | "pattern_drill";
+  | "pattern_drill"
+  | "run_db_local";
 
 const FEATURES: ReadonlySet<AnalyticsFeature> = new Set<AnalyticsFeature>([
   "open_problem",
@@ -191,12 +192,13 @@ const FEATURES: ReadonlySet<AnalyticsFeature> = new Set<AnalyticsFeature>([
   "practice_pattern",
   "pattern_mastery_summary",
   "pattern_drill",
+  "run_db_local",
 ]);
 
 // Props are a tiny, strongly-typed bag. Keys outside this union are dropped.
 export interface AnalyticsProps {
   difficulty?: "E" | "M" | "H";
-  language?: "ts" | "js" | "py" | "cpp" | "java";
+  language?: "ts" | "js" | "py" | "cpp" | "java" | "sql" | "pandas";
   result?: "ok" | "err";
   durationBucket?: "0_5m" | "5_15m" | "15_60m" | "60m+";
   countBucket?: "1_5" | "6_15" | "16_50" | "50+";
@@ -234,7 +236,9 @@ export function bucketDifficulty(raw: string | undefined): "E" | "M" | "H" | und
   return undefined;
 }
 
-export function bucketLanguage(raw: string | undefined): "ts" | "js" | "py" | "cpp" | "java" | undefined {
+export function bucketLanguage(
+  raw: string | undefined
+): "ts" | "js" | "py" | "cpp" | "java" | "sql" | "pandas" | undefined {
   if (!raw) return undefined;
   const s = raw.toLowerCase();
   if (s === "typescript" || s === "ts") return "ts";
@@ -242,6 +246,8 @@ export function bucketLanguage(raw: string | undefined): "ts" | "js" | "py" | "c
   if (s === "python" || s === "py" || s === "python3") return "py";
   if (s === "cpp" || s === "c++") return "cpp";
   if (s === "java") return "java";
+  if (s === "mysql" || s === "sql") return "sql";
+  if (s === "pandas" || s === "pythondata" || s === "pd") return "pandas";
   return undefined;
 }
 

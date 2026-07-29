@@ -3,13 +3,18 @@ import * as path from "path";
 import * as vscode from "vscode";
 import * as ejs from "ejs";
 import {
+  ALGORITHM_LANGUAGES,
+  DATABASE_LANGUAGES,
+  isDatabaseLanguage,
   isSupportedLanguage,
   SUPPORTED_LANGUAGES,
+  type DatabaseLanguage,
   type IProblemProvider,
   type Problem,
   type SupportedLanguage,
 } from "./interface/Problem";
 import {
+  DATABASE_LANGUAGE_CHOICES,
   LANGUAGE_CHOICES,
   LANGUAGE_SHORT,
   getLanguageStrategy,
@@ -18,6 +23,7 @@ import {
   leetcodeApiLangFor,
   SOLUTION_FILE_EXTENSIONS,
 } from "./language/LanguageStrategy";
+import { isDatabaseProblem } from "./database/DbProblem";
 import type { ProblemListItem } from "./LeetCode";
 import type { ProblemStatus } from "./ProblemsProvider";
 import {
@@ -394,11 +400,32 @@ const PROBLEMSET_DIFFICULTY_CACHE_TTL_MS =
 
 const SOLUTION_EXTENSIONS = new Set(SOLUTION_FILE_EXTENSIONS);
 
-function getEffectiveChallengePanelLanguage(context: vscode.ExtensionContext): SupportedLanguage {
+/** Remembered solve mode for database problems, kept apart from the algorithm-language choice. */
+const LAST_DB_PANEL_LANGUAGE_KEY = "leetcode-practice.lastDbPanelLanguage";
+
+/** The solve modes offered for a problem: MySQL or pandas for database problems, code otherwise. */
+export function languagesForProblem(problem: Problem): readonly SupportedLanguage[] {
+  return isDatabaseProblem(problem) ? DATABASE_LANGUAGES : ALGORITHM_LANGUAGES;
+}
+
+/**
+ * The language Solve/Run should use. Database problems track their own choice, so
+ * switching to pandas on one does not change the default for algorithm problems
+ * (and vice versa). Pass `problem` whenever it is known.
+ */
+function getEffectiveChallengePanelLanguage(
+  context: vscode.ExtensionContext,
+  problem?: Problem
+): SupportedLanguage {
+  if (problem && isDatabaseProblem(problem)) {
+    const lastDb = context.globalState.get<string>(LAST_DB_PANEL_LANGUAGE_KEY);
+    return lastDb && isDatabaseLanguage(lastDb) ? lastDb : "mysql";
+  }
   const last = context.globalState.get<string>(LAST_CHALLENGE_PANEL_LANGUAGE_KEY);
-  if (last && isSupportedLanguage(last)) return last;
+  if (last && isSupportedLanguage(last) && !isDatabaseLanguage(last)) return last;
   const folders = vscode.workspace.workspaceFolders ?? [];
-  return getEffectiveConfig(folders).language ?? "typescript";
+  const configured = getEffectiveConfig(folders).language;
+  return configured && !isDatabaseLanguage(configured) ? configured : "typescript";
 }
 
 /** Languages that already have a solution file on disk for this problem (id- or slug-named). */
@@ -409,7 +436,9 @@ async function languagesWithSolutionFilesOnDisk(
   const solutionBase = interviewSolutionBaseDir(context.globalState);
   const attemptHex = interviewSolutionAttemptHex(context.globalState);
   const found: SupportedLanguage[] = [];
-  for (const lang of SUPPORTED_LANGUAGES) {
+  // Only the modes that apply to this problem: `pandas` and `python` share `.py`,
+  // so scanning both would report a Python solution twice.
+  for (const lang of languagesForProblem(problem)) {
     const { exists } = await Database.resolveSolutionFilePathForOpen(
       undefined,
       problem.id,
@@ -1173,6 +1202,28 @@ function getTemplatesDir(context: vscode.ExtensionContext): string {
   return path.join(context.extensionPath, "out", "templates");
 }
 
+/**
+ * The solution file for a database problem in the currently selected mode
+ * (`.sql` for MySQL, `.py` for pandas), whether or not it exists yet.
+ */
+export async function resolveDbSolutionFile(
+  context: vscode.ExtensionContext,
+  problem: Problem,
+  language?: DatabaseLanguage
+): Promise<{ path: string; language: DatabaseLanguage; exists: boolean }> {
+  const requested = language ?? getEffectiveChallengePanelLanguage(context, problem);
+  const lang: DatabaseLanguage = isDatabaseLanguage(requested) ? requested : "mysql";
+  const { path: filePath, exists } = await Database.resolveSolutionFilePathForOpen(
+    vscode.window.activeTextEditor?.document.uri,
+    problem.id,
+    problem.titleSlug,
+    interviewSolutionBaseDir(context.globalState),
+    interviewSolutionAttemptHex(context.globalState),
+    lang
+  );
+  return { path: filePath, language: lang, exists };
+}
+
 async function solutionFileExists(
   context: vscode.ExtensionContext,
   problem: Problem,
@@ -1201,7 +1252,7 @@ async function renderChallengeHtml(
   const templatesDir = getTemplatesDir(context);
   const content = problem.content || "<p>No description.</p>";
   const difficulty = problem.difficulty || "Unknown";
-  const panelLanguage = getEffectiveChallengePanelLanguage(context);
+  const panelLanguage = getEffectiveChallengePanelLanguage(context, problem);
   const hasSolution = await solutionFileExists(context, problem, panelLanguage);
   const isSolved = status === "solved";
   const langsOnDisk = await languagesWithSolutionFilesOnDisk(context, problem);
@@ -1268,7 +1319,7 @@ async function renderChallengeHtml(
     interviewMode,
     interviewSolvedInSession,
     panelLanguage,
-    languageChoices: LANGUAGE_CHOICES,
+    languageChoices: isDatabaseProblem(problem) ? DATABASE_LANGUAGE_CHOICES : LANGUAGE_CHOICES,
     otherSolutionLangs,
     topics,
     companies,
@@ -1919,7 +1970,7 @@ function setupPanelMessageHandler(
         const lang =
           msgLanguage && isSupportedLanguage(String(msgLanguage))
             ? (String(msgLanguage) as SupportedLanguage)
-            : getEffectiveChallengePanelLanguage(context);
+            : getEffectiveChallengePanelLanguage(context, s.problem);
         await openOrCreateSolution(context, s.problem, lang);
       } else if (event === "solveAsLang") {
         if (!msgLanguage || !isSupportedLanguage(String(msgLanguage))) return;
@@ -1929,15 +1980,24 @@ function setupPanelMessageHandler(
           String(msgLanguage) as SupportedLanguage
         );
       } else if (event === "setChallengeLanguage") {
-        if (msgLanguage && isSupportedLanguage(String(msgLanguage))) {
+        const picked = msgLanguage ? String(msgLanguage) : "";
+        if (isDatabaseLanguage(picked)) {
+          await context.globalState.update(LAST_DB_PANEL_LANGUAGE_KEY, picked);
+        } else if (isSupportedLanguage(picked)) {
           await context.globalState.update(
             LAST_CHALLENGE_PANEL_LANGUAGE_KEY,
-            String(msgLanguage) as SupportedLanguage
+            picked as SupportedLanguage
           );
         }
+      } else if (event === "run" && isDatabaseProblem(s.problem)) {
+        // Database problems have nothing to execute in a terminal; run them
+        // against the locally seeded tables instead.
+        await vscode.commands.executeCommand("leetcode-practice.runQueryLocally", {
+          titleSlug: msgSlug,
+        });
       } else if (event === "run") {
         const uri = vscode.window.activeTextEditor?.document.uri;
-        const lang = getEffectiveChallengePanelLanguage(context);
+        const lang = getEffectiveChallengePanelLanguage(context, s.problem);
         trackAnalytics("run_in_terminal", "webview", "run_in_terminal", {
           language: bucketLanguage(lang),
         });
@@ -2199,7 +2259,16 @@ export async function openOrCreateSolution(
   problem: Problem,
   language?: SupportedLanguage
 ): Promise<void> {
-  const lang = language ?? getEffectiveChallengePanelLanguage(context);
+  const requested = language ?? getEffectiveChallengePanelLanguage(context, problem);
+  // A remembered algorithm language must not produce a `.ts` file for a SQL problem
+  // (or a `.sql` file for Two Sum).
+  const lang: SupportedLanguage = isDatabaseProblem(problem)
+    ? isDatabaseLanguage(requested)
+      ? requested
+      : getEffectiveChallengePanelLanguage(context, problem)
+    : isDatabaseLanguage(requested)
+      ? getEffectiveChallengePanelLanguage(context)
+      : requested;
   if (workspaceHasLeetcodeMarker()) {
     const practice = vscode.workspace.getConfiguration("leetcodePractice");
     const suppress = practice.get<boolean>("suppressAiTabOnSolve") ?? true;
@@ -2258,11 +2327,18 @@ async function executeCode(
   const strategy = languageStrategyFromExtension(ext);
   if (!editor || !strategy) {
     vscode.window.showWarningMessage(
-      "Open a solution file (.ts, .js, .py, .cpp, or .java) and try again."
+      "Open a solution file (.ts, .js, .py, .cpp, .java, or .sql) and try again."
     );
     return;
   }
-  const langSlug = leetcodeApiLangFor(strategy.id);
+  // `.py` resolves to the algorithm Python strategy, but on a database problem the
+  // same file is a pandas solution and LeetCode wants the `pythondata` slug.
+  const submitLanguage: SupportedLanguage = isDatabaseProblem(problem)
+    ? ext.toLowerCase() === ".sql"
+      ? "mysql"
+      : "pandas"
+    : strategy.id;
+  const langSlug = leetcodeApiLangFor(submitLanguage);
   const code = editor.document.getText();
   const leetcode = new LeetCodeProvider();
   const state = problemViews.get(problem.titleSlug);

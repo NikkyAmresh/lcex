@@ -55,8 +55,18 @@ import {
   tryOpenExistingHintFile,
   openOrCreateSolution,
   plainProblemSlugFromUri,
+  resolveDbSolutionFile,
   getCachedProblem as getProblemFromViewCache,
 } from "./modules/ProblemView";
+import { isDatabaseProblem } from "./modules/database/DbProblem";
+import { dbRunBlocker, runDatabaseSolution, summarizeOutcome } from "./modules/database/DbRunner";
+import { showDbRunResult } from "./modules/database/DbRunView";
+import {
+  ENGINE_DOWNLOAD_BYTES,
+  ENGINE_LABEL,
+  ensureEngineInstalled,
+  isEngineInstalled,
+} from "./modules/database/SqlEngine";
 import { HintEditorProvider } from "./modules/HintEditorProvider";
 import { runExamples as runExamplesImpl, parseExampleBlocks, type ExampleResult } from "./modules/ExampleRunner";
 import { runFuzz } from "./modules/Fuzzer";
@@ -73,6 +83,7 @@ import {
   type BugReview,
 } from "./modules/BugReviewStore";
 import {
+  ALGORITHM_SOLUTION_EXTENSIONS,
   SOLUTION_FILE_EXTENSIONS,
   languageFromFileExtension,
   problemKeyFromSolutionFileBase,
@@ -1388,6 +1399,16 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   // Late-bound; assigned below after `getCachedProblem` / `resolveSlugForUri` are defined.
   let writeHintLadderContext: (slug?: string) => Promise<string | null> = async () => null;
+  /**
+   * Runs a database solution locally. Resolves false when the target is not one.
+   * `quiet` suppresses prompts and never opens a results panel, for on-save runs.
+   */
+  let runDatabaseSolutionLocally: (args?: {
+    titleSlug?: string;
+    /** Pin the solution file instead of taking whatever editor is active. */
+    fileUri?: vscode.Uri;
+    quiet?: boolean;
+  }) => Promise<boolean> = async () => false;
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
@@ -1949,11 +1970,14 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const ext = uri ? path.extname(uri.fsPath) : "";
       if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext.toLowerCase())) {
         vscode.window.setStatusBarMessage(
-          "lcex: open a .ts/.js/.py/.cpp/.java solution file to run examples",
+          "lcex: open a .ts/.js/.py/.cpp/.java/.sql solution file to run examples",
           5000
         );
         return;
       }
+      // Database problems have no `// Expected:` example lines: they run against
+      // seeded tables and diff a result grid instead.
+      if (await runDatabaseSolutionLocally()) return;
       const lang = bucketLanguage(ext.replace(".", ""));
 
       clearInlineDecorations(editor, "lcex.runExamples");
@@ -2089,6 +2113,147 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
     );
   };
 
+  const SQL_ENGINE_CONSENT_KEY = "leetcode-practice.sqlEngineConsent";
+
+  /** Asks once before the first engine download, then remembers the answer. */
+  const ensureSqlEngineConsent = async (): Promise<boolean> => {
+    if (await isEngineInstalled()) return true;
+    if (context.globalState.get<boolean>(SQL_ENGINE_CONSENT_KEY)) return true;
+    const kb = Math.round(ENGINE_DOWNLOAD_BYTES / 1024);
+    const choice = await vscode.window.showInformationMessage(
+      `Running SQL locally needs ${ENGINE_LABEL}: a one-time ${kb} KB download into ~/.lcex/engines, verified against pinned hashes. Nothing is bundled in the extension.`,
+      "Download",
+      "Not now"
+    );
+    if (choice !== "Download") return false;
+    await context.globalState.update(SQL_ENGINE_CONSENT_KEY, true);
+    return true;
+  };
+
+  runDatabaseSolutionLocally = async (args) => {
+    const targetUri = args?.fileUri;
+    const editor = targetUri
+      ? vscode.window.visibleTextEditors.find(
+          (e) => e.document.uri.toString() === targetUri.toString()
+        )
+      : vscode.window.activeTextEditor;
+    const activeUri = targetUri ?? editor?.document.uri;
+    const slug =
+      args?.titleSlug?.trim() ||
+      (activeUri?.scheme === "file" ? resolveSlugForUri(activeUri) : undefined);
+    if (!slug) return false;
+    const problem = await getCachedProblem(slug);
+    if (!problem || !isDatabaseProblem(problem)) return false;
+
+    const quiet = args?.quiet === true;
+
+    const blocker = dbRunBlocker(problem);
+    if (blocker) {
+      if (!quiet) vscode.window.showWarningMessage(`lcex: ${blocker}`);
+      return true;
+    }
+
+    // Prefer the file in front of the user when it belongs to this problem;
+    // otherwise fall back to the solution file for the selected mode.
+    const activeExt = activeUri ? path.extname(activeUri.fsPath).toLowerCase() : "";
+    const activeIsDbSolution = activeExt === ".sql" || activeExt === ".py";
+    let filePath: string;
+    let language: "mysql" | "pandas";
+    if (editor && activeUri && activeIsDbSolution && resolveSlugForUri(activeUri) === slug) {
+      filePath = activeUri.fsPath;
+      language = activeExt === ".sql" ? "mysql" : "pandas";
+      if (editor.document.isDirty) await editor.document.save();
+    } else {
+      const resolved = await resolveDbSolutionFile(context, problem);
+      if (!resolved.exists) {
+        if (quiet) return true;
+        await openOrCreateSolution(context, problem, resolved.language);
+        vscode.window.setStatusBarMessage(
+          "lcex: created the solution file, run again once you have something to check",
+          6000
+        );
+        return true;
+      }
+      filePath = resolved.path;
+      language = resolved.language;
+    }
+
+    if (language === "mysql") {
+      // On-save runs must not pop a consent dialog; they wait for an explicit run.
+      if (quiet && !(await isEngineInstalled())) return true;
+      if (!(await ensureSqlEngineConsent())) {
+        vscode.window.setStatusBarMessage(
+          "lcex: local SQL engine not installed, run cancelled",
+          5000
+        );
+        return true;
+      }
+    }
+
+    let source: string;
+    try {
+      const bytes = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+      source = Buffer.from(bytes).toString("utf8");
+    } catch {
+      if (!quiet) vscode.window.showWarningMessage(`lcex: could not read ${path.basename(filePath)}`);
+      return true;
+    }
+
+    const outcome = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Window, title: "lcex: running against local tables…" },
+      (progress) =>
+        runDatabaseSolution(problem, language, source, filePath, (m) =>
+          progress.report({ message: m })
+        )
+    );
+
+    await showDbRunResult(context, problem, outcome, { createIfMissing: !quiet });
+    vscode.window.setStatusBarMessage(summarizeOutcome(outcome), 8000);
+
+    // Inline verdict on the solution file, matching how example runs report.
+    const target = vscode.window.visibleTextEditors.find(
+      (e) => path.resolve(e.document.uri.fsPath) === path.resolve(filePath)
+    );
+    if (target) {
+      clearInlineDecorations(target, "lcex.runDbQuery");
+      const cmp = outcome.comparison;
+      const text = outcome.error
+        ? `  ✗ ${outcome.error}`
+        : cmp?.pass
+          ? `  ✓ matches expected output (${cmp.actualRowCount} row${cmp.actualRowCount === 1 ? "" : "s"})`
+          : `  ✗ ${cmp?.reason ?? "no comparison"}`;
+      applyInlineDecorations(target, "lcex.runDbQuery", [
+        {
+          line: Math.max(0, target.document.lineCount - 1),
+          text,
+          severity: outcome.error ? "error" : cmp?.pass ? "success" : "error",
+          hoverMarkdown:
+            `**lcex: local ${language === "mysql" ? "SQL" : "pandas"} run**\n\n` +
+            (outcome.error ? `${outcome.error}\n` : `${text.trim()}\n`) +
+            "\n[hide all](command:leetcode-practice.toggleInlineDecorations)",
+        },
+      ]);
+    }
+
+    trackAnalytics("example_run", quiet ? "auto" : "command_palette", "run_db_local", {
+      language: bucketLanguage(language),
+      result: outcome.comparison?.pass ? "ok" : "err",
+    });
+    return true;
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "leetcode-practice.runQueryLocally",
+      async (args?: { titleSlug?: string }) => {
+        if (await runDatabaseSolutionLocally(args)) return;
+        vscode.window.showWarningMessage(
+          "lcex: open a database problem's .sql or pandas .py solution file first."
+        );
+      }
+    )
+  );
+
   const BUG_REVIEW_SCRATCH_DIR = path.join(require("os").homedir(), ".lcex", "reviews");
   const bugReviewScratchPath = (id: string, ext: string): string =>
     path.join(BUG_REVIEW_SCRATCH_DIR, `bug-${id}${ext}`);
@@ -2200,7 +2365,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const editor = vscode.window.activeTextEditor;
       const uri = editor?.document.uri;
       const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
-      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) return null;
+      if (!editor || !uri || !ALGORITHM_SOLUTION_EXTENSIONS.includes(ext)) return null;
       const lang = languageFromFileExtension(ext) ?? "typescript";
       const source = editor.document.getText();
       if (!source.trim()) return null;
@@ -2329,7 +2494,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const editor = vscode.window.activeTextEditor;
       const uri = editor?.document.uri;
       const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
-      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+      if (!editor || !uri || !ALGORITHM_SOLUTION_EXTENSIONS.includes(ext)) {
         vscode.window.setStatusBarMessage("lcex: open a solution file to measure complexity", 5000);
         return;
       }
@@ -2418,7 +2583,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const editor = vscode.window.activeTextEditor;
       const uri = editor?.document.uri;
       const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
-      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+      if (!editor || !uri || !ALGORITHM_SOLUTION_EXTENSIONS.includes(ext)) {
         vscode.window.setStatusBarMessage("lcex: open a solution file to visualize recursion", 5000);
         return;
       }
@@ -2467,7 +2632,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const editor = vscode.window.activeTextEditor;
       const uri = editor?.document.uri;
       const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
-      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+      if (!editor || !uri || !ALGORITHM_SOLUTION_EXTENSIONS.includes(ext)) {
         vscode.window.setStatusBarMessage("lcex: open a solution file to visualize iterative traversal", 5000);
         return;
       }
@@ -2516,7 +2681,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const editor = vscode.window.activeTextEditor;
       const uri = editor?.document.uri;
       const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
-      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+      if (!editor || !uri || !ALGORITHM_SOLUTION_EXTENSIONS.includes(ext)) {
         vscode.window.setStatusBarMessage("lcex: open a solution file to fuzz", 5000);
         return;
       }
@@ -2620,7 +2785,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
 
   const runLintOn = (doc: vscode.TextDocument): LintFinding[] => {
     const ext = path.extname(doc.uri.fsPath).toLowerCase();
-    if (!SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+    if (!ALGORITHM_SOLUTION_EXTENSIONS.includes(ext)) {
       lintDiagnostics.delete(doc.uri);
       return [];
     }
@@ -2779,6 +2944,17 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
     );
     if (!editor) return;
 
+    // Database solutions get the local query check instead of the algorithm suite:
+    // a complexity budget or an edge-case probe means nothing for a query. `.sql`
+    // is decisive on its own; for pandas `.py` the cached problem answers it
+    // without a network round trip on every save.
+    if (ext === ".sql" || isDatabaseProblem(getProblemFromViewCache(resolveSlugForUri(doc.uri)))) {
+      if (isRunExamplesOnSaveEnabled()) {
+        void runDatabaseSolutionLocally({ fileUri: doc.uri, quiet: true });
+      }
+      return;
+    }
+
     const needsProblem = isComplexityEnabled() || isAdversarialEnabled();
     const problem: CachedProblem = needsProblem
       ? await getCachedProblem(resolveSlugForUri(doc.uri))
@@ -2795,7 +2971,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const editor = vscode.window.activeTextEditor;
       const uri = editor?.document.uri;
       const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
-      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+      if (!editor || !uri || !ALGORITHM_SOLUTION_EXTENSIONS.includes(ext)) {
         vscode.window.setStatusBarMessage(
           "lcex: open a .ts/.js/.py/.cpp/.java solution file for a complexity budget",
           5000
@@ -2808,7 +2984,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const editor = vscode.window.activeTextEditor;
       const uri = editor?.document.uri;
       const ext = uri ? path.extname(uri.fsPath).toLowerCase() : "";
-      if (!editor || !uri || !SOLUTION_FILE_EXTENSIONS.includes(ext)) {
+      if (!editor || !uri || !ALGORITHM_SOLUTION_EXTENSIONS.includes(ext)) {
         vscode.window.setStatusBarMessage(
           "lcex: open a .ts/.js/.py/.cpp/.java solution file for adversarial probes",
           5000
@@ -2921,7 +3097,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const editor = vscode.window.activeTextEditor;
       const filePath = editor?.document.uri.fsPath;
       const ext = filePath ? path.extname(filePath) : "";
-      if (!filePath || !SOLUTION_FILE_EXTENSIONS.includes(ext.toLowerCase())) {
+      if (!filePath || !ALGORITHM_SOLUTION_EXTENSIONS.includes(ext.toLowerCase())) {
         vscode.window.showWarningMessage(
           "Open a supported solution file (.ts, .js, .py, .cpp, .java) to run."
         );

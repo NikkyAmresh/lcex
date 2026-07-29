@@ -51,6 +51,7 @@ The extension activates automatically when a workspace contains a `.leetcode` fi
   - **Complexity budget** — parses the problem's `Constraints:` section, derives a target Big-O from the largest size cap, estimates loop nesting by indent, and paints 🟢 / 🟡 / 🔴 on the function signature plus a `nest k× → O(nᵏ)` badge on each loop.
   - **Adversarial edge-case probes** — turns parsed constraints into candidate edge cases (empty, single, max-size, boundary values, negatives, zeros, charset / sorted / distinct flags) and surfaces them inline on the signature. Advisory in this release.
   - **Run examples on save** — parses `// Expected:` / `# expected:` comments and diffs against `console.log` / `print` output; results render inline as `✓` or `✗ expected X · got Y` with a dedicated timeout message for >15s runs. Also available on-demand.
+- **Database problems (SQL and pandas)** — LeetCode's Database category is detected automatically, and the language picker switches to **MySQL** or **pandas**. Generated files carry the table schemas, seeded example rows, and expected output as comments. `LeetCode: Run Query Locally` creates the problem's tables, seeds them from its own example dataset, runs your solution, and diffs the result grid against the expected table (order-insensitive when the statement says "in any order"), showing both grids side by side. MySQL runs on SQLite compiled to WebAssembly with MySQL compatibility shims, downloaded once to `~/.lcex/engines/` with your consent and verified against pinned hashes; pandas runs through your `python3`.
 - **Run in terminal** — Execute the current solution file end-to-end in the integrated terminal.
 - **Progress tracking** — Solved / attempting / cleared states, daily streaks, XP and levels, daily goals, and a stats dashboard with trends.
 - **Interview mode** — Ad-hoc timed sessions (45 / 60 / 180 min) or planned `.lcInterview` mocks. Focus layout hides hints; each attempt produces a `.lcireport` snapshot.
@@ -131,6 +132,7 @@ All commands are available under the **LeetCode** category in the command palett
 | Command | Shortcut | Description |
 | --- | --- | --- |
 | `LeetCode: Run Examples` | — | Parse `// Expected:` comments and diff results inline |
+| `LeetCode: Run Query Locally` | — | Database problems: run against seeded tables and diff the result grid |
 | `LeetCode: Run in Terminal` | <kbd>Ctrl/Cmd</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd> | Execute the current solution file |
 
 ### Inline feedback
@@ -275,6 +277,8 @@ Any setting above can be overridden per-workspace in the `.leetcode` file. Works
 - Python 3 — optional, for Python solutions
 - A C++ toolchain — optional, for C++ solutions
 - A JDK (`javac` + `java`) — optional, for Java solutions
+- Python 3 with pandas — optional, for pandas solutions to database problems
+- Network access on first local SQL run — optional, to fetch the WebAssembly SQLite engine into `~/.lcex/engines/`
 
 ## Development
 

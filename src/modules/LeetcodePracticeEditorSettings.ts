@@ -42,6 +42,9 @@ const LANG_SCOPE: Record<SupportedLanguage, string> = {
   python: "python",
   cpp: "cpp",
   java: "java",
+  mysql: "sql",
+  // pandas solutions are ordinary Python files.
+  pandas: "python",
 };
 
 export function workspaceHasLeetcodeMarker(): boolean {

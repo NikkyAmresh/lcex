@@ -257,6 +257,12 @@ function wrapJavaEntryClass(entryClassName: string, bodyLines: string[]): string
 
 export interface LanguageStrategy {
   readonly id: SupportedLanguage;
+  /**
+   * `"database"` languages apply only to LeetCode's Database category and are
+   * driven by `modules/database/DbRunner` rather than the example runner, so most
+   * of the members below are inert for them.
+   */
+  readonly kind: "algorithm" | "database";
   readonly fileExtension: string;
   readonly leetcodeApiLang: string;
   readonly shikiLang: string;
@@ -272,7 +278,7 @@ export interface LanguageStrategy {
   /** Full shell line for the integrated terminal (compile+run for C++). */
   buildTerminalCommand(filePath: string): string;
 
-  readonly commentPrefix: "#" | "//";
+  readonly commentPrefix: "#" | "//" | "--";
   readonly todoPlaceholder: string;
 
   getParamCount(snippet: string): number;
@@ -313,6 +319,7 @@ function createTypeScriptLikeStrategy(
 ): LanguageStrategy {
   return {
     id,
+    kind: "algorithm",
     fileExtension,
     leetcodeApiLang,
     shikiLang,
@@ -427,6 +434,7 @@ const javascriptStrategy = createTypeScriptLikeStrategy(
 
 const pythonStrategy: LanguageStrategy = {
   id: "python",
+  kind: "algorithm",
   fileExtension: ".py",
   leetcodeApiLang: "python3",
   shikiLang: "python",
@@ -525,6 +533,7 @@ const pythonStrategy: LanguageStrategy = {
 
 const cppStrategy: LanguageStrategy = {
   id: "cpp",
+  kind: "algorithm",
   fileExtension: ".cpp",
   leetcodeApiLang: "cpp",
   shikiLang: "cpp",
@@ -697,6 +706,7 @@ function renderJavaDesignExample(
 
 const javaStrategy: LanguageStrategy = {
   id: "java",
+  kind: "algorithm",
   fileExtension: ".java",
   leetcodeApiLang: "java",
   shikiLang: "java",
@@ -846,12 +856,109 @@ const javaStrategy: LanguageStrategy = {
   },
 };
 
+/**
+ * Database problems are not driven through this interface: they have no example
+ * calls to render, no design classes, and no local `main`. `DbRunner` seeds the
+ * problem's tables and diffs the produced grid instead. What a database strategy
+ * does carry is the file extension, the LeetCode language slug, and the snippet
+ * to seed the file with; everything else is an inert stub.
+ */
+function createDatabaseStrategy(
+  id: "mysql" | "pandas",
+  fileExtension: string,
+  leetcodeApiLang: string,
+  shikiLang: string,
+  displayName: string,
+  commentPrefix: "#" | "--"
+): LanguageStrategy {
+  const notRunnableLocally = `${commentPrefix} lcex: run this with "LeetCode: Run Query Locally"`;
+  return {
+    id,
+    kind: "database",
+    fileExtension,
+    leetcodeApiLang,
+    shikiLang,
+    displayName,
+
+    getSnippetFromProblem(problem: Problem): string {
+      return problem.codeSnippets?.[leetcodeApiLang] ?? "";
+    },
+
+    // Database files carry no `// Expected:` example lines; the expected grid comes
+    // from the problem statement instead.
+    isExampleOutputLine(): boolean {
+      return false;
+    },
+    parseExampleExpectedComment(): string | null {
+      return null;
+    },
+
+    async runSolutionFile(): Promise<{ stdout: string; stderr: string }> {
+      return { stdout: "", stderr: notRunnableLocally };
+    },
+    buildTerminalCommand(): string {
+      return `echo '${notRunnableLocally}'`;
+    },
+
+    commentPrefix,
+    todoPlaceholder: `${commentPrefix} TODO`,
+
+    getParamCount(): number {
+      return 0;
+    },
+    getFunctionName(): string {
+      return id === "pandas" ? "solve" : "query";
+    },
+    renderExampleCall(): string {
+      return "";
+    },
+    formatExpectedSuffix(): string {
+      return "";
+    },
+    formatRunnableExampleSection(): string {
+      return "";
+    },
+    getDesignClassName(): string | null {
+      return null;
+    },
+    renderDesignExampleSection(): string {
+      return "";
+    },
+    localizeExpectedLiteral(jsonish: string): string {
+      return jsonish;
+    },
+    usesRunnableTemplateExamples: false,
+    appendLocalRunStubIfNeeded(): string {
+      return "";
+    },
+  };
+}
+
+const mysqlStrategy = createDatabaseStrategy("mysql", ".sql", "mysql", "sql", "MySQL", "--");
+
+/**
+ * pandas solutions are Python files, so they share `.py` with the algorithm Python
+ * strategy. `languageStrategyFromExtension` resolves `.py` to whichever comes
+ * first in `STRATEGIES`, so `python` must stay ahead of `pandas`; the pandas path
+ * is selected from the problem's category, never from the extension.
+ */
+const pandasStrategy = createDatabaseStrategy(
+  "pandas",
+  ".py",
+  "pythondata",
+  "python",
+  "pandas",
+  "#"
+);
+
 const STRATEGIES: Record<SupportedLanguage, LanguageStrategy> = {
   typescript: typescriptStrategy,
   javascript: javascriptStrategy,
   python: pythonStrategy,
   cpp: cppStrategy,
   java: javaStrategy,
+  mysql: mysqlStrategy,
+  pandas: pandasStrategy,
 };
 
 export function getLanguageStrategy(lang: SupportedLanguage): LanguageStrategy {
@@ -871,13 +978,42 @@ export function languageFromFileExtension(ext: string): SupportedLanguage | unde
 }
 
 /** Extensions accepted for solution files (e.g. run examples, submit). */
-export const SOLUTION_FILE_EXTENSIONS: readonly string[] = Object.values(STRATEGIES).map(
-  (s) => s.fileExtension
-);
+export const SOLUTION_FILE_EXTENSIONS: readonly string[] = [
+  ...new Set(Object.values(STRATEGIES).map((s) => s.fileExtension)),
+];
 
-export const LANGUAGE_CHOICES: ReadonlyArray<{ id: SupportedLanguage; label: string }> = (
-  Object.values(STRATEGIES) as LanguageStrategy[]
-).map((s) => ({ id: s.id, label: s.displayName }));
+/**
+ * Extensions for code solutions only. Gate the algorithm-shaped features
+ * (complexity budgets, fuzzing, recursion trees, edge-case probes) on this so they
+ * are not offered for a `.sql` file. `.py` stays in the set because pandas
+ * solutions share it with algorithm Python.
+ */
+export const ALGORITHM_SOLUTION_EXTENSIONS: readonly string[] = [
+  ...new Set(
+    Object.values(STRATEGIES)
+      .filter((s) => s.kind === "algorithm")
+      .map((s) => s.fileExtension)
+  ),
+];
+
+const CHOICES = (Object.values(STRATEGIES) as LanguageStrategy[]).map((s) => ({
+  id: s.id,
+  label: s.displayName,
+  kind: s.kind,
+}));
+
+/**
+ * Language picker options for algorithm problems. Database languages are excluded:
+ * a `.sql` file makes no sense for Two Sum, and the `.leetcode` `language` setting
+ * is an algorithm-problem default.
+ */
+export const LANGUAGE_CHOICES: ReadonlyArray<{ id: SupportedLanguage; label: string }> = CHOICES.filter(
+  (c) => c.kind === "algorithm"
+).map(({ id, label }) => ({ id, label }));
+
+/** Language picker options for database problems (MySQL or pandas). */
+export const DATABASE_LANGUAGE_CHOICES: ReadonlyArray<{ id: SupportedLanguage; label: string }> =
+  CHOICES.filter((c) => c.kind === "database").map(({ id, label }) => ({ id, label }));
 
 export const LANGUAGE_SHORT: Record<SupportedLanguage, string> = {
   typescript: "ts",
@@ -885,7 +1021,14 @@ export const LANGUAGE_SHORT: Record<SupportedLanguage, string> = {
   python: "py",
   cpp: "cpp",
   java: "java",
+  mysql: "sql",
+  pandas: "pd",
 };
+
+/** True when this language targets LeetCode's Database category. */
+export function isDatabaseStrategy(lang: SupportedLanguage): boolean {
+  return STRATEGIES[lang].kind === "database";
+}
 
 /** LeetCode REST `lang` field per workspace language id. */
 export function leetcodeApiLangFor(lang: SupportedLanguage): string {

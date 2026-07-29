@@ -48,6 +48,9 @@ query questionData($titleSlug: String!) {
     titleSlug
     difficulty
     content
+    categoryTitle
+    metaData
+    dataSchemas
     codeSnippets { langSlug code }
     sampleTestCase
     exampleTestcases
@@ -71,6 +74,12 @@ interface LeetCodeQuestion {
   titleSlug: string;
   difficulty: string;
   content: string;
+  /** "Algorithms" | "Database" | "Shell" | "Concurrency" | "pandas" | ... */
+  categoryTitle?: string;
+  /** JSON blob; for database problems carries `database: true`, the DDL per dialect, and `database_schema`. */
+  metaData?: string;
+  /** Database problems only: pandas seed code (one `pd.DataFrame(...)` assignment per table). */
+  dataSchemas?: string[];
   codeSnippets?: Array<{ langSlug: string; code: string }>;
   sampleTestCase: string;
   exampleTestcases?: string;
@@ -981,6 +990,9 @@ export class LeetCodeProvider implements IProblemProvider {
       titleSlug: q.titleSlug,
       difficulty: q.difficulty,
       content: q.content ?? "",
+      categoryTitle: q.categoryTitle,
+      metaData: q.metaData,
+      dataSchemas: Array.isArray(q.dataSchemas) ? q.dataSchemas : undefined,
       codeSnippet: tsSnippet ?? "",
       codeSnippets,
       sampleTestCase: q.sampleTestCase ?? "",

@@ -20,6 +20,8 @@ scripts/**
 
 # Repo docs (README.md is included by vsce automatically; ignore other markdown)
 CLAUDE.md
+AGENTS.md
+linkedin.md
 
 # Cloud / backend artefacts not needed in extension
 .firebase/**
@@ -45,6 +47,7 @@ screenshots/**
 *.mjs
 *.cjs
 *.py
+*.sql
 *.cpp
 *.hint
 *.lcInterview

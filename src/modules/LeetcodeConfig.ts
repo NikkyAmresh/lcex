@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import * as Logger from "./Logger";
-import { isSupportedLanguage, type SupportedLanguage } from "./interface/Problem";
+import { isDatabaseLanguage, isSupportedLanguage, type SupportedLanguage } from "./interface/Problem";
 
 /** Whether the active slug refers to a study plan or a problem list (disambiguates shared slugs). */
 export type ActiveListSource = "studyPlan" | "problemList";
@@ -292,7 +292,13 @@ export function parseLeetcodeConfig(workspaceFolders: readonly vscode.WorkspaceF
       if (parsed.fileNamePattern !== undefined && ["id", "slug"].includes(String(parsed.fileNamePattern))) {
         merged.fileNamePattern = parsed.fileNamePattern as "id" | "slug";
       }
-      if (parsed.language !== undefined && isSupportedLanguage(String(parsed.language))) {
+      // `language` is the default for algorithm problems; database problems pick
+      // MySQL or pandas per problem, so those are not valid here.
+      if (
+        parsed.language !== undefined &&
+        isSupportedLanguage(String(parsed.language)) &&
+        !isDatabaseLanguage(String(parsed.language))
+      ) {
         merged.language = parsed.language as SupportedLanguage;
       }
       if (parsed.showProblemset !== undefined && typeof parsed.showProblemset === "boolean") {
@@ -367,7 +373,7 @@ export function getEffectiveConfig(
     language: (() => {
       const raw = leetcode.language ?? vscodeConfig.get<string>("language") ?? DEFAULTS.language;
       const s = String(raw);
-      return isSupportedLanguage(s) ? s : DEFAULTS.language;
+      return isSupportedLanguage(s) && !isDatabaseLanguage(s) ? s : DEFAULTS.language;
     })(),
     internalApiUrl: leetcode.internalApiUrl ?? vscodeConfig.get<string>("internalApiUrl") ?? "",
     showProblemset: leetcode.showProblemset ?? DEFAULTS.showProblemset,

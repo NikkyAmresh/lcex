@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= title %></title>
+    <style>
+      :root {
+        --bg: #1e1e1e;
+        --text: #e5e5e5;
+        --text-muted: #9d9d9d;
+        --pass: #26a641;
+        --fail: #dc3545;
+        --warn: #d39b00;
+        --border: #3c3c3c;
+        --surface: #252526;
+      }
+      body {
+        margin: 0;
+        padding: 20px 24px 32px;
+        font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+        font-size: 13px;
+        background: var(--bg);
+        color: var(--text);
+      }
+      h1 { font-size: 17px; margin: 0 0 2px; font-weight: 600; }
+      .subtitle { color: var(--text-muted); font-size: 12px; margin: 0 0 18px; }
+      .verdict {
+        display: flex; align-items: baseline; gap: 10px;
+        padding: 12px 14px; border-radius: 6px; margin-bottom: 6px;
+        border: 1px solid var(--border); background: var(--surface);
+      }
+      .verdict.pass { border-left: 3px solid var(--pass); }
+      .verdict.fail { border-left: 3px solid var(--fail); }
+      .verdict.warn { border-left: 3px solid var(--warn); }
+      .verdict-title { font-size: 15px; font-weight: 600; }
+      .verdict.pass .verdict-title { color: var(--pass); }
+      .verdict.fail .verdict-title { color: var(--fail); }
+      .verdict.warn .verdict-title { color: var(--warn); }
+      .verdict-detail { color: var(--text-muted); }
+      .note { color: var(--text-muted); font-size: 12px; margin: 8px 0 20px; }
+      .note code { background: var(--surface); padding: 1px 4px; border-radius: 3px; }
+      h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+           color: var(--text-muted); font-weight: 600; margin: 22px 0 8px; }
+      .grids { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+      .grid-block { flex: 1 1 320px; min-width: 0; }
+      .grid-block h3 { font-size: 12px; margin: 0 0 6px; color: var(--text-muted); font-weight: 600; }
+      .scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 5px; }
+      table { border-collapse: collapse; width: 100%; font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; }
+      th, td { text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+      th { background: var(--surface); font-weight: 600; color: var(--text); }
+      tbody tr:last-child td { border-bottom: none; }
+      tr.diff td { background: rgba(220, 53, 69, 0.14); }
+      td.null { color: var(--text-muted); font-style: italic; }
+      .empty { padding: 10px; color: var(--text-muted); font-style: italic; }
+      pre.output { background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
+                   padding: 10px 12px; overflow-x: auto; font-size: 12px; margin: 0; }
+      .tables { display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start; }
+    </style>
+  </head>
+  <body>
+    <h1><%= title %></h1>
+    <p class="subtitle"><%= modeLabel %> &middot; seeded from the example dataset in the problem statement</p>
+
+    <div class="verdict <%= verdictClass %>">
+      <span class="verdict-title"><%= verdictTitle %></span>
+      <% if (verdictDetail) { %><span class="verdict-detail"><%= verdictDetail %></span><% } %>
+    </div>
+
+    <% if (notes && notes.length) { %>
+      <% notes.forEach(function (n) { %>
+        <p class="note"><%- n %></p>
+      <% }); %>
+    <% } %>
+
+    <% function renderGrid(grid, diffRow) { %>
+      <div class="scroll">
+        <% if (!grid) { %>
+          <div class="empty">not available</div>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr><% grid.columns.forEach(function (c) { %><th><%= c %></th><% }); %></tr>
+            </thead>
+            <tbody>
+              <% if (grid.rows.length === 0) { %>
+                <tr><td class="null" colspan="<%= Math.max(1, grid.columns.length) %>">0 rows</td></tr>
+              <% } %>
+              <% grid.rows.forEach(function (row, i) { %>
+                <tr class="<%= diffRow === i ? 'diff' : '' %>">
+                  <% grid.columns.forEach(function (_c, j) { %>
+                    <% var v = row[j]; %>
+                    <td class="<%= (v === null || v === undefined) ? 'null' : '' %>"><%= (v === null || v === undefined) ? 'null' : String(v) %></td>
+                  <% }); %>
+                </tr>
+              <% }); %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+    <% } %>
+
+    <% if (actual || expected) { %>
+      <h2>Result</h2>
+      <div class="grids">
+        <div class="grid-block">
+          <h3>Your output<%= actual ? ' (' + actual.rows.length + (actual.rows.length === 1 ? ' row)' : ' rows)') : '' %></h3>
+          <% renderGrid(actual, diffRow) %>
+        </div>
+        <div class="grid-block">
+          <h3>Expected<%= expected ? ' (' + expected.rows.length + (expected.rows.length === 1 ? ' row)' : ' rows)') : '' %></h3>
+          <% renderGrid(expected, diffRow) %>
+        </div>
+      </div>
+    <% } %>
+
+    <% if (stdout) { %>
+      <h2>Printed output</h2>
+      <pre class="output"><%= stdout %></pre>
+    <% } %>
+
+    <h2>Seeded tables</h2>
+    <div class="tables">
+      <% seed.forEach(function (t) { %>
+        <div class="grid-block">
+          <h3><%= t.name %><%= ' (' + t.rows.length + (t.rows.length === 1 ? ' row)' : ' rows)') %></h3>
+          <% renderGrid({ columns: t.columns, rows: t.rows }, -1) %>
+        </div>
+      <% }); %>
+    </div>
+  </body>
+</html>

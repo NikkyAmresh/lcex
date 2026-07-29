@@ -1,4 +1,6 @@
 import type { Problem, SupportedLanguage } from "./interface/Problem";
+import { isDatabaseLanguage } from "./interface/Problem";
+import { generateDbTemplate } from "./database/DbTemplate";
 import { getLanguageStrategy } from "./language/LanguageStrategy";
 
 function collectExampleLines(problem: Problem): string[] {
@@ -98,6 +100,8 @@ export function generateTemplate(
   options?: { includeExpected?: boolean; language?: SupportedLanguage; fileBaseName?: string }
 ): string {
   const lang: SupportedLanguage = options?.language ?? "typescript";
+  // Database problems get schema and seeded rows in the header instead of example calls.
+  if (isDatabaseLanguage(lang)) return generateDbTemplate(problem, lang);
   const s = getLanguageStrategy(lang);
   const snippet = s.getSnippetFromProblem(problem).trim() || s.todoPlaceholder;
   const link = `https://leetcode.com/problems/${problem.titleSlug}/`;

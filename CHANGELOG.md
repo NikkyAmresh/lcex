@@ -2,6 +2,22 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.12.0] Database problems
+
+### Added
+
+- **Database problems are recognised and solvable.** The problem fetch now reads `categoryTitle`, `metaData`, and `dataSchemas`, so LeetCode's Database category is detected from `metaData.database` rather than guessed. On those problems the language picker offers **MySQL** and **pandas** instead of the five code languages, and the choice is remembered separately from your algorithm-language default.
+- **Solution templates carry the data.** A generated `.sql` or pandas `.py` file has the table schemas, the seeded example rows, and the expected output written into the header as comments, so you can see the tables you are querying without leaving the file.
+- **`LeetCode: Run Query Locally`** runs your solution against the problem's own example dataset and diffs the result against the expected table from the statement. The results panel shows your grid beside the expected grid, highlights the first differing row, and lists the seeded input tables. The verdict also lands inline in the editor and in the status bar. Row order is ignored when the statement says "in any order". The webview's **Run** button and run-on-save route here for database problems.
+  - **MySQL mode** runs on SQLite compiled to WebAssembly (sql.js), fetched once into `~/.lcex/engines/` on first use and verified against pinned SHA-256 digests. Nothing is bundled in the `.vsix` and you are asked before the download. Dialect gaps are shimmed: MySQL's float division, `.5`-away-from-zero rounding, `DATE_ADD`/`DATEDIFF`/`DATE_FORMAT`/`TIMESTAMPDIFF`, `IF`, `REGEXP`, `GROUP_CONCAT ... SEPARATOR`, `ENUM` columns, backtick quoting, and multi-table `DELETE ... FROM`. A pass is a strong signal rather than a guarantee, and the panel says so.
+  - **pandas mode** seeds one DataFrame per table (typed from the problem's schema), calls your function, and compares the returned DataFrame against the same expected table. Needs `python3` with pandas installed; if it is missing you get the `pip install` line instead of a stack trace.
+- Run and Submit on LeetCode now send the correct language slug for database solutions (`mysql` or `pythondata`).
+
+### Changed
+
+- Complexity budgets, adversarial probes, the fuzzer, the recursion and iterative visualizers, interview lint, and Run in Terminal are no longer offered for `.sql` files; none of them mean anything for a query.
+- The workspace `language` setting rejects `mysql` and `pandas`. It is the default for algorithm problems, and database problems pick their mode per problem.
+
 ## [0.11.0] Runnable Java
 
 ### Added
