@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Googol Gear Machine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Michroma&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --g-blue:#4285F4; --g-red:#EA4335; --g-yellow:#FBBC05; --g-green:#34A853;
+    --bg:#0a0c11; --ink:#e8eaf0; --dim:#8a90a0; --line:rgba(232,234,240,.14);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:"IBM Plex Mono",ui-monospace,monospace;-webkit-font-smoothing:antialiased}
+  #stage{position:fixed;inset:0;display:block;animation:fadein 1.2s ease both}
+  @keyframes fadein{from{opacity:0}to{opacity:1}}
+  .vignette{position:fixed;inset:0;pointer-events:none;
+    background:radial-gradient(120% 90% at 50% 42%,transparent 55%,rgba(0,0,0,.55) 100%)}
+
+  #hud{position:fixed;top:26px;left:28px;pointer-events:none;animation:slidein .9s .15s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes slidein{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+  #hud .dots{display:flex;gap:7px;margin-bottom:12px}
+  #hud .dots i{width:9px;height:9px;border-radius:50%}
+  #hud .dots i:nth-child(1){background:var(--g-blue)}
+  #hud .dots i:nth-child(2){background:var(--g-red)}
+  #hud .dots i:nth-child(3){background:var(--g-yellow)}
+  #hud .dots i:nth-child(4){background:var(--g-green)}
+  #hud h1{font-family:"Michroma",sans-serif;font-size:17px;font-weight:400;
+    letter-spacing:.32em;text-transform:uppercase}
+  #hud p{margin-top:9px;font-size:10.5px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase}
+  #hud p b{color:var(--g-yellow);font-weight:500}
+
+  #readout{position:fixed;top:26px;right:28px;min-width:300px;max-width:360px;padding:13px 16px;
+    border:1px solid var(--line);border-left:3px solid var(--dim);
+    background:rgba(10,12,17,.72);backdrop-filter:blur(10px);
+    font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+    animation:slidein .9s .3s cubic-bezier(.2,.8,.2,1) both;transition:border-left-color .25s}
+  #readout .label{color:var(--dim);font-size:9.5px;margin-bottom:6px}
+  #readout .value{color:var(--ink);line-height:1.8}
+  #readout sup{font-size:8px}
+
+  #finality{position:fixed;left:28px;top:118px;max-width:330px;padding:13px 16px;
+    border:1px solid var(--line);border-left:3px solid var(--g-red);
+    background:rgba(10,12,17,.72);backdrop-filter:blur(10px);
+    font-size:11px;letter-spacing:.12em;text-transform:uppercase;line-height:1.8;
+    animation:slidein .9s .4s cubic-bezier(.2,.8,.2,1) both}
+  #finality .label{color:var(--dim);font-size:9.5px;margin-bottom:6px}
+  #finality sup{font-size:8px}
+  #finality em{font-style:normal;color:var(--g-yellow)}
+
+  #controls,#nav{position:fixed;bottom:26px;display:flex;align-items:center;gap:12px;
+    padding:12px 16px;border:1px solid var(--line);background:rgba(10,12,17,.72);
+    backdrop-filter:blur(10px);flex-wrap:wrap}
+  #controls{left:28px;animation:slidein .9s .45s cubic-bezier(.2,.8,.2,1) both}
+  #nav{right:28px;animation:slidein .9s .55s cubic-bezier(.2,.8,.2,1) both}
+  .btn{font:inherit;font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--ink);background:transparent;border:1px solid var(--line);
+    padding:9px 14px;cursor:pointer;transition:border-color .2s,color .2s,background .2s;min-width:80px}
+  .btn:hover{border-color:var(--g-blue);color:#fff;background:rgba(66,133,244,.12)}
+  .speed{display:flex;align-items:center;gap:10px;padding-left:4px}
+  .speed label{font-size:9.5px;letter-spacing:.2em;color:var(--dim)}
+  .speed input[type=range]{-webkit-appearance:none;appearance:none;width:150px;height:2px;
+    background:linear-gradient(90deg,var(--g-blue),var(--g-red),var(--g-yellow),var(--g-green));
+    outline:none;cursor:pointer}
+  .speed input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:13px;height:13px;background:#fff;border:2px solid var(--g-blue);border-radius:0;
+    transform:rotate(45deg);cursor:grab}
+  .speed input[type=range]::-moz-range-thumb{width:11px;height:11px;background:#fff;
+    border:2px solid var(--g-blue);border-radius:0;transform:rotate(45deg);cursor:grab}
+  .speed .val{font-size:11px;min-width:64px;color:var(--g-yellow);letter-spacing:.1em}
+  .speed .val sup{font-size:8px}
+
+  #hint{position:fixed;right:28px;bottom:96px;font-size:9.5px;letter-spacing:.2em;
+    color:var(--dim);text-transform:uppercase;pointer-events:none;text-align:right;line-height:2;
+    animation:slidein .9s .6s cubic-bezier(.2,.8,.2,1) both}
+
+  @media (max-width:1100px){
+    #readout,#hint,#finality{display:none}
+  }
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div class="vignette"></div>
+
+<header id="hud">
+  <div class="dots"><i></i><i></i><i></i><i></i></div>
+  <h1>Googol Gear Machine</h1>
+  <p>100 stages &times; 10:1 &middot; total reduction <b>10<sup>100</sup> : 1 (a googol)</b></p>
+</header>
+
+<div id="finality">
+  <div class="label">The last gear</div>
+  <div id="finalityValue">&hellip;</div>
+</div>
+
+<div id="readout">
+  <div class="label">Telemetry</div>
+  <div class="value" id="readoutValue">Hover a gear</div>
+</div>
+
+<div id="controls">
+  <button class="btn" id="btnPlay">&#10074;&#10074; Pause</button>
+  <button class="btn" id="btnDir">&#8635; CW</button>
+  <div class="speed">
+    <label>Drive</label>
+    <input id="speedRange" type="range" min="0" max="120" step="0.5" value="6">
+    <span class="val" id="rpm">6.0 RPM</span>
+  </div>
+  <div class="speed">
+    <label>Warp</label>
+    <input id="warpRange" type="range" min="0" max="99" step="1" value="0">
+    <span class="val" id="warpVal">&times;1</span>
+  </div>
+</div>
+
+<div id="nav">
+  <button class="btn" id="btnOverview">Overview</button>
+  <div class="speed">
+    <label>Stage</label>
+    <input id="stageRange" type="range" min="0" max="100" step="1" value="0">
+    <span class="val" id="stageVal">Ring</span>
+  </div>
+</div>
+
+<div id="hint">Drag orbit &middot; scroll zoom &middot; click a gear to fly to it<br>
+  WASD + QE fly (shift = fast) &middot; &larr;&rarr; step stage &middot; space pause</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const COLOR = { blue:0x4285F4, red:0xEA4335, yellow:0xFBBC05, green:0x34A853 };
+const CYCLE = [COLOR.blue, COLOR.red, COLOR.yellow, COLOR.green];
+
+const STAGES   = 100;                   // 100 meshes of exactly 10:1 -> 10^100 total
+const ZP       = 10;                    // pinion teeth
+const ZW       = 100;                   // wheel teeth
+const MODULE   = 1;
+const PRESSURE = 20 * Math.PI / 180;
+const THICK    = 3.5;                   // face width
+const LAYER    = 5.6;                   // axial advance per stage
+const HUB_R    = 1.6;                   // bore radius
+const PANEL_Z  = -4.25;                 // front face of the ring panel
+
+const DIST  = MODULE * (ZP + ZW) / 2;   // exact center distance between axles = 55
+const AXLES = STAGES + 1;               // drive pinion + 100 compound stages
+const STEP  = 2 * Math.PI / AXLES;
+const RING  = DIST / (2 * Math.sin(STEP / 2));   // ring radius so adjacent axles sit 55 apart
+
+// Every stage advances one LAYER forward, like the original machine: with a
+// 10T pinion and 100T wheel, tip circles sum to 57 while axles sit 55 apart,
+// so coplanar neighbors would interpenetrate. Marching axially is the only
+// exact solution; around the ring it becomes a helix.
+const wheelZ  = i => (i - 1) * LAYER;   // wheel i shares the plane of pinion i-1
+const pinionZ = i => i * LAYER;
+
+const CAP_REV = 1.25;                   // rev/s above which rendered spin is capped
+
+const qs = new URLSearchParams(location.search);
+
+// ---------------------------------------------------------------- involute profile
+// Tooth k is centered at angle k*2PI/Z. eta(rr) is the angular half width of a
+// tooth at radius rr, from the involute function inv(x) = tan(x) - x. Below the
+// base circle the flank falls back to a radial line (inv term clamps to zero).
+function gearShape(Z) {
+  const m = MODULE, alpha = PRESSURE;
+  const r  = m * Z / 2;
+  const rb = r * Math.cos(alpha);
+  const ra = r + m;
+  const rf = r - 1.25 * m;
+  const inv  = x => Math.tan(x) - x;
+  const half = (Math.PI / (2 * Z)) * 0.99 + inv(alpha); // 1% backlash so flanks never z-fight
+  const eta  = rr => half - inv(Math.acos(Math.min(1, rb / rr)));
+  const pitch = 2 * Math.PI / Z;
+  const pts = [];
+  const P = (rr, a) => pts.push(new THREE.Vector2(rr * Math.cos(a), rr * Math.sin(a)));
+
+  for (let k = 0; k < Z; k++) {
+    const c = k * pitch;
+    const etaT = eta(ra), etaR = eta(rf);
+    for (let i = 0; i <= 8; i++) {                    // rising flank, root to tip
+      const rr = rf + (ra - rf) * i / 8;
+      P(rr, c - eta(rr));
+    }
+    for (let i = 1; i <= 4; i++) P(ra, c - etaT + 2 * etaT * i / 4);   // tip arc
+    for (let i = 1; i <= 8; i++) {                    // falling flank, tip to root
+      const rr = ra - (ra - rf) * i / 8;
+      P(rr, c + eta(rr));
+    }
+    const span = pitch - 2 * etaR;                    // root arc to the next tooth
+    for (let i = 1; i < 6; i++) P(rf, c + etaR + span * i / 6);
+  }
+
+  const shape = new THREE.Shape(pts);
+  const bore = new THREE.Path();
+  bore.absarc(0, 0, HUB_R, 0, Math.PI * 2, true);
+  shape.holes.push(bore);
+
+  if (rf - HUB_R > 6) {                               // lightening holes on the big wheels
+    const n = 7;
+    const ringR = (HUB_R + rf) / 2 + 0.4;
+    const hr = Math.min((rf - HUB_R) * 0.27, ringR * Math.sin(Math.PI / n) * 0.58);
+    for (let i = 0; i < n; i++) {
+      const a = i * 2 * Math.PI / n;
+      const p = new THREE.Path();
+      p.absarc(ringR * Math.cos(a), ringR * Math.sin(a), hr, 0, Math.PI * 2, true);
+      shape.holes.push(p);
+    }
+  }
+  return shape;
+}
+
+// ---------------------------------------------------------------- gear train
+// Axle i sits on a ring. Stage i (i >= 1) carries a 100T wheel meshing with the
+// 10T pinion on axle i-1, plus its own 10T pinion welded to the same shaft
+// (except the last stage, which is output only).
+const axlePos = [];
+for (let i = 0; i < AXLES; i++) {
+  const a = -Math.PI / 2 + i * STEP;
+  axlePos.push(new THREE.Vector2(RING * Math.cos(a), RING * Math.sin(a)));
+}
+
+// stage record: rate = 10^-i of the drive
+const stages = [];
+for (let i = 0; i < AXLES; i++) {
+  const meshAngle = i === 0 ? 0 :
+    Math.atan2(axlePos[i].y - axlePos[i-1].y, axlePos[i].x - axlePos[i-1].x);
+  stages.push({
+    i,
+    pos: axlePos[i],
+    meshAngle,
+    rate: Math.pow(10, -i),
+    hasWheel: i > 0,
+    hasPinion: i < AXLES - 1,
+    base: 0,      // shaft angle at drive position zero, from the mesh constraint
+    frac: 0,      // true turn fraction of this shaft (exact at any warp)
+    rFrac: 0,     // rendered fraction; capped once spin gets unwatchably fast
+  });
+}
+
+// Mesh phase constraint: with a tooth of the parent pointing along the line of
+// centers, the child must present a tooth space back along that line.
+//   phi = -(Zp/Z) * (phiParent - theta) + theta + PI - PI/Z
+// The recursion is linear, so phi(t) = base + (-1/10)^i * driveAngle. We keep a
+// per stage turn fraction instead of one huge drive angle so that double
+// precision survives warp factors up to 10^99 (each fraction wraps mod 1, and
+// a whole turn of any shaft is a mesh symmetry, so wrapping never breaks mesh).
+{
+  let prev = 0;
+  for (let i = 1; i < AXLES; i++) {
+    const s = stages[i], th = s.meshAngle, k = ZP / ZW;
+    s.base = -k * (prev - th) + th + Math.PI - Math.PI / ZW;
+    prev = s.base;
+  }
+}
+
+let running = true, dir = 1, rpm = 6, warpExp = 0;
+
+function advance(dt) {
+  const R = rpm / 60;                                  // drive rev/s before warp
+  for (const s of stages) {
+    const rate = R * Math.pow(10, warpExp - s.i);      // rev/s of this shaft
+    s.frac = (s.frac + dir * rate * dt) % 1;
+    if (rate > CAP_REV) {
+      s.rFrac = (s.rFrac + dir * CAP_REV * dt) % 1;    // wagon wheel cap: teeth alias anyway
+    } else {
+      s.rFrac = s.frac;
+    }
+    const sgn = (s.i % 2 === 0) ? 1 : -1;              // alternating external meshes
+    s.group.rotation.z = s.base + sgn * 2 * Math.PI * s.rFrac;
+  }
+}
+
+// ---------------------------------------------------------------- scene
+const canvas = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0c11);
+scene.fog = new THREE.Fog(0x0a0c11, RING * 2.2, RING * 8);
+
+// image based environment so metallic PBR materials read correctly up close
+{
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.55;
+}
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 1, RING * 12);
+camera.position.set(0, -RING * 1.9, RING * 2.1);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.rotateSpeed = 0.9;
+controls.zoomSpeed = 1.15;
+controls.target.set(0, 0, 0);
+controls.minDistance = 15;
+controls.maxDistance = RING * 5;
+
+scene.add(new THREE.HemisphereLight(0x93a4c8, 0x0a0a10, 0.75));
+const key = new THREE.DirectionalLight(0xffffff, 2.2);
+key.position.set(RING, RING * 1.2, RING * 1.6);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0x9db4ff, 0.6);
+fill.position.set(-RING, -RING * 0.6, RING);
+scene.add(fill);
+
+const machine = new THREE.Group();
+scene.add(machine);
+
+const steel     = new THREE.MeshStandardMaterial({ color: 0x394050, metalness: 0.85, roughness: 0.35 });
+const steelDark = new THREE.MeshStandardMaterial({ color: 0x232833, metalness: 0.8, roughness: 0.5 });
+
+// annular back panel behind the whole ring
+{
+  const outerR = RING + ZW * MODULE / 2 + 14;
+  const innerR = RING - ZW * MODULE / 2 - 14;
+  const s = new THREE.Shape();
+  s.absarc(0, 0, outerR, 0, Math.PI * 2, false);
+  const hole = new THREE.Path();
+  hole.absarc(0, 0, innerR, 0, Math.PI * 2, true);
+  s.holes.push(hole);
+  const geo = new THREE.ExtrudeGeometry(s, { depth: 3, bevelEnabled: false, curveSegments: 128 });
+  const panel = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+    color: 0x141821, metalness: 0.55, roughness: 0.62
+  }));
+  panel.position.z = PANEL_Z - 3;
+  machine.add(panel);
+}
+
+// shared geometry: every wheel and every pinion is identical
+function extrude(shape) {
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: THICK, bevelEnabled: true, curveSegments: 8,
+    bevelThickness: 0.45, bevelSize: 0.26, bevelOffset: -0.26, bevelSegments: 2
+  });
+  geo.translate(0, 0, -THICK / 2);
+  return geo;
+}
+const wheelGeo  = extrude(gearShape(ZW));
+const pinionGeo = extrude(gearShape(ZP));
+const hubGeo    = new THREE.CylinderGeometry(2.6, 2.6, LAYER + THICK - 0.6, 24);
+hubGeo.rotateX(Math.PI / 2);
+const hubGeoShort = new THREE.CylinderGeometry(2.6, 2.6, THICK + 1.6, 24);
+hubGeoShort.rotateX(Math.PI / 2);
+
+const pickables = [];
+for (const s of stages) {
+  s.group = new THREE.Group();
+  s.group.position.set(s.pos.x, s.pos.y, 0);
+
+  if (s.hasWheel) {
+    const mat = new THREE.MeshStandardMaterial({
+      color: CYCLE[s.i % 4], metalness: 0.45, roughness: 0.38
+    });
+    const wheel = new THREE.Mesh(wheelGeo, mat);
+    wheel.position.z = wheelZ(s.i);
+    wheel.userData.stage = s.i;
+    s.group.add(wheel);
+    pickables.push(wheel);
+    s.wheelMat = mat;
+  }
+  if (s.hasPinion) {
+    const pinion = new THREE.Mesh(pinionGeo, s.i === 0
+      ? new THREE.MeshStandardMaterial({ color: 0xd8dce6, metalness: 0.7, roughness: 0.3 })
+      : steel);
+    pinion.position.z = pinionZ(s.i);
+    pinion.userData.stage = s.i;
+    s.group.add(pinion);
+    pickables.push(pinion);
+  }
+  const hub = new THREE.Mesh(s.hasWheel && s.hasPinion ? hubGeo : hubGeoShort, steel);
+  hub.position.z = s.hasWheel && s.hasPinion
+    ? (wheelZ(s.i) + pinionZ(s.i)) / 2
+    : (s.hasWheel ? wheelZ(s.i) : pinionZ(s.i));
+  s.group.add(hub);
+  machine.add(s.group);
+}
+
+// shafts and hex nuts; standoffs grow as the helix marches forward
+const rodGeo = new THREE.CylinderGeometry(1.1, 1.1, 1, 16);
+rodGeo.rotateX(Math.PI / 2);
+const nutGeo = new THREE.CylinderGeometry(2.0, 2.0, 1.5, 6);
+nutGeo.rotateX(Math.PI / 2);
+for (const s of stages) {
+  const top = (s.hasPinion ? pinionZ(s.i) : wheelZ(s.i)) + THICK / 2;
+  const zFront = top + 2.0, len = zFront - PANEL_Z;
+  const rod = new THREE.Mesh(rodGeo, steel);
+  rod.scale.z = len;
+  rod.position.set(s.pos.x, s.pos.y, PANEL_Z + len / 2);
+  const nut = new THREE.Mesh(nutGeo, steelDark);
+  nut.position.set(s.pos.x, s.pos.y, zFront + 0.75);
+  machine.add(rod, nut);
+}
+
+// stage markers every 10 axles
+function labelSprite(text) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 96;
+  const ctx = c.getContext('2d');
+  ctx.font = '500 44px "IBM Plex Mono", monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(232,234,240,0.85)';
+  ctx.fillText(text, 128, 48);
+  const tex = new THREE.CanvasTexture(c);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+  sp.scale.set(42, 15.75, 1);
+  return sp;
+}
+for (let i = 0; i < AXLES; i += 10) {
+  const s = stages[i];
+  const out = s.pos.clone().normalize().multiplyScalar(RING + ZW * MODULE / 2 + 34);
+  const sp = labelSprite(i === 0 ? 'DRIVE' : 'S' + i);
+  sp.position.set(out.x, out.y, (i === 0 ? pinionZ(0) : wheelZ(i)) + 14);
+  machine.add(sp);
+}
+
+// ---------------------------------------------------------------- ui refs
+const btnPlay = document.getElementById('btnPlay');
+const btnDir = document.getElementById('btnDir');
+const btnOverview = document.getElementById('btnOverview');
+const speedRange = document.getElementById('speedRange');
+const rpmLabel = document.getElementById('rpm');
+const warpRange = document.getElementById('warpRange');
+const warpVal = document.getElementById('warpVal');
+const stageRange = document.getElementById('stageRange');
+const stageVal = document.getElementById('stageVal');
+const readout = document.getElementById('readout');
+const readoutValue = document.getElementById('readoutValue');
+const finalityValue = document.getElementById('finalityValue');
+
+const YEAR_S = 3.156e7;
+const UNIVERSE_Y = 1.38e10;
+function humanTime(sec) {
+  if (!isFinite(sec)) return 'forever (drive stopped)';
+  if (sec < 90) return sec.toFixed(1) + ' s';
+  if (sec < 5400) return (sec / 60).toFixed(1) + ' min';
+  if (sec < 172800) return (sec / 3600).toFixed(1) + ' h';
+  if (sec < 730 * 86400) return (sec / 86400).toFixed(1) + ' days';
+  const years = sec / YEAR_S;
+  if (years < 1e6) return Math.round(years).toLocaleString() + ' yr';
+  const exp = Math.floor(Math.log10(years));
+  const mant = years / Math.pow(10, exp);
+  let out = mant.toFixed(1) + '&times;10<sup>' + exp + '</sup> yr';
+  const uni = years / UNIVERSE_Y;
+  if (uni >= 1) {
+    out += uni < 1000
+      ? ' &middot; ' + uni.toFixed(0) + '&times; age of universe'
+      : ' &middot; 10<sup>' + Math.floor(Math.log10(uni)) + '</sup>&times; age of universe';
+  }
+  return out;
+}
+function stagePeriodSec(i) {
+  return rpm === 0 ? Infinity : (60 / rpm) * Math.pow(10, i);
+}
+function refreshFinality() {
+  let html =
+    'Turns once every<br><em>' + humanTime(stagePeriodSec(STAGES)) + '</em><br>' +
+    'at ' + rpm.toFixed(1) + ' rpm on the drive.<br>';
+  html += warpExp > 0
+    ? 'At warp &times;10<sup>' + warpExp + '</sup>: once every ' +
+      humanTime(stagePeriodSec(STAGES) / Math.pow(10, warpExp)) +
+      '.<br>Warp is a viewing trick; the physics stands.'
+    : 'It will never visibly move.';
+  finalityValue.innerHTML = html;
+}
+
+function setRunning(v) {
+  running = v;
+  btnPlay.innerHTML = running ? '&#10074;&#10074; Pause' : '&#9654; Run';
+}
+btnPlay.addEventListener('click', () => setRunning(!running));
+btnDir.addEventListener('click', () => {
+  dir = -dir;
+  btnDir.innerHTML = dir === 1 ? '&#8635; CW' : '&#8634; CCW';
+});
+speedRange.addEventListener('input', () => {
+  rpm = parseFloat(speedRange.value);
+  rpmLabel.textContent = rpm.toFixed(1) + ' RPM';
+  refreshFinality(); refreshReadout();
+});
+warpRange.addEventListener('input', () => {
+  warpExp = parseInt(warpRange.value);
+  warpVal.innerHTML = warpExp === 0 ? '&times;1' : '&times;10<sup>' + warpExp + '</sup>';
+  refreshFinality(); refreshReadout();
+});
+
+// ---------------------------------------------------------------- camera
+// Fly-to goals lerp with frame rate independent damping; WASD + QE flies the
+// camera and target together; clicking a gear focuses its stage.
+let camGoal = null;
+let curStage = 0;
+function flyTo(pos, target) {
+  camGoal = { pos: new THREE.Vector3(...pos), target: new THREE.Vector3(...target) };
+}
+function focusStage(i, updateSlider = true) {
+  curStage = i;
+  if (updateSlider) stageRange.value = i;
+  stageVal.textContent = i === 0 ? 'Drive' : 'S' + i;
+  const s = stages[i];
+  const u = new THREE.Vector3(s.pos.x, s.pos.y, 0).normalize();
+  const t = new THREE.Vector3(-u.y, u.x, 0);
+  const zc = s.hasWheel ? wheelZ(i) : pinionZ(i);
+  flyTo(
+    [s.pos.x + u.x * 55 + t.x * 38, s.pos.y + u.y * 55 + t.y * 38, zc + 130],
+    [s.pos.x, s.pos.y, zc]
+  );
+}
+function goOverview() {
+  stageVal.textContent = 'Ring';
+  flyTo([0, -RING * 1.9, RING * 2.1], [0, 0, RING * 0.1]);
+}
+btnOverview.addEventListener('click', goOverview);
+stageRange.addEventListener('input', () => focusStage(parseInt(stageRange.value), false));
+
+const keysDown = new Set();
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space') { e.preventDefault(); setRunning(!running); return; }
+  if (e.code === 'ArrowRight') { focusStage(Math.min(STAGES, curStage + (e.shiftKey ? 10 : 1))); return; }
+  if (e.code === 'ArrowLeft') { focusStage(Math.max(0, curStage - (e.shiftKey ? 10 : 1))); return; }
+  if (e.code === 'KeyO') { goOverview(); return; }
+  keysDown.add(e.code);
+});
+addEventListener('keyup', e => keysDown.delete(e.code));
+addEventListener('blur', () => keysDown.clear());
+
+const _f = new THREE.Vector3(), _r = new THREE.Vector3(), _mv = new THREE.Vector3();
+function flyKeys(dt) {
+  if (!keysDown.size) return;
+  _f.subVectors(controls.target, camera.position).normalize();
+  _r.crossVectors(_f, camera.up).normalize();
+  _mv.set(0, 0, 0);
+  if (keysDown.has('KeyW')) _mv.add(_f);
+  if (keysDown.has('KeyS')) _mv.sub(_f);
+  if (keysDown.has('KeyD')) _mv.add(_r);
+  if (keysDown.has('KeyA')) _mv.sub(_r);
+  if (keysDown.has('KeyE')) _mv.z += 1;
+  if (keysDown.has('KeyQ')) _mv.z -= 1;
+  if (!_mv.lengthSq()) return;
+  const fast = keysDown.has('ShiftLeft') || keysDown.has('ShiftRight') ? 4 : 1;
+  const sp = Math.max(45, camera.position.distanceTo(controls.target) * 0.9) * fast * dt;
+  _mv.normalize().multiplyScalar(sp);
+  camera.position.add(_mv);
+  controls.target.add(_mv);
+  camGoal = null;
+}
+
+// hover + click picking
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2(-2, -2);
+let hovered = -1, pointerDirty = false, downAt = null;
+addEventListener('pointermove', e => {
+  pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  pointerDirty = true;
+});
+canvas.addEventListener('pointerdown', e => { camGoal = null; downAt = [e.clientX, e.clientY]; });
+canvas.addEventListener('pointerup', e => {
+  if (downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) < 6 && hovered >= 0)
+    focusStage(hovered);
+  downAt = null;
+});
+addEventListener('wheel', () => { pointerDirty = true; }, { passive: true });
+
+function updateHover() {
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObjects(pickables, false)[0];
+  const id = hit ? hit.object.userData.stage : -1;
+  if (id === hovered) return;
+  if (hovered >= 0 && stages[hovered].wheelMat) stages[hovered].wheelMat.emissive.setHex(0x000000);
+  hovered = id;
+  if (hovered >= 0) {
+    const s = stages[hovered];
+    if (s.wheelMat) s.wheelMat.emissive.setHex(0x1c2230);
+    const col = s.wheelMat ? s.wheelMat.color.getHexString() : 'd8dce6';
+    readout.style.borderLeftColor = '#' + col;
+    document.body.style.cursor = 'pointer';
+  } else {
+    readout.style.borderLeftColor = 'var(--dim)';
+    document.body.style.cursor = '';
+  }
+  refreshReadout();
+}
+
+function refreshReadout() {
+  if (hovered < 0) { readoutValue.textContent = 'Hover a gear'; return; }
+  const s = stages[hovered];
+  const spin = s.rate * dir * (s.i % 2 === 0 ? 1 : -1);
+  const head = s.i === 0
+    ? 'Drive pinion &middot; ' + ZP + 'T'
+    : 'Stage ' + s.i + ' / ' + STAGES + ' &middot; ' + ZW + 'T' + (s.hasPinion ? ' + ' + ZP + 'T' : ' (output)');
+  let html =
+    head + '<br>' +
+    'ratio 10<sup>&minus;' + s.i + '</sup> &middot; ' + (spin >= 0 ? 'CCW' : 'CW') + '<br>' +
+    'one rev &asymp; ' + humanTime(stagePeriodSec(s.i));
+  if (warpExp > 0) html += '<br>at warp: ' + humanTime(stagePeriodSec(s.i) / Math.pow(10, warpExp));
+  readoutValue.innerHTML = html;
+}
+
+// ---------------------------------------------------------------- boot state
+if (qs.has('rpm')) {
+  rpm = Math.max(0, Math.min(120, parseFloat(qs.get('rpm')) || 6));
+  speedRange.value = rpm;
+  rpmLabel.textContent = rpm.toFixed(1) + ' RPM';
+}
+if (qs.has('warp')) {
+  warpExp = Math.max(0, Math.min(99, parseInt(qs.get('warp')) || 0));
+  warpRange.value = warpExp;
+  warpVal.innerHTML = warpExp === 0 ? '&times;1' : '&times;10<sup>' + warpExp + '</sup>';
+}
+if (qs.get('paused') === '1') setRunning(false);
+refreshFinality();
+advance(0);
+if (qs.has('stage')) {
+  const i = Math.max(0, Math.min(STAGES, parseInt(qs.get('stage')) || 0));
+  focusStage(i);
+  const g = camGoal;                        // jump instead of flying on first load
+  camera.position.copy(g.pos);
+  controls.target.copy(g.target);
+  camGoal = null;
+}
+
+// ---------------------------------------------------------------- loop
+const clock = new THREE.Clock();
+function tick() {
+  requestAnimationFrame(tick);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (running) advance(dt);
+  flyKeys(dt);
+  if (pointerDirty) { pointerDirty = false; updateHover(); }
+  if (camGoal) {
+    const a = 1 - Math.exp(-4 * dt);
+    camera.position.lerp(camGoal.pos, a);
+    controls.target.lerp(camGoal.target, a);
+    if (camera.position.distanceTo(camGoal.pos) < 0.5 &&
+        controls.target.distanceTo(camGoal.target) < 0.5) camGoal = null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+tick();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>

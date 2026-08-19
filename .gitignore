@@ -22,3 +22,12 @@ leetcode-practice-*.vsix.zip
 leetcode-practice-*.png
 leetcode-practice-*.png.zip
 backfill-solved-dates.json
+node_modules
+.venv
+venv
+build
+dist
+.next
+.dart_tool
+__pycache__
+*.log

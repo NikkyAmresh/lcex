@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Googol Gear Machine — 10¹⁰⁰ : 1</title>
+<style>
+  :root{
+    --bg:#0b0d10;
+    --panel:rgba(14,19,25,.84);
+    --line:rgba(255,255,255,.09);
+    --tx:#e9eef3;
+    --dim:#8fa0b1;
+    --faint:#5b6a78;
+    --amb:#f0b455;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--tx);overflow:hidden;
+    font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  #c{position:fixed;inset:0;display:block;touch-action:none;cursor:grab}
+  #c:active{cursor:grabbing}
+
+  #ui{
+    position:fixed;top:12px;left:12px;width:308px;max-width:calc(100vw - 24px);
+    background:var(--panel);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    border:1px solid var(--line);border-radius:14px;padding:14px 16px 12px;
+    box-shadow:0 10px 34px rgba(0,0,0,.5);
+    max-height:calc(100vh - 24px);overflow-y:auto;
+  }
+  #ui h1{font-size:14px;margin:0 22px 2px 0;letter-spacing:.16em;text-transform:uppercase;font-weight:700}
+  #ui .sub{color:var(--dim);font-size:11.5px;margin:0 0 10px}
+  #minB{
+    position:absolute;top:8px;right:10px;background:none;border:none;color:var(--dim);
+    font-size:17px;line-height:1;cursor:pointer;padding:4px 6px;
+  }
+  #minB:hover{color:var(--tx)}
+  .ctl{margin:9px 0 2px}
+  .ctl .lab{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;
+    text-transform:uppercase;letter-spacing:.09em;color:var(--dim);margin-bottom:2px}
+  .ctl .lab b{color:var(--amb);font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:0;text-transform:none;font-size:12px}
+  input[type=range]{width:100%;accent-color:var(--amb);height:22px;margin:0;background:transparent}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .chip{
+    background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--tx);
+    border-radius:999px;padding:4px 10px;font-size:11.5px;cursor:pointer;font-family:inherit;
+  }
+  .chip:hover{background:rgba(255,255,255,.11)}
+  .tourRow{display:flex;align-items:center;gap:7px;margin-top:9px;font-size:12px;color:var(--dim)}
+  .tourRow input{accent-color:var(--amb)}
+
+  #info{border-top:1px solid var(--line);margin-top:11px;padding-top:9px}
+  #info .axlab{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim)}
+  #info .axlab b{color:var(--tx)}
+  #info .ratio{font-size:27px;font-weight:700;color:var(--amb);margin:1px 0 4px;font-variant-numeric:tabular-nums}
+  .ln{display:flex;justify-content:space-between;gap:12px;margin-top:5px;font-size:12.5px}
+  .ln span{color:var(--dim)}
+  .ln b{font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+  .flavor{margin-top:7px;font-size:12px;color:var(--amb);font-style:italic;opacity:.92}
+
+  #tick{
+    margin-top:10px;padding-top:8px;border-top:1px solid var(--line);
+    font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;line-height:1.6;
+  }
+  #tick b{color:var(--tx);font-weight:600}
+  .credit{margin-top:9px;font-size:10.5px;color:var(--faint);line-height:1.5}
+
+  body.min #uibody{display:none}
+
+  #hint{
+    position:fixed;bottom:14px;left:50%;transform:translateX(-50%);
+    background:var(--panel);border:1px solid var(--line);border-radius:999px;
+    padding:7px 15px;font-size:12px;color:var(--dim);white-space:nowrap;
+    pointer-events:none;animation:fadeHint .9s ease 8s forwards;
+  }
+  @keyframes fadeHint{to{opacity:0}}
+
+  #err{
+    position:fixed;inset:0;display:none;place-items:center;background:var(--bg);
+    color:var(--dim);font-size:14px;padding:24px;text-align:center;z-index:9;
+  }
+  @media (max-width:560px){
+    #ui{width:auto;right:12px}
+    #hint{max-width:calc(100vw - 32px);white-space:normal;text-align:center}
+  }
+  @media (prefers-reduced-motion: reduce){ #hint{animation:none} }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <button id="minB" title="collapse panel">–</button>
+  <h1>Googol Gear Machine</h1>
+  <div id="uibody">
+    <p class="sub">100 gear reductions of 10 : 1 in a row. Total ratio 10¹⁰⁰ : 1 — one googol. The last gear is set in concrete. It doesn't mind.</p>
+
+    <div class="ctl">
+      <div class="lab"><span>Motor speed</span><b id="rpmV">240 RPM</b></div>
+      <input id="rpmR" type="range" min="30" max="1200" step="30" value="240">
+    </div>
+
+    <div class="ctl">
+      <div class="lab"><span>Time warp</span><b id="warpV">1× (real time)</b></div>
+      <input id="warpR" type="range" min="0" max="15" step="1" value="0">
+    </div>
+
+    <div class="ctl">
+      <div class="lab"><span>Focus axle</span><b id="focusV">0</b></div>
+      <input id="focusR" type="range" min="0" max="100" step="1" value="0">
+    </div>
+
+    <div class="chips">
+      <button class="chip" data-k="0">Motor</button>
+      <button class="chip" data-k="15">Axle 15</button>
+      <button class="chip" data-k="50">Axle 50</button>
+      <button class="chip" data-k="100">Googol gear</button>
+    </div>
+
+    <div class="tourRow">
+      <input id="tourC" type="checkbox"><label for="tourC">Auto tour down the line</label>
+    </div>
+
+    <div id="info"></div>
+    <div id="tick"></div>
+
+    <div class="credit">Even at a quadrillion× time warp, the last gear will not visibly move. After Arthur Ganson's <i>Machine with Concrete</i> (1992) and Daniel de Bruin's googol machine (2020).</div>
+  </div>
+</div>
+
+<div id="hint">drag to orbit · scroll / pinch to zoom · tap any gear to inspect it</div>
+<div id="err"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script id="app">
+(function(){
+'use strict';
+
+/* ---------- helpers ---------- */
+var SUP = {'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','-':'⁻'};
+function sup(n){ return String(n).split('').map(function(ch){ return SUP[ch]||ch; }).join(''); }
+function trimNum(x){
+  if (x >= 100) return Math.round(x).toLocaleString('en-US');
+  if (x >= 10) return x.toFixed(1);
+  if (x >= 1) return x.toFixed(2);
+  return x.toPrecision(2);
+}
+function sciFromLog(L){
+  var e = Math.floor(L);
+  var m = Math.pow(10, L - e);
+  if (m >= 9.95){ m = 1; e += 1; }
+  return m.toFixed(1) + ' × 10' + sup(e);
+}
+function sci(x){
+  if (x === 0) return '0';
+  if (!isFinite(x)) return '∞';
+  var s = x < 0 ? '−' : '';
+  var L = Math.log10(Math.abs(x));
+  if (L > -3.5 && L < 6) return s + (+Math.abs(x).toPrecision(3)).toLocaleString('en-US');
+  return s + sciFromLog(L);
+}
+var YEAR_S = 31557600;                 // Julian year in seconds
+var UNIV_LOG = Math.log10(4.355e17);   // 13.8 billion years in seconds
+
+function periodInfo(k, rpm){
+  var Ls = Math.log10(60 / rpm) + k;   // log10 of seconds per revolution
+  var main;
+  if (Ls < 11){
+    var s = (60 / rpm) * Math.pow(10, k);
+    if (s < 90)            main = trimNum(s) + ' s';
+    else if (s < 5400)     main = trimNum(s/60) + ' min';
+    else if (s < 172800)   main = trimNum(s/3600) + ' hours';
+    else if (s < 63200000) main = trimNum(s/86400) + ' days';
+    else {
+      var y = s / YEAR_S;
+      main = (y < 1e5) ? Math.round(y).toLocaleString('en-US') + ' years'
+                       : sciFromLog(Math.log10(y)) + ' years';
+    }
+  } else {
+    main = sciFromLog(Ls - Math.log10(YEAR_S)) + ' years';
+  }
+  var uni = null;
+  var Lu = Ls - UNIV_LOG;
+  if (Lu > 0.15){
+    uni = (Lu < 3 ? (+Math.pow(10, Lu).toPrecision(2)).toLocaleString('en-US') + ' ×'
+                  : sciFromLog(Lu) + ' ×') + ' age of the universe';
+  }
+  var flavor = null;
+  var Ly = Ls - Math.log10(YEAR_S);
+  if (Ly >= 90)      flavor = 'a googol-scale wait — arithmetic outlives physics here';
+  else if (Ly >= 38) flavor = 'even protons may decay before one turn';
+  else if (Ly >= 15) flavor = 'every star will have burned out first';
+  return { main: main, uni: uni, flavor: flavor };
+}
+
+/* ---------- boot ---------- */
+var canvas = document.getElementById('c');
+var errEl = document.getElementById('err');
+function fail(msg){ errEl.style.display = 'grid'; errEl.textContent = msg; }
+
+if (typeof THREE === 'undefined'){
+  fail('Could not load three.js from cdnjs — this page needs an internet connection.');
+  return;
+}
+var renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+} catch(e){
+  fail('WebGL is not available in this browser.');
+  return;
+}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.12;
+
+var scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0b0d10);
+scene.fog = new THREE.Fog(0x0b0d10, 120, 1400);
+
+var camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.5, 4000);
+
+/* environment reflections from a small painted equirect */
+(function(){
+  var cv = document.createElement('canvas'); cv.width = 512; cv.height = 256;
+  var g = cv.getContext('2d');
+  var grad = g.createLinearGradient(0,0,0,256);
+  grad.addColorStop(0.00,'#39424e');
+  grad.addColorStop(0.44,'#141a21');
+  grad.addColorStop(0.485,'#8a7a5c');
+  grad.addColorStop(0.52,'#141311');
+  grad.addColorStop(1.00,'#07080a');
+  g.fillStyle = grad; g.fillRect(0,0,512,256);
+  var tex = new THREE.CanvasTexture(cv);
+  tex.encoding = THREE.sRGBEncoding;
+  var rt = new THREE.WebGLCubeRenderTarget(128).fromEquirectangularTexture(renderer, tex);
+  scene.environment = rt.texture;
+  tex.dispose();
+})();
+
+/* lights */
+scene.add(new THREE.HemisphereLight(0x9fb4cc, 0x191410, 0.5));
+var key = new THREE.DirectionalLight(0xffe6c2, 1.05); key.position.set(-90, 150, 170); scene.add(key);
+var rim = new THREE.DirectionalLight(0x7fa0d8, 0.35); rim.position.set(220, 70, -190); scene.add(rim);
+var pMotor = new THREE.PointLight(0xffc9a0, 0.9, 420); pMotor.position.set(0, 42, 34); scene.add(pMotor);
+var pEnd = new THREE.PointLight(0x9fc0ff, 0.8, 420); pEnd.position.set(3300, 44, 470); scene.add(pEnd);
+
+/* ---------- machine constants ---------- */
+var AXLES = 101;          // axles 0..100  → 100 meshes of 10:1 → 10^100
+var SPACING = 33;         // pinion pitch r (3) + wheel pitch r (30)
+var STEP_Z = 5;           // z staircase per stage
+var BIG_TH = 3.2, PIN_TH = 4.4;
+var GROUND_Y = -40;
+
+function AX(k){ return k * SPACING; }
+function ZWHEEL(k){ return (k - 1) * STEP_Z; }  // big wheel plane of axle k (k>=1)
+function ZPIN(k){ return k * STEP_Z; }          // pinion plane of axle k (k<=99)
+
+/* kinematics: angle_k = factor_k * M + phase_k
+   factor_k = (-0.1)^k ;  phase chain keeps teeth meshed:
+   T_pin*θ_k + T_wheel*θ_(k+1) = π  →  phase_(k+1) = π/60 − phase_k/10        */
+var factor = new Float64Array(AXLES);
+var phase  = new Float64Array(AXLES);
+factor[0] = 1; phase[0] = 0;
+for (var i = 1; i < AXLES; i++){
+  factor[i] = -factor[i-1] / 10;
+  phase[i]  = Math.PI/60 - phase[i-1] / 10;
+}
+var lastA = new Float64Array(AXLES);
+for (var j = 0; j < AXLES; j++) lastA[j] = Infinity;
+
+/* ---------- geometry ---------- */
+function circlePath(x, y, r, n){
+  var p = new THREE.Path();
+  for (var i = 0; i <= n; i++){
+    var a = -(i / n) * Math.PI * 2;
+    var px = x + r * Math.cos(a), py = y + r * Math.sin(a);
+    if (i === 0) p.moveTo(px, py); else p.lineTo(px, py);
+  }
+  return p;
+}
+function gearShape(T, rRoot, rTip, tipFrac, rootFrac, holeR, lighten){
+  var s = new THREE.Shape();
+  var p = Math.PI * 2 / T;
+  var tip = p * tipFrac, root = p * rootFrac;
+  for (var j = 0; j < T; j++){
+    var c = j * p;
+    s.absarc(0, 0, rRoot, c - p + root, c - root, false);
+    s.lineTo(rTip * Math.cos(c - tip), rTip * Math.sin(c - tip));
+    s.absarc(0, 0, rTip, c - tip, c + tip, false);
+    s.lineTo(rRoot * Math.cos(c + root), rRoot * Math.sin(c + root));
+  }
+  s.holes.push(circlePath(0, 0, holeR, 22));
+  if (lighten){
+    for (var i = 0; i < 6; i++){
+      var a = i * Math.PI/3 + Math.PI/6, R = 17.5;
+      s.holes.push(circlePath(R * Math.cos(a), R * Math.sin(a), 5.4, 18));
+    }
+  }
+  return s;
+}
+function extrudeGear(shape, depth){
+  var g = new THREE.ExtrudeGeometry(shape, {
+    depth: depth, steps: 1, curveSegments: 2,
+    bevelEnabled: true, bevelThickness: 0.34, bevelSize: 0.2, bevelOffset: -0.2, bevelSegments: 1
+  });
+  g.translate(0, 0, -depth/2);
+  return g;
+}
+
+var wheelGeo = extrudeGear(gearShape(60, 28.75, 31, 0.12, 0.30, 1.32, true), BIG_TH);
+var pinGeo   = extrudeGear(gearShape(6, 1.75, 4, 0.12, 0.26, 1.0, false), PIN_TH);
+var shaftGeo = new THREE.CylinderGeometry(1.3, 1.3, 14, 10); shaftGeo.rotateX(Math.PI/2);
+var blockGeo = new THREE.BoxGeometry(4.2, 5.2, 2.6);
+var colGeo   = new THREE.BoxGeometry(3.2, 37.5, 2.6);
+
+/* ---------- materials ---------- */
+function met(color, rough, metal){
+  var m = new THREE.MeshStandardMaterial({ color: color, roughness: rough, metalness: metal });
+  m.envMapIntensity = 0.75;
+  return m;
+}
+var steelM   = met(0x9aa8ba, 0.34, 0.9);
+var brassM   = met(0xd7a34c, 0.3, 0.95);
+var shaftM   = met(0x4c545e, 0.45, 0.8);
+var ironM    = met(0x22262c, 0.7, 0.5);
+var redM     = met(0x8c2f2b, 0.5, 0.35);
+var concM    = met(0x8c8a82, 0.95, 0.0); concM.envMapIntensity = 0.25;
+var orangeM  = met(0xf0b455, 0.4, 0.4); orangeM.emissive = new THREE.Color(0x5a3608);
+
+/* ---------- instanced build ---------- */
+var dummy = new THREE.Object3D();
+function inst(geo, mat, count){
+  var m = new THREE.InstancedMesh(geo, mat, count);
+  m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  m.frustumCulled = false;
+  scene.add(m);
+  return m;
+}
+var wheels = inst(wheelGeo, steelM, AXLES - 1);   // axles 1..100
+var pins   = inst(pinGeo, brassM, AXLES - 1);     // axles 0..99
+var shafts = inst(shaftGeo, shaftM, AXLES);
+var blocks = inst(blockGeo, ironM, AXLES);
+var cols   = inst(colGeo, ironM, AXLES);
+
+for (var k = 0; k < AXLES; k++){
+  dummy.rotation.set(0,0,0);
+  dummy.position.set(AX(k), 0, k*STEP_Z - 2);   dummy.updateMatrix(); shafts.setMatrixAt(k, dummy.matrix);
+  dummy.position.set(AX(k), 0, k*STEP_Z + 4);   dummy.updateMatrix(); blocks.setMatrixAt(k, dummy.matrix);
+  dummy.position.set(AX(k), -21.35, k*STEP_Z + 4); dummy.updateMatrix(); cols.setMatrixAt(k, dummy.matrix);
+}
+shafts.instanceMatrix.needsUpdate = true;
+blocks.instanceMatrix.needsUpdate = true;
+cols.instanceMatrix.needsUpdate = true;
+
+/* ---------- one-off set dressing ---------- */
+/* ground + grid */
+var ground = new THREE.Mesh(new THREE.PlaneGeometry(5200, 1800), met(0x101318, 0.88, 0.15));
+ground.geometry.rotateX(-Math.PI/2);
+ground.position.set(1650, GROUND_Y, 250);
+scene.add(ground);
+var grid = new THREE.GridHelper(5200, 130, 0x2a3138, 0x181e24);
+grid.position.set(1650, GROUND_Y + 0.25, 250);
+grid.material.transparent = true; grid.material.opacity = 0.35;
+scene.add(grid);
+
+/* motor at axle 0 */
+var motor = new THREE.Group();
+var extraShaft = new THREE.Mesh(new THREE.CylinderGeometry(1.3,1.3,8,10), shaftM);
+extraShaft.geometry.rotateX(Math.PI/2); extraShaft.position.set(0,0,8); motor.add(extraShaft);
+var body = new THREE.Mesh(new THREE.CylinderGeometry(6.2,6.2,11,24), ironM);
+body.geometry.rotateX(Math.PI/2); body.position.set(0,0,17); motor.add(body);
+var cap = new THREE.Mesh(new THREE.CylinderGeometry(6.6,6.6,1.2,24), redM);
+cap.geometry.rotateX(Math.PI/2); cap.position.set(0,0,11); motor.add(cap);
+var base = new THREE.Mesh(new THREE.BoxGeometry(12,34,9), ironM);
+base.position.set(0,-23,17); motor.add(base);
+scene.add(motor);
+
+/* flywheel that visibly spins with axle 0 */
+var spin = new THREE.Group(); spin.position.set(0,0,7);
+var disc = new THREE.Mesh(new THREE.CylinderGeometry(7.5,7.5,1.4,28), redM);
+disc.geometry.rotateX(Math.PI/2); spin.add(disc);
+var knob = new THREE.Mesh(new THREE.CylinderGeometry(0.9,0.9,2.4,10), brassM);
+knob.geometry.rotateX(Math.PI/2); knob.position.set(5.3,0,1.2); spin.add(knob);
+scene.add(spin);
+
+/* dial + needle on the googol axle (axle 100) */
+var endX = AX(100), endZW = ZWHEEL(100);
+var frontShaft = new THREE.Mesh(new THREE.CylinderGeometry(1.3,1.3,6,10), shaftM);
+frontShaft.geometry.rotateX(Math.PI/2); frontShaft.position.set(endX,0,490); scene.add(frontShaft);
+var ring = new THREE.Mesh(new THREE.TorusGeometry(24, 0.6, 10, 60), ironM);
+ring.position.set(endX,0,489); scene.add(ring);
+var needleG = new THREE.Group(); needleG.position.set(endX,0,489);
+var needle = new THREE.Mesh(new THREE.BoxGeometry(1.5,22,0.9), orangeM);
+needle.position.set(0,11,0); needleG.add(needle);
+var hub = new THREE.Mesh(new THREE.CylinderGeometry(1.9,1.9,2.2,14), orangeM);
+hub.geometry.rotateX(Math.PI/2); needleG.add(hub);
+scene.add(needleG);
+
+/* the concrete */
+var concrete = new THREE.Mesh(new THREE.BoxGeometry(76,78,20), concM);
+concrete.position.set(endX, -1, 507);
+scene.add(concrete);
+
+/* ---------- labels ---------- */
+function makeLabel(main, sub, sub2){
+  var W = 768, H = sub2 ? 300 : 224;
+  var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  var g = cv.getContext('2d');
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.shadowColor = 'rgba(0,0,0,0.65)'; g.shadowBlur = 14;
+  g.fillStyle = '#f0b455';
+  g.font = '700 96px -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  g.fillText(main, W/2, sub2 ? 84 : 88);
+  g.fillStyle = '#a9b8c6';
+  g.font = '400 40px -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  g.fillText(sub, W/2, sub2 ? 176 : 172);
+  if (sub2){
+    g.fillStyle = '#6d7d8c';
+    g.font = '400 32px -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+    g.fillText(sub2, W/2, 248);
+  }
+  var tex = new THREE.CanvasTexture(cv);
+  tex.encoding = THREE.sRGBEncoding;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: true }));
+  var w = 44; sp.scale.set(w, w * H / W, 1);
+  scene.add(sp);
+  return sp;
+}
+makeLabel('10' + sup(0) + ' : 1', 'motor · input axle').position.set(0, 46, 0);
+for (var kk = 10; kk <= 90; kk += 10){
+  makeLabel('10' + sup(kk) + ' : 1', 'axle ' + kk).position.set(AX(kk), 46, kk*STEP_Z - 2);
+}
+makeLabel('10' + sup(100) + ' : 1', 'THE GOOGOL GEAR', 'set in concrete · after Ganson').position.set(endX, 50, 498);
+
+/* ---------- state ---------- */
+var M = 0;                       // master angle of axle 0, radians
+var rpm = 240, warpE = 0;
+var focusK = 0, tourOn = false, tourF = 0;
+
+function angleOf(k){ return factor[k] * M + phase[k]; }
+
+function updateGears(){
+  var wDirty = false, pDirty = false;
+  for (var k = 0; k < AXLES; k++){
+    var a = angleOf(k);
+    if (Math.abs(a - lastA[k]) < 1e-4) continue;
+    lastA[k] = a;
+    if (k >= 1){
+      dummy.position.set(AX(k), 0, ZWHEEL(k));
+      dummy.rotation.set(0, 0, a); dummy.updateMatrix();
+      wheels.setMatrixAt(k - 1, dummy.matrix); wDirty = true;
+    }
+    if (k <= AXLES - 2){
+      dummy.position.set(AX(k), 0, ZPIN(k));
+      dummy.rotation.set(0, 0, a); dummy.updateMatrix();
+      pins.setMatrixAt(k, dummy.matrix); pDirty = true;
+    }
+  }
+  if (wDirty) wheels.instanceMatrix.needsUpdate = true;
+  if (pDirty) pins.instanceMatrix.needsUpdate = true;
+  spin.rotation.z = angleOf(0);
+  needleG.rotation.z = angleOf(100);
+}
+
+/* ---------- camera control ---------- */
+var tgt = new THREE.Vector3(0, 2, -2);
+var des = new THREE.Vector3(0, 2, -2);
+var theta = 2.1, phi = 1.22, radius = 95;
+
+function applyCamera(dt){
+  tgt.lerp(des, 1 - Math.exp(-6 * dt));
+  var sp = Math.sin(phi), cp = Math.cos(phi);
+  camera.position.set(
+    tgt.x + radius * sp * Math.cos(theta),
+    tgt.y + radius * cp,
+    tgt.z + radius * sp * Math.sin(theta)
+  );
+  camera.lookAt(tgt);
+}
+
+var pointers = {}, pCount = 0, dragging = false;
+var downX = 0, downY = 0, downT = 0, pinchD = 0, wasPinch = false;
+
+canvas.addEventListener('pointerdown', function(e){
+  canvas.setPointerCapture(e.pointerId);
+  pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+  pCount++;
+  if (pCount === 1){ dragging = true; wasPinch = false; downX = e.clientX; downY = e.clientY; downT = performance.now(); }
+  if (pCount === 2){
+    wasPinch = true;
+    var ids = Object.keys(pointers);
+    var a = pointers[ids[0]], b = pointers[ids[1]];
+    pinchD = Math.hypot(a.x - b.x, a.y - b.y);
+  }
+});
+canvas.addEventListener('pointermove', function(e){
+  var p = pointers[e.pointerId];
+  if (!p) return;
+  var dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if (pCount === 1 && dragging){
+    theta += dx * 0.005;
+    phi = Math.min(1.52, Math.max(0.12, phi - dy * 0.005));
+  } else if (pCount === 2){
+    var ids = Object.keys(pointers);
+    var a = pointers[ids[0]], b = pointers[ids[1]];
+    var d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinchD > 0) radius = Math.min(800, Math.max(22, radius * pinchD / d));
+    pinchD = d;
+  }
+});
+function endPointer(e){
+  if (!pointers[e.pointerId]) return;
+  delete pointers[e.pointerId];
+  pCount = Math.max(0, pCount - 1);
+  if (pCount === 0) dragging = false;
+  var moved = Math.hypot(e.clientX - downX, e.clientY - downY);
+  if (!wasPinch && moved < 7 && performance.now() - downT < 450) tapPick(e.clientX, e.clientY);
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('wheel', function(e){
+  e.preventDefault();
+  radius = Math.min(800, Math.max(22, radius * Math.exp(e.deltaY * 0.0011)));
+}, { passive: false });
+canvas.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+var ray = new THREE.Raycaster();
+var ndc = new THREE.Vector2();
+function tapPick(cx, cy){
+  ndc.set((cx / window.innerWidth) * 2 - 1, -(cy / window.innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  var hits = ray.intersectObjects([wheels, pins, concrete, ring], false);
+  if (!hits.length) return;
+  var h = hits[0], k = null;
+  if (h.object === wheels) k = h.instanceId + 1;
+  else if (h.object === pins) k = h.instanceId;
+  else k = 100;
+  setTour(false);
+  setFocus(k);
+}
+
+/* ---------- UI ---------- */
+var rpmR = document.getElementById('rpmR'), rpmV = document.getElementById('rpmV');
+var warpR = document.getElementById('warpR'), warpV = document.getElementById('warpV');
+var focusR = document.getElementById('focusR'), focusV = document.getElementById('focusV');
+var tourC = document.getElementById('tourC');
+var info = document.getElementById('info'), tickEl = document.getElementById('tick');
+
+function ln(a, b){ return '<div class="ln"><span>' + a + '</span><b>' + b + '</b></div>'; }
+
+function renderInfo(){
+  var k = focusK;
+  var tag = k === 0 ? ' · motor' : (k === 100 ? ' · googol gear' : '');
+  var h = '<div class="axlab">axle <b>' + k + '</b> / 100' + tag + '</div>';
+  h += '<div class="ratio">10' + sup(k) + ' : 1</div>';
+  var rk = rpm / Math.pow(10, k);
+  if (k === 0) h += ln('speed', rpm + ' RPM');
+  else if (rk >= 0.05) h += ln('speed', trimNum(rk) + ' RPM');
+  var p = periodInfo(k, rpm);
+  h += ln('one revolution', p.main);
+  if (p.uni) h += ln('that is', p.uni);
+  if (p.flavor) h += '<div class="flavor">' + p.flavor + '</div>';
+  if (k === 100) h += '<div class="flavor">the far end is safely embedded in concrete.</div>';
+  info.innerHTML = h;
+}
+
+function setFocus(k, fromTour){
+  focusK = k;
+  focusR.value = k; focusV.textContent = k;
+  if (!fromTour) des.set(AX(k), 2, k * STEP_Z - 2);
+  renderInfo();
+}
+function setTour(on){
+  tourOn = on; tourC.checked = on;
+  if (on) tourF = focusK;
+}
+
+rpmR.addEventListener('input', function(){
+  rpm = +rpmR.value; rpmV.textContent = rpm + ' RPM'; renderInfo();
+});
+warpR.addEventListener('input', function(){
+  warpE = +warpR.value;
+  warpV.textContent = warpE === 0 ? '1× (real time)' : '10' + sup(warpE) + '× faster';
+});
+focusR.addEventListener('input', function(){
+  setTour(false);
+  setFocus(+focusR.value);
+});
+tourC.addEventListener('change', function(){ setTour(tourC.checked); });
+Array.prototype.forEach.call(document.querySelectorAll('.chip'), function(b){
+  b.addEventListener('click', function(){ setTour(false); setFocus(+b.dataset.k); });
+});
+document.getElementById('minB').addEventListener('click', function(){
+  document.body.classList.toggle('min');
+  this.textContent = document.body.classList.contains('min') ? '+' : '–';
+});
+
+/* ticker */
+setInterval(function(){
+  var revs = M / (Math.PI * 2);
+  var deg100 = M * (180 / Math.PI) * 1e-100;
+  tickEl.innerHTML =
+    'motor so far: <b>' + (revs < 1e6 ? Math.floor(revs).toLocaleString('en-US') : sci(revs)) + '</b> revs<br>' +
+    'googol gear so far: <b>' + sci(deg100) + '°</b>' +
+    (warpE > 0 ? ' <span style="color:var(--faint)">(sim time ×10' + sup(warpE) + ')</span>' : '');
+}, 250);
+
+/* ---------- loop ---------- */
+var clock = new THREE.Clock();
+function frame(){
+  var dt = Math.min(clock.getDelta(), 0.05);
+  M += (rpm / 60) * Math.PI * 2 * Math.pow(10, warpE) * dt;
+
+  if (tourOn){
+    tourF += dt * 1.15;
+    if (tourF > 100.6) tourF = -0.4;
+    var f = Math.min(100, Math.max(0, tourF));
+    des.set(f * SPACING, 2, f * STEP_Z - 2);
+    var kk2 = Math.round(f);
+    if (kk2 !== focusK) setFocus(kk2, true);
+  }
+
+  updateGears();
+  applyCamera(dt);
+  renderer.render(scene, camera);
+}
+renderer.setAnimationLoop(frame);
+
+window.addEventListener('resize', function(){
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+/* init */
+updateGears();
+setFocus(0);
+})();
+</script>
+</body>
+</html>
