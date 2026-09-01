@@ -3,6 +3,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import type { SupportedLanguage } from "./interface/Problem";
 import * as Logger from "./Logger";
+import { getEffectiveConfig } from "./LeetcodeConfig";
 
 const MARKER = ".leetcode";
 
@@ -87,11 +88,18 @@ function workspaceJsonEqual(a: unknown, b: unknown): boolean {
 }
 
 /**
- * Sets Fira Code iScript and italic token rules for LeetCode practice workspaces (folder with `.leetcode`).
+ * Sets the configured font and token rules for LeetCode practice workspaces (folder with `.leetcode`).
  * Only writes workspace-level settings when they differ from the LCEX defaults.
  */
 export async function applyLcexEditorFontAndTokenSettingsIfNeeded(): Promise<void> {
-  if (!workspaceHasLeetcodeMarker()) return;
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders?.length || !workspaceHasLeetcodeMarker()) return;
+
+  const lcexCfg = getEffectiveConfig(folders);
+  if (!lcexCfg.applyWorkspaceFontSettings) return;
+
+  const fontToApply = lcexCfg.editorFontFamily || "Fira Code iScript";
+
   const editorCfg = vscode.workspace.getConfiguration("editor", null);
   const target = vscode.ConfigurationTarget.Workspace;
 
@@ -100,21 +108,30 @@ export async function applyLcexEditorFontAndTokenSettingsIfNeeded(): Promise<voi
   const tokenInspect = editorCfg.inspect<Record<string, unknown>>("tokenColorCustomizations");
   const workspaceToken = tokenInspect?.workspaceValue ?? tokenInspect?.workspaceFolderValue;
 
-  const desiredToken = JSON.parse(JSON.stringify(LCEX_EDITOR_TOKEN_COLOR_CUSTOMIZATIONS)) as Record<
-    string,
-    unknown
-  >;
-  const needsFont = workspaceFont !== LCEX_EDITOR_FONT_FAMILY;
-  const needsToken = !workspaceJsonEqual(workspaceToken, desiredToken);
+  const needsFont = workspaceFont !== fontToApply;
+  
+  // Only apply italic settings if the user has enabled them
+  let desiredToken: Record<string, unknown> = {};
+  let needsToken = false;
+  if (lcexCfg.editorCursiveItalics) {
+    desiredToken = JSON.parse(JSON.stringify(LCEX_EDITOR_TOKEN_COLOR_CUSTOMIZATIONS)) as Record<string, unknown>;
+    needsToken = !workspaceJsonEqual(workspaceToken, desiredToken);
+  } else if (workspaceToken && workspaceJsonEqual(workspaceToken, JSON.parse(JSON.stringify(LCEX_EDITOR_TOKEN_COLOR_CUSTOMIZATIONS)))) {
+    // If they were previously set by us, clear them out now that the font changed
+    needsToken = true;
+    desiredToken = {}; // or undefined, but VS Code API allows updating to {}
+  }
 
   if (!needsFont && !needsToken) return;
 
   try {
     if (needsFont) {
-      await editorCfg.update("fontFamily", LCEX_EDITOR_FONT_FAMILY, target);
+      await editorCfg.update("fontFamily", fontToApply, target);
     }
     if (needsToken) {
-      await editorCfg.update("tokenColorCustomizations", desiredToken, target);
+      // update with {} clears the properties we set if there were no others,
+      // wait, updating with undefined deletes the setting entirely, which is better.
+      await editorCfg.update("tokenColorCustomizations", Object.keys(desiredToken).length > 0 ? desiredToken : undefined, target);
     }
   } catch (e) {
     Logger.logError("LCEX editor font/token settings: failed to update workspace settings", e);
