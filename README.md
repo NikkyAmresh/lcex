@@ -188,6 +188,7 @@ All commands are available under the **LeetCode** category in the command palett
 | Command | Description |
 | --- | --- |
 | `LeetCode: Toggle anonymous analytics` | Opt in or out of anonymous usage analytics |
+| `LeetCode: Send Feedback` | Rate lcex 1 to 5 stars with an optional comment (also asked about once a week) |
 
 ## Extension Settings
 
@@ -209,6 +210,7 @@ All commands are available under the **LeetCode** category in the command palett
 | `leetcodePractice.showCompanies` | Toggle the Companies view (default: on) |
 | `leetcodePractice.leetcodeUsername` | LeetCode username for cloud sync |
 | `leetcodePractice.analytics.enabled` | Send anonymous usage analytics (default: on) |
+| `leetcodePractice.feedback.enabled` | Weekly personalised feedback prompt (default: on) |
 | `leetcodePractice.inlineDecorations.enabled` | Master switch for all lcex inline ghost text (default: on) |
 | `leetcodePractice.lint.enabled` | Run interview anti-pattern lint on save (default: on) |
 | `leetcodePractice.complexityBudget.enabled` | Derive target Big-O from constraints and paint 🟢/🟡/🔴 on save (default: on) |

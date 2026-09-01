@@ -102,5 +102,66 @@ service cloud.firestore {
       allow read, delete: if request.auth != null
         && request.auth.uid == 'DLtoYwNBJaRK2iE7se5HmP1d6Q23';
     }
+
+    // User feedback from the weekly prompt and "LeetCode: Send Feedback".
+    // Create-only from any authed identity (anonymous or Google). `email` is
+    // optional and accepted only when the user opted in and it matches the
+    // signed-in token, so a client cannot attach someone else's address.
+    // Only the admin uid can read. No update or delete by anyone.
+    match /feedback/{docId} {
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasOnly([
+          'schemaVersion', 'ts', 'installId', 'rating', 'comment', 'allowContact', 'email',
+          'extVersion', 'vscodeVersion', 'platform', 'locale', 'source', 'promptCount',
+          'weekSolves', 'weekMinutes', 'level', 'totalSolved', 'streak'
+        ])
+        && request.resource.data.keys().hasAll([
+          'schemaVersion', 'ts', 'installId', 'rating', 'comment', 'allowContact',
+          'extVersion', 'vscodeVersion', 'platform', 'locale', 'source', 'promptCount',
+          'weekSolves', 'weekMinutes', 'level', 'totalSolved', 'streak'
+        ])
+        && request.resource.data.schemaVersion == 1
+        && request.resource.data.ts is int
+        && request.resource.data.installId is string
+        && request.resource.data.installId.size() == 36
+        && request.resource.data.installId.matches('[0-9a-fA-F-]+')
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.comment is string
+        && request.resource.data.comment.size() <= 2000
+        && request.resource.data.allowContact is bool
+        && (
+          !('email' in request.resource.data)
+          || (
+            request.resource.data.allowContact == true
+            && request.resource.data.email is string
+            && request.resource.data.email.size() <= 254
+            && request.auth.token.email == request.resource.data.email
+          )
+        )
+        && request.resource.data.extVersion is string
+        && request.resource.data.extVersion.size() <= 32
+        && request.resource.data.vscodeVersion is string
+        && request.resource.data.vscodeVersion.size() <= 32
+        && request.resource.data.platform in ['darwin', 'linux', 'win32', 'other']
+        && request.resource.data.locale is string
+        && request.resource.data.locale.size() <= 10
+        && request.resource.data.source in ['prompt', 'command']
+        && request.resource.data.promptCount is int
+        && request.resource.data.promptCount >= 0
+        && request.resource.data.weekSolves is int
+        && request.resource.data.weekSolves >= 0
+        && request.resource.data.weekMinutes is int
+        && request.resource.data.weekMinutes >= 0
+        && request.resource.data.level is int
+        && request.resource.data.level >= 1
+        && request.resource.data.totalSolved is int
+        && request.resource.data.totalSolved >= 0
+        && request.resource.data.streak is int
+        && request.resource.data.streak >= 0;
+      allow read: if request.auth != null && request.auth.uid == 'DLtoYwNBJaRK2iE7se5HmP1d6Q23';
+      allow update, delete: if false;
+    }
   }
 }

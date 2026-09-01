@@ -1,4 +1,4 @@
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 
 /** Total XP ever earned (local). */
 export const TOTAL_XP_KEY = "leetcode-practice.totalXp";
@@ -217,4 +217,34 @@ export async function setDailyGoal(memento: vscode.Memento, goal: DailyGoal | un
 export function dailyGoalProgressPercent(current: number, target: number): number {
   if (target <= 0) return 0;
   return Math.min(100, Math.round((current / target) * 100));
+}
+
+/** The ISO day before `iso` (UTC). */
+export function dayBefore(iso: string): string {
+  const d = new Date(iso + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Consecutive days with at least one solve, ending today or yesterday; 0 otherwise. */
+export function computeStreak(
+  entries: Record<string, { status: string; solvedAt?: string }>,
+  today: string = todayIso()
+): number {
+  const solvedAts = Object.values(entries)
+    .filter((e) => e.status === "solved" && e.solvedAt)
+    .map((e) => e.solvedAt!);
+  const dates = [...new Set(solvedAts)].sort().reverse();
+  if (dates.length === 0) return 0;
+  const yesterday = dayBefore(today);
+  if (dates[0] !== today && dates[0] !== yesterday) return 0;
+  let count = 1;
+  let prev = dates[0];
+  for (let i = 1; i < dates.length; i++) {
+    if (dates[i] === dayBefore(prev)) {
+      count++;
+      prev = dates[i];
+    } else break;
+  }
+  return count;
 }

@@ -140,7 +140,12 @@ export type AnalyticsFeature =
   | "practice_pattern"
   | "pattern_mastery_summary"
   | "pattern_drill"
-  | "run_db_local";
+  | "run_db_local"
+  | "feedback_prompt_shown"
+  | "feedback_prompt_later"
+  | "feedback_prompt_opt_out"
+  | "feedback_opened"
+  | "feedback_submitted";
 
 const FEATURES: ReadonlySet<AnalyticsFeature> = new Set<AnalyticsFeature>([
   "open_problem",
@@ -193,6 +198,11 @@ const FEATURES: ReadonlySet<AnalyticsFeature> = new Set<AnalyticsFeature>([
   "pattern_mastery_summary",
   "pattern_drill",
   "run_db_local",
+  "feedback_prompt_shown",
+  "feedback_prompt_later",
+  "feedback_prompt_opt_out",
+  "feedback_opened",
+  "feedback_submitted",
 ]);
 
 // Props are a tiny, strongly-typed bag. Keys outside this union are dropped.
@@ -428,7 +438,7 @@ function scheduleImmediateFlush(): void {
   setImmediate(() => void flushAnalytics());
 }
 
-async function ensureInstallId(globalState: vscode.Memento): Promise<string> {
+export async function ensureInstallId(globalState: vscode.Memento): Promise<string> {
   const existing = globalState.get<string>(INSTALL_ID_KEY);
   if (existing && /^[0-9a-f-]{36}$/i.test(existing)) return existing;
   const id = cryptoRandomUuid();
@@ -498,7 +508,7 @@ function firestoreCommitUrl(): string {
   return `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents:commit`;
 }
 
-function clientDocId(): string {
+export function clientDocId(): string {
   // 20-char alphanumeric, matches Firestore auto-id shape.
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   const bytes = crypto.randomBytes(20);
