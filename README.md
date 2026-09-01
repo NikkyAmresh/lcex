@@ -262,7 +262,10 @@ Any setting above can be overridden per-workspace in the `.leetcode` file. Works
 
 ```json
 {
-  "studyPlans": [{ "slug": "top-interview-150", "name": "Top Interview 150" }],
+  "studyPlans": [
+    { "slug": "top-interview-150", "name": "Top Interview 150" },
+    { "slug": "my-custom-list", "name": "My Custom List", "path": "data/custom-list.json" }
+  ],
   "problemLists": [{ "slug": "graph", "name": "Graph" }],
   "activeStudyPlan": "top-interview-150",
   "activeProblemList": "graph",
@@ -271,6 +274,21 @@ Any setting above can be overridden per-workspace in the `.leetcode` file. Works
   "defaultDirectory": "."
 }
 ```
+
+### Custom Study Plans
+
+You can load your own custom-categorized study plans (like NeetCode 150) without relying on LeetCode's backend. 
+
+Simply add the `path` property to a study plan entry in your `.leetcode` config and point it to a local JSON file in your workspace:
+
+```json
+{
+  "Arrays & Hashing": ["contains-duplicate", "valid-anagram"],
+  "Two Pointers": ["valid-palindrome"]
+}
+```
+
+The extension will read this JSON file and instantly render it in the Study Plans sidebar as a fully categorized tree view.
 
 ## Requirements
 

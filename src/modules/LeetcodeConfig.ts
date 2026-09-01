@@ -9,7 +9,7 @@ export type ActiveListSource = "studyPlan" | "problemList";
 
 /** Schema for .leetcode config file. Overrides VS Code settings for this workspace. */
 export interface LeetcodeConfig {
-  studyPlans?: Array<{ slug: string; name: string }>;
+  studyPlans?: Array<{ slug: string; name: string; path?: string }>;
   /** LeetCode problem-list slugs (e.g. graph → /problem-list/graph/). */
   problemLists?: Array<{ slug: string; name: string }>;
   /** Default study plan slug for the Study Plans sidebar (must match `studyPlans`). */
@@ -79,21 +79,24 @@ const DEFAULTS: Required<
     "Explain my solution code for this LeetCode problem. Respond with: (1) Intuition — core idea in plain language; (2) Step-by-step dry run — walk through the algorithm with a small example, including loop/state changes; (3) Time and space complexity with brief justification. Do not rewrite the full solution unless needed for clarity.",
 };
 
-function isValidStudyPlanEntry(obj: unknown): obj is { slug: string; name: string } {
+function isValidStudyPlanEntry(obj: unknown): obj is { slug: string; name: string; path?: string } {
   return (
     typeof obj === "object" &&
     obj !== null &&
     typeof (obj as { slug?: unknown }).slug === "string" &&
-    typeof (obj as { name?: unknown }).name === "string"
+    typeof (obj as { name?: unknown }).name === "string" &&
+    ((obj as { path?: unknown }).path === undefined || typeof (obj as { path?: unknown }).path === "string")
   );
 }
 
-function parseStudyPlans(raw: unknown): Array<{ slug: string; name: string }> {
+function parseStudyPlans(raw: unknown): Array<{ slug: string; name: string; path?: string }> {
   if (!Array.isArray(raw)) return DEFAULTS.studyPlans;
-  const result: Array<{ slug: string; name: string }> = [];
+  const result: Array<{ slug: string; name: string; path?: string }> = [];
   for (const item of raw) {
     if (isValidStudyPlanEntry(item)) {
-      result.push({ slug: item.slug, name: item.name });
+      const entry: { slug: string; name: string; path?: string } = { slug: item.slug, name: item.name };
+      if (item.path !== undefined) entry.path = item.path;
+      result.push(entry);
     }
   }
   return result.length > 0 ? result : DEFAULTS.studyPlans;
@@ -353,7 +356,7 @@ export function getEffectiveConfig(
 ): LeetcodeConfig & { internalApiUrl: string; problemViewMode: "ui" | "text" } {
   const vscodeConfig = vscode.workspace.getConfiguration("leetcodePractice");
   const leetcode = parseLeetcodeConfig(workspaceFolders);
-  const studyPlans = leetcode.studyPlans ?? vscodeConfig.get<Array<{ slug: string; name: string }>>("studyPlans") ?? DEFAULTS.studyPlans;
+  const studyPlans = leetcode.studyPlans ?? vscodeConfig.get<Array<{ slug: string; name: string; path?: string }>>("studyPlans") ?? DEFAULTS.studyPlans;
   const problemLists =
     leetcode.problemLists ?? vscodeConfig.get<Array<{ slug: string; name: string }>>("problemLists") ?? DEFAULTS.problemLists;
   const vsActiveSource = vscodeConfig.get<string>("activeListSource");

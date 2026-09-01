@@ -7,7 +7,7 @@ import {
   type ProblemListItem,
   type StudyPlanGroup,
 } from "./LeetCode";
-import { NO_PROBLEM_LIST_SENTINEL } from "./LeetcodeConfig";
+import { NO_PROBLEM_LIST_SENTINEL, getEffectiveConfig } from "./LeetcodeConfig";
 const STATUS_KEY = "leetcode-practice.problemStatus";
 
 export type ProblemStatus = "solved" | "attempting";
@@ -248,7 +248,41 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
           this.groups = problems.length > 0 ? [{ category, problems }] : [];
           }
         } else {
-          this.groups = await this.leetcode.getStudyPlanProblemListGrouped(planSlug);
+          const lcexCfg = getEffectiveConfig(vscode.workspace.workspaceFolders ?? []);
+          const planConfig = lcexCfg.studyPlans?.find((p) => p.slug === planSlug);
+          
+          if (planConfig?.path) {
+            let localPath = "";
+            for (const f of vscode.workspace.workspaceFolders ?? []) {
+              const candidate = path.resolve(f.uri.fsPath, planConfig.path);
+              if (fs.existsSync(candidate)) {
+                localPath = candidate;
+                break;
+              }
+            }
+            if (localPath) {
+              try {
+                const raw = fs.readFileSync(localPath, "utf-8");
+                const customPlan = JSON.parse(raw) as Record<string, string[]>;
+                
+                const fullProvider = new ProblemsTreeProvider("problemset", this.memento, this.storagePath);
+                const allProblems = await fullProvider.getProblemList();
+                const bySlug = new Map(allProblems.map(p => [p.titleSlug, p]));
+                
+                this.groups = Object.entries(customPlan).map(([category, slugs]) => ({
+                  category,
+                  problems: slugs.map(slug => bySlug.get(slug)).filter((p): p is ProblemListItem => !!p)
+                })).filter(g => g.problems.length > 0);
+              } catch (e) {
+                console.error(`Failed to load custom study plan from ${localPath}`, e);
+                this.groups = [];
+              }
+            } else {
+              this.groups = [];
+            }
+          } else {
+            this.groups = await this.leetcode.getStudyPlanProblemListGrouped(planSlug);
+          }
         }
         if (this.groups.length > 0) {
           try {
