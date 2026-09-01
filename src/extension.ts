@@ -33,6 +33,8 @@ import {
 } from "./modules/PatternMastery";
 import { detectPatterns, getPatternMeta, type PatternId } from "./modules/PatternDetector";
 import { openPatternDrillWebview } from "./modules/PatternDrillView";
+import { resetFeedbackState } from "./modules/feedback/FeedbackState";
+import { openFeedbackWebview, runFeedbackTick, scheduleFeedbackPrompt } from "./modules/feedback/FeedbackView";
 import type { OpenProblemWebviewOpts, ProblemPanelState } from "./modules/ProblemView";
 import {
   openProblemWebview,
@@ -1320,6 +1322,12 @@ export function activate(context: vscode.ExtensionContext): void {
     })
     .catch((e) => Logger.logError("grantDailyLoginXpIfNeeded failed", e));
   restoreInterviewOnActivate(context);
+  context.subscriptions.push(scheduleFeedbackPrompt(context));
+  void vscode.commands.executeCommand(
+    "setContext",
+    "leetcodePractice.devMode",
+    context.extensionMode === vscode.ExtensionMode.Development
+  );
 
   context.subscriptions.push(registerProblemPlainTextDocumentProvider(context, getProvider));
   context.subscriptions.push(
@@ -3609,6 +3617,24 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       openStatsWebview(context, globalState).catch((e) =>
         vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))
       );
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.sendFeedback", () => {
+      trackAnalytics("command_invoked", "command_palette", "feedback_opened");
+      openFeedbackWebview(context, { source: "command" }).catch((e) =>
+        vscode.window.showErrorMessage(e instanceof Error ? e.message : String(e))
+      );
+    })
+  );
+
+  // Development only (hidden from the palette unless leetcodePractice.devMode):
+  // forgets the prompt state and fires the check immediately.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.resetFeedbackPrompt", async () => {
+      await resetFeedbackState(context.globalState);
+      await runFeedbackTick(context, { force: true });
     })
   );
 

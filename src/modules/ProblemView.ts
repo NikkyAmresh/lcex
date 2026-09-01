@@ -50,6 +50,7 @@ import {
   FOCUS_COMPACT_WEBVIEW_KEY,
   FOCUS_ZEN_STATUSBAR_PREV_KEY,
   LAST_CHALLENGE_PANEL_LANGUAGE_KEY,
+  computeStreak,
   countSolvedToday,
   dailyGoalProgressPercent,
   getDailyGoal,
@@ -1324,32 +1325,6 @@ async function renderChallengeHtml(
     topics,
     companies,
   });
-}
-
-function dayBefore(iso: string): string {
-  const d = new Date(iso + "T12:00:00Z");
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
-
-function computeStreak(entries: Record<string, StoredStatusEntry>): number {
-  const solvedAts = Object.values(entries)
-    .filter((e) => e.status === "solved" && e.solvedAt)
-    .map((e) => e.solvedAt!);
-  const dates = [...new Set(solvedAts)].sort().reverse();
-  if (dates.length === 0) return 0;
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = dayBefore(today);
-  if (dates[0] !== today && dates[0] !== yesterday) return 0;
-  let count = 1;
-  let prev = dates[0];
-  for (let i = 1; i < dates.length; i++) {
-    if (dates[i] === dayBefore(prev)) {
-      count++;
-      prev = dates[i];
-    } else break;
-  }
-  return count;
 }
 
 async function renderStatsHtml(

@@ -2,6 +2,18 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.12.1] Feedback prompt
+
+### Added
+
+- **A weekly, personal feedback check-in.** About once a week, after you have used lcex for at least three days and either solved a problem or practised for twenty minutes, a notification asks how it is going. It speaks to your own week ("Nikky, 7 solves and 3h 12m of practice with lcex this week") and falls back to your level, total solved and streak when the week was quiet. "Later" or closing it waits another week, "Don't ask again" stops it for good, and sending feedback also stops it. It never interrupts a mock interview or focus mode, and it waits ninety seconds after startup.
+- **`LeetCode: Send Feedback`** opens the same page any time: a 1 to 5 star rating with full keyboard support, an optional comment, and, when you are signed in to Cloud Sync, a "You can contact me about this" box that is off by default. Without that box, or without sign-in, the submission is tied only to the anonymous install id already used by analytics. After sending, four or five stars offers a Marketplace review link and one to three stars offers a GitHub issue link. If the network is down the feedback is kept locally and sent the next time lcex starts.
+- **`leetcodePractice.feedback.enabled`** (default on) turns the automatic prompt off. The command keeps working.
+
+### Changed
+
+- Streak calculation moved from the stats page into `Gamification.ts` so the stats page and the feedback page share one implementation. No behaviour change.
+
 ## [0.12.0] Database problems
 
 ### Added
