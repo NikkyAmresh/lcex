@@ -12,6 +12,16 @@ const STATUS_KEY = "leetcode-practice.problemStatus";
 
 export type ProblemStatus = "solved" | "attempting";
 
+export type ProblemSort = "default" | "acRateDesc" | "acRateAsc";
+
+export function isHidePremiumEnabled(): boolean {
+  return vscode.workspace.getConfiguration("leetcodePractice").get<boolean>("hidePremiumProblems", true);
+}
+
+function hasPremiumInfo(items: ProblemListItem[]): boolean {
+  return items.some((item) => typeof item.paidOnly === "boolean");
+}
+
 /** "problemset" for full list; string = study plan or problem-list slug */
 export type ProblemListKind = "problemset" | string;
 
@@ -80,12 +90,15 @@ export class ProblemTreeItem extends vscode.TreeItem {
   constructor(
     public readonly item: ProblemListItem,
     status: ProblemStatus | undefined,
-    collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None
+    collapsibleState: vscode.TreeItemCollapsibleState = vscode.TreeItemCollapsibleState.None,
+    showAcRate = false
   ) {
     super(`${item.id}. ${item.title}`, collapsibleState);
     const statusSuffix =
       status === "solved" ? " • ✓" : status === "attempting" ? " • Attempting" : "";
-    this.description = `${item.difficulty}${statusSuffix}`;
+    const acRateSuffix =
+      showAcRate && typeof item.acRate === "number" ? ` • ${(item.acRate * 100).toFixed(1)}%` : "";
+    this.description = `${item.difficulty}${acRateSuffix}${statusSuffix}`;
     this.tooltip = item.titleSlug;
     if (status === "solved") {
       this.iconPath = new vscode.ThemeIcon("check", new vscode.ThemeColor("testing.iconPassed"));
@@ -132,6 +145,7 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
   private memento: vscode.Memento;
   private filterDifficulty: string | undefined;
   private filterTitle: string | undefined;
+  private sortBy: ProblemSort = "default";
   private storagePath: string;
   private listSource: "problemset" | NonProblemsetListSource;
   private problemListCategoryLabel: string | undefined;
@@ -179,6 +193,20 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
     this._onDidChangeTreeData.fire();
   }
 
+  setSort(sort: ProblemSort): void {
+    this.sortBy = sort;
+    const needsAcRate = sort !== "default" && this.list.length > 0;
+    if (needsAcRate && !this.list.some((item) => typeof item.acRate === "number")) {
+      this.refresh();
+      return;
+    }
+    this._onDidChangeTreeData.fire();
+  }
+
+  getSort(): ProblemSort {
+    return this.sortBy;
+  }
+
   invalidate(): void {
     this._onDidChangeTreeData.fire();
   }
@@ -202,6 +230,9 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
 
   private applyFilters(items: ProblemListItem[]): ProblemListItem[] {
     let result = items;
+    if (isHidePremiumEnabled()) {
+      result = result.filter((item) => item.paidOnly !== true);
+    }
     if (this.filterDifficulty) {
       result = result.filter((item) => item.difficulty === this.filterDifficulty);
     }
@@ -212,6 +243,16 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
           item.title.toLowerCase().includes(lower) ||
           item.titleSlug.toLowerCase().includes(lower)
       );
+    }
+    if (this.sortBy !== "default") {
+      const dir = this.sortBy === "acRateDesc" ? -1 : 1;
+      result = [...result].sort((a, b) => {
+        const ar = a.acRate;
+        const br = b.acRate;
+        if (typeof ar !== "number") return typeof br === "number" ? 1 : 0;
+        if (typeof br !== "number") return -1;
+        return (ar - br) * dir;
+      });
     }
     return result;
   }
@@ -228,7 +269,8 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
             const cached = parsed as StudyPlanGroup[];
             const isStaleGeneralCache =
               cached.length === 1 && cached[0].category === "General";
-            if (!isStaleGeneralCache) {
+            const lacksPremiumInfo = !hasPremiumInfo(cached.flatMap((g) => g.problems));
+            if (!isStaleGeneralCache && !lacksPremiumInfo) {
               this.groups = cached;
             }
           }
@@ -263,7 +305,8 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
       if (this.list.length === 0 && fs.existsSync(this.cachePath)) {
         try {
           const raw = fs.readFileSync(this.cachePath, "utf-8");
-          this.list = JSON.parse(raw) as ProblemListItem[];
+          const cached = JSON.parse(raw) as ProblemListItem[];
+          this.list = hasPremiumInfo(cached) ? cached : [];
         } catch {
           this.list = [];
         }
@@ -287,7 +330,7 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
       const filtered = this.applyFilters(element.problems);
       return filtered.map((item) => {
         const status = getStoredStatus(this.memento, item.titleSlug);
-        return new ProblemTreeItem(item, status);
+        return new ProblemTreeItem(item, status, undefined, this.sortBy !== "default");
       });
     }
     await this.ensureLoaded();
@@ -304,7 +347,7 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
     const filtered = this.applyFilters(this.list);
     return filtered.map((item) => {
       const status = getStoredStatus(this.memento, item.titleSlug);
-      return new ProblemTreeItem(item, status);
+      return new ProblemTreeItem(item, status, undefined, this.sortBy !== "default");
     });
   }
 

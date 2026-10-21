@@ -2,7 +2,7 @@
   "name": "leetcode-practice",
   "displayName": "LeetCode Practice — Problems, Study Plans & Interview Mode",
   "description": "Solve LeetCode problems in VS Code. Browse problems, study plans (Top Interview 150, Blind 75), and Question of the Day. Generate TypeScript / JavaScript / Python / C++ / Java templates, run examples inline, track XP & streaks, and run timed mock interviews.",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "publisher": "nikkyamresh",
   "engines": {
     "vscode": "^1.85.0"
@@ -232,6 +232,14 @@
         "title": "LeetCode: Search Problems"
       },
       {
+        "command": "leetcode-practice.sortProblems",
+        "title": "LeetCode: Sort Problems"
+      },
+      {
+        "command": "leetcode-practice.togglePremiumProblems",
+        "title": "LeetCode: Show/Hide Premium Problems"
+      },
+      {
         "command": "leetcode-practice.openRandomProblem",
         "title": "LeetCode: Open Random Problem"
       },
@@ -447,6 +455,16 @@
           "group": "navigation"
         },
         {
+          "command": "leetcode-practice.sortProblems",
+          "when": "view == leetcode-practice.problemsView",
+          "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.togglePremiumProblems",
+          "when": "view == leetcode-practice.problemsView",
+          "group": "navigation"
+        },
+        {
           "command": "leetcode-practice.filterByDifficulty",
           "when": "view == leetcode-practice.topInterview150View",
           "group": "navigation"
@@ -467,6 +485,11 @@
           "group": "navigation"
         },
         {
+          "command": "leetcode-practice.togglePremiumProblems",
+          "when": "view == leetcode-practice.topInterview150View",
+          "group": "navigation"
+        },
+        {
           "command": "leetcode-practice.filterByDifficulty",
           "when": "view == leetcode-practice.problemListsView",
           "group": "navigation"
@@ -478,6 +501,11 @@
         },
         {
           "command": "leetcode-practice.switchProblemList",
+          "when": "view == leetcode-practice.problemListsView",
+          "group": "navigation"
+        },
+        {
+          "command": "leetcode-practice.togglePremiumProblems",
           "when": "view == leetcode-practice.problemListsView",
           "group": "navigation"
         },
@@ -681,6 +709,11 @@
           "type": "boolean",
           "default": false,
           "description": "If suppressAiTabOnSolve is enabled, set editor.inlineSuggest.enabled to false for the whole workspace instead of per-language scopes (stronger; affects all file types in this workspace folder)."
+        },
+        "leetcodePractice.hidePremiumProblems": {
+          "type": "boolean",
+          "default": true,
+          "description": "Hide LeetCode Premium (subscription-only) problems from the Problems, Study Plans and Problem Lists views and the random picker."
         },
         "leetcodePractice.internalApiUrl": {
           "type": "string",

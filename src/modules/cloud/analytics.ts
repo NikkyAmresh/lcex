@@ -122,6 +122,8 @@ export type AnalyticsFeature =
   | "apply_theme"
   | "filter_difficulty"
   | "search_problems"
+  | "sort_problems"
+  | "toggle_premium_problems"
   | "refresh_problems"
   | "refresh_qotd"
   | "refresh_contests"
@@ -179,6 +181,8 @@ const FEATURES: ReadonlySet<AnalyticsFeature> = new Set<AnalyticsFeature>([
   "apply_theme",
   "filter_difficulty",
   "search_problems",
+  "sort_problems",
+  "toggle_premium_problems",
   "refresh_problems",
   "refresh_qotd",
   "refresh_contests",

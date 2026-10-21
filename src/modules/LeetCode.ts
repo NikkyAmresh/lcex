@@ -94,6 +94,8 @@ export interface ProblemListItem {
   topicTags?: string[];
   /** Community acceptance rate as a fraction 0-1 (e.g. 0.5755). Best-effort: only the problemset list carries it. */
   acRate?: number;
+  /** True for LeetCode Premium (subscription-only) problems. */
+  paidOnly?: boolean;
 }
 
 export interface DailyChallengeEntry {
@@ -191,6 +193,7 @@ query favoriteQuestionList($favoriteSlug: String!, $filter: FavoriteQuestionFilt
       questionFrontendId
       title
       titleSlug
+      paidOnly
     }
     totalLength
     hasMore
@@ -439,7 +442,7 @@ export class LeetCodeProvider implements IProblemProvider {
         query: `
           query problemsetQuestionListV2($categorySlug: String, $limit: Int, $skip: Int) {
             problemsetQuestionListV2(categorySlug: $categorySlug, limit: $limit, skip: $skip) {
-              questions { questionFrontendId titleSlug title difficulty acRate topicTags { slug } }
+              questions { questionFrontendId titleSlug title difficulty acRate paidOnly topicTags { slug } }
             }
           }
         `,
@@ -457,6 +460,7 @@ export class LeetCodeProvider implements IProblemProvider {
             title?: string;
             difficulty?: string;
             acRate?: number;
+            paidOnly?: boolean;
             topicTags?: Array<{ slug?: string }>;
           }>;
         };
@@ -474,6 +478,7 @@ export class LeetCodeProvider implements IProblemProvider {
       title: q.title ?? q.titleSlug,
       difficulty: q.difficulty ?? "Unknown",
       ...(typeof q.acRate === "number" ? { acRate: q.acRate } : {}),
+      paidOnly: q.paidOnly === true,
       topicTags: Array.isArray(q.topicTags)
         ? q.topicTags.map((t) => (typeof t?.slug === "string" ? t.slug : "")).filter(Boolean)
         : undefined,
@@ -761,6 +766,7 @@ export class LeetCodeProvider implements IProblemProvider {
               titleSlug: string;
               title?: string;
               difficulty?: string;
+              paidOnly?: boolean;
             }>;
             hasMore?: boolean;
           };
@@ -780,6 +786,7 @@ export class LeetCodeProvider implements IProblemProvider {
           titleSlug: q.titleSlug,
           title: q.title ?? q.titleSlug,
           difficulty: q.difficulty ?? "Unknown",
+          paidOnly: q.paidOnly === true,
         });
       }
       if (!block?.hasMore || questions.length < PROBLEMSET_PAGE_SIZE) break;

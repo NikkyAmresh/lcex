@@ -2,6 +2,17 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.13.0] Acceptance sort and premium filter
+
+### Added
+
+- **Sort the Problems list by acceptance rate.** `LeetCode: Sort Problems` (toolbar button on the Problems view) offers Default order, Acceptance: high to low, and Acceptance: low to high. While a sort is active each row shows its acceptance rate (e.g. `Easy • 58.0%`). The choice is remembered, works together with the difficulty filter and search, and sorts the cached list locally, so it costs no extra requests. Default order stays the default.
+- **Premium problems are hidden by default.** The problem list and problem-list queries now read LeetCode's `paidOnly` flag, and subscription-only problems are left out of the Problems, Study Plans and Problem Lists views and the random picker. `LeetCode: Show/Hide Premium Problems` (toolbar button on all three views) flips it globally, backed by the new `leetcodePractice.hidePremiumProblems` setting (default on). Lists update instantly when it changes.
+
+### Changed
+
+- Problem caches saved before this release have no premium flag, so the list is refetched once on first load.
+
 ## [0.12.1] Feedback prompt
 
 ### Added

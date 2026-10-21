@@ -13,6 +13,8 @@ import {
   setProblemStatus,
   getStoredStatus,
   getAllStatusEntries,
+  isHidePremiumEnabled,
+  type ProblemSort,
 } from "./modules/ProblemsProvider";
 import {
   ContestsTreeProvider,
@@ -3122,7 +3124,9 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
   const storagePath = context.globalStorageUri.fsPath;
   const fileDecorationProvider = new LeetCodeFileDecorationProvider(storagePath);
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(fileDecorationProvider));
+  const PROBLEM_SORT_KEY = "leetcode-practice.problemSort";
   const problemsProvider = new ProblemsTreeProvider("problemset", globalState, storagePath);
+  problemsProvider.setSort(globalState.get<ProblemSort>(PROBLEM_SORT_KEY) ?? "default");
   const treeView = vscode.window.createTreeView(
     "leetcode-practice.problemsView",
     { treeDataProvider: problemsProvider }
@@ -3608,6 +3612,42 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       problemsProvider.setFilter(undefined, query || undefined);
       studyPlanProvider.setFilter(undefined, query || undefined);
       problemListProvider.setFilter(undefined, query || undefined);
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.sortProblems", async () => {
+      trackAnalytics("command_invoked", "sidebar", "sort_problems");
+      const options: Array<vscode.QuickPickItem & { sort: ProblemSort }> = [
+        { label: "Default order", sort: "default" },
+        { label: "Acceptance: high to low", sort: "acRateDesc" },
+        { label: "Acceptance: low to high", sort: "acRateAsc" },
+      ];
+      const current = problemsProvider.getSort();
+      for (const o of options) {
+        if (o.sort === current) o.description = "current";
+      }
+      const choice = await vscode.window.showQuickPick(options, { placeHolder: "Sort problems" });
+      if (!choice) return;
+      problemsProvider.setSort(choice.sort);
+      await globalState.update(PROBLEM_SORT_KEY, choice.sort);
+    })
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand("leetcode-practice.togglePremiumProblems", async () => {
+      trackAnalytics("command_invoked", "sidebar", "toggle_premium_problems");
+      const next = !isHidePremiumEnabled();
+      await vscode.workspace
+        .getConfiguration("leetcodePractice")
+        .update("hidePremiumProblems", next, vscode.ConfigurationTarget.Global);
+      void vscode.window.showInformationMessage(
+        next ? "Premium problems are now hidden." : "Premium problems are now shown."
+      );
+    }),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration("leetcodePractice.hidePremiumProblems")) return;
+      problemsProvider.invalidate();
+      studyPlanProvider.invalidate();
+      problemListProvider.invalidate();
     })
   );
 
