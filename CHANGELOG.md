@@ -2,6 +2,12 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.13.1] Run fix
+
+### Fixed
+
+- **"lcex: execution failed" when running examples.** `vscode` is now loaded via CJS `require` in the example runner instead of a dynamic import that the extension host could not resolve. Thanks to @lenixbyte (#7).
+
 ## [0.13.0] Acceptance sort and premium filter
 
 ### Added
