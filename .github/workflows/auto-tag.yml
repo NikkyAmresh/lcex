@@ -3,6 +3,7 @@ name: Auto tag on version bump
 # When package.json version changes on main, create a matching v<version> tag.
 # That tag then triggers publish.yml.
 #
+# publish.yml is dispatched explicitly below when RELEASE_PAT is unset.
 # Caveat: tags pushed using the default GITHUB_TOKEN do NOT fire downstream
 # workflow runs (GitHub prevents workflow recursion). To make publish.yml
 # auto-run after the tag is created, add a fine-grained PAT (Contents:RW on
@@ -17,11 +18,14 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   auto-tag:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    env:
+      HAS_PAT: ${{ secrets.RELEASE_PAT != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,6 +73,10 @@ jobs:
           git tag -a "$TAG" -m "$TAG"
           git push origin "$TAG"
           echo "::notice::Pushed $TAG."
-          if [ -z "${{ secrets.RELEASE_PAT }}" ]; then
-            echo "::warning::RELEASE_PAT not set — publish.yml will NOT auto-run. Trigger it manually via workflow_dispatch, or add a fine-grained PAT as RELEASE_PAT."
-          fi
+
+      # Tags pushed with GITHUB_TOKEN don't fire publish.yml, but workflow_dispatch does work with it.
+      - name: Trigger publish
+        if: steps.check.outputs.changed == 'true' && steps.tag_exists.outputs.exists == 'false' && env.HAS_PAT != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run publish.yml --ref "v${{ steps.check.outputs.new }}"
