@@ -151,7 +151,10 @@ export function compareOutput(
 }
 
 export async function runExamples(uri: { fsPath: string }): Promise<ExampleResult[]> {
-  const vscode = await import("vscode");
+  // Lazy require (not dynamic import): the bundle is CJS with `vscode` external, so
+  // esbuild emits a real `import("vscode")` that Node's ESM loader cannot resolve —
+  // the extension host only exposes `vscode` through the CJS require hook.
+  const vscode = require("vscode") as typeof import("vscode");
   const lang = languageFromPath(uri.fsPath);
   const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(uri.fsPath));
   const content = doc.getText();
