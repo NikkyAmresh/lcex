@@ -7,6 +7,11 @@
     {
       "slug": "30-days-of-javascript",
       "name": "30 Days of JavaScript"
+    },
+    {
+      "slug": "neetcode-150",
+      "name": "NeetCode 150",
+      "path": "data/neetcode-150.json"
     }
   ],
   "problemLists": [
