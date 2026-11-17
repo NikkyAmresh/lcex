@@ -460,6 +460,11 @@
           "group": "navigation"
         },
         {
+          "command": "leetcode-practice.sortProblems",
+          "when": "view == leetcode-practice.problemListsView",
+          "group": "navigation"
+        },
+        {
           "command": "leetcode-practice.togglePremiumProblems",
           "when": "view == leetcode-practice.problemsView",
           "group": "navigation"
