@@ -43,6 +43,12 @@ export interface LeetcodeConfig {
   agentPromptExplain?: string;
   /** Rich webview vs plain text editor when opening a problem from sidebar lists. */
   problemViewMode?: "ui" | "text";
+  /** Automatically apply LCEX font settings to the workspace when a .leetcode folder is present. */
+  applyWorkspaceFontSettings?: boolean;
+  /** The font family to apply when applyWorkspaceFontSettings is true. Defaults to 'Fira Code iScript'. */
+  editorFontFamily?: string;
+  /** Whether to apply cursive italic textMate rules for comments and keywords. Defaults to true. */
+  editorCursiveItalics?: boolean;
 }
 
 const DEFAULTS: Required<
@@ -77,6 +83,9 @@ const DEFAULTS: Required<
     "Load **lcex-dsa-analyze** and follow it. Analyze my current LeetCode solution implementation.",
   agentPromptExplain:
     "Explain my solution code for this LeetCode problem. Respond with: (1) Intuition — core idea in plain language; (2) Step-by-step dry run — walk through the algorithm with a small example, including loop/state changes; (3) Time and space complexity with brief justification. Do not rewrite the full solution unless needed for clarity.",
+  applyWorkspaceFontSettings: false,
+  editorFontFamily: "Fira Code iScript",
+  editorCursiveItalics: true,
 };
 
 function isValidStudyPlanEntry(obj: unknown): obj is { slug: string; name: string } {
@@ -340,6 +349,15 @@ export function parseLeetcodeConfig(workspaceFolders: readonly vscode.WorkspaceF
       if (parsed.problemViewMode === "ui" || parsed.problemViewMode === "text") {
         merged.problemViewMode = parsed.problemViewMode;
       }
+      if (parsed.applyWorkspaceFontSettings !== undefined && typeof parsed.applyWorkspaceFontSettings === "boolean") {
+        merged.applyWorkspaceFontSettings = parsed.applyWorkspaceFontSettings;
+      }
+      if (parsed.editorFontFamily !== undefined && typeof parsed.editorFontFamily === "string") {
+        merged.editorFontFamily = parsed.editorFontFamily;
+      }
+      if (parsed.editorCursiveItalics !== undefined && typeof parsed.editorCursiveItalics === "boolean") {
+        merged.editorCursiveItalics = parsed.editorCursiveItalics;
+      }
     } catch (e) {
       Logger.log(`LeetcodeConfig: failed to parse ${configPath}, using defaults: ${e}`);
     }
@@ -396,5 +414,8 @@ export function getEffectiveConfig(
     problemViewMode: normalizeProblemViewMode(
       leetcode.problemViewMode ?? vscodeConfig.get<string>("problemViewMode")
     ),
+    applyWorkspaceFontSettings: leetcode.applyWorkspaceFontSettings ?? DEFAULTS.applyWorkspaceFontSettings,
+    editorFontFamily: leetcode.editorFontFamily ?? DEFAULTS.editorFontFamily,
+    editorCursiveItalics: leetcode.editorCursiveItalics ?? DEFAULTS.editorCursiveItalics,
   };
 }
