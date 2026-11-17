@@ -2,6 +2,13 @@
 
 All notable changes to LeetCode Practice will be documented in this file.
 
+## [0.14.0] Python assert examples
+
+### Added
+
+- **Python examples are now `assert` test cases.** New Python solution files get `assert Solution().coinChange([1,2,5], 11) == 3` instead of `print(...)  # 3`. Run Examples (and run-on-save) checks every top-level assert on its own, so one failure no longer hides the rest, and marks each line ✓ or `✗ expected 3 · got 0`. An exception shows on its own line (`got TypeError: ...`). Floats compare with a 1e-5 tolerance and lists match tuples, as on LeetCode. Asserts inside your own functions and classes are left alone. When an example's expected value is not a plain literal, the template keeps the `print` + comment form. Existing `print` files still work, and both styles can be mixed. Run in Terminal still uses plain `python3`, which stops at the first failing assert.
+- **Acceptance sort in Problem Lists.** `LeetCode: Sort Problems` is now on the Problem Lists toolbar too and shares the Problems view's choice. Problem-list caches saved without acceptance rates are refetched once when a sort is active.
+
 ## [0.13.1] Run fix
 
 ### Fixed
