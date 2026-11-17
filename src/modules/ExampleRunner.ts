@@ -4,6 +4,7 @@ import {
   getLanguageStrategy,
   languageFromFileExtension,
 } from "./language/LanguageStrategy";
+import { PY_ASSERT_MARKER } from "./language/PythonAssertHarness";
 
 /** @deprecated Use SupportedLanguage from ./interface/Problem */
 export type SolutionFileLang = SupportedLanguage;
@@ -20,17 +21,27 @@ function languageFromPath(filePath: string): SupportedLanguage {
   return languageFromFileExtension(ext) ?? "typescript";
 }
 
+export interface ExampleBlock {
+  callLine: number;
+  expected: string | null;
+  /** "assert" blocks report their own result (matched by line); "print" blocks match stdout in order. */
+  kind: "print" | "assert";
+}
+
 export function parseExampleBlocks(
   content: string,
   lang: SupportedLanguage = "typescript"
-): { callLine: number; expected: string | null }[] {
+): ExampleBlock[] {
   const s = getLanguageStrategy(lang);
-  const results: { callLine: number; expected: string | null }[] = [];
+  const results: ExampleBlock[] = [];
   const lines = content.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (!s.isExampleOutputLine(line)) continue;
-    results.push({ callLine: i + 1, expected: s.parseExampleExpectedComment(line) });
+    if (s.isAssertExampleLine?.(line)) {
+      results.push({ callLine: i + 1, expected: null, kind: "assert" });
+    } else if (s.isExampleOutputLine(line)) {
+      results.push({ callLine: i + 1, expected: s.parseExampleExpectedComment(line), kind: "print" });
+    }
   }
   return results;
 }
@@ -135,19 +146,59 @@ export function semanticallyEqual(expected: string, actual: string): boolean {
   return false;
 }
 
+interface AssertMarker {
+  line: number;
+  pass: boolean;
+  actual: string;
+  expected: string | null;
+}
+
+/** Pulls the harness's per-assert result lines out of stdout; returns them keyed by line plus the rest. */
+function splitAssertMarkers(stdout: string): { markers: Map<number, AssertMarker>; rest: string } {
+  const markers = new Map<number, AssertMarker>();
+  const rest: string[] = [];
+  for (const raw of stdout.split("\n")) {
+    const at = raw.indexOf(PY_ASSERT_MARKER);
+    if (at < 0) {
+      rest.push(raw);
+      continue;
+    }
+    if (at > 0) rest.push(raw.slice(0, at));
+    try {
+      const m = JSON.parse(raw.slice(at + PY_ASSERT_MARKER.length)) as AssertMarker;
+      const prev = markers.get(m.line);
+      // An assert inside a loop runs several times: keep the first failure.
+      if (!prev || (prev.pass && !m.pass)) markers.set(m.line, m);
+    } catch {
+      rest.push(raw);
+    }
+  }
+  return { markers, rest: rest.join("\n") };
+}
+
 export function compareOutput(
   content: string,
   stdout: string,
   lang: SupportedLanguage = "typescript"
 ): ExampleResult[] {
   const blocks = parseExampleBlocks(content, lang);
-  const actualLines = parseStdoutLines(stdout);
-  return blocks.map((block, index) => {
-    const actual = actualLines[index] ?? "";
+  const { markers, rest } = splitAssertMarkers(stdout);
+  const actualLines = parseStdoutLines(rest);
+  const results: ExampleResult[] = [];
+  let printIndex = 0;
+  for (const block of blocks) {
+    if (block.kind === "assert") {
+      // No marker → the assert never ran (e.g. inside a function body); not an example.
+      const m = markers.get(block.callLine);
+      if (m) results.push({ lineIndex: block.callLine, pass: m.pass, expected: m.expected, actual: m.actual });
+      continue;
+    }
+    const actual = actualLines[printIndex++] ?? "";
     const expected = block.expected;
     const pass = expected === null ? true : semanticallyEqual(expected, actual);
-    return { lineIndex: block.callLine, pass, expected, actual };
-  });
+    results.push({ lineIndex: block.callLine, pass, expected, actual });
+  }
+  return results;
 }
 
 export async function runExamples(uri: { fsPath: string }): Promise<ExampleResult[]> {

@@ -3187,6 +3187,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
     problemListCategoryLabel: problemListLabel,
     getCookie,
   });
+  problemListProvider.setSort(problemsProvider.getSort());
 
   const topInterview150View = vscode.window.createTreeView(
     "leetcode-practice.topInterview150View",
@@ -3629,6 +3630,7 @@ Output only the JSON inside one \`\`\`json code block. Save the result as a file
       const choice = await vscode.window.showQuickPick(options, { placeHolder: "Sort problems" });
       if (!choice) return;
       problemsProvider.setSort(choice.sort);
+      problemListProvider.setSort(choice.sort);
       await globalState.update(PROBLEM_SORT_KEY, choice.sort);
     })
   );

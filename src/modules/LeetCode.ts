@@ -194,6 +194,7 @@ query favoriteQuestionList($favoriteSlug: String!, $filter: FavoriteQuestionFilt
       title
       titleSlug
       paidOnly
+      acRate
     }
     totalLength
     hasMore
@@ -767,6 +768,7 @@ export class LeetCodeProvider implements IProblemProvider {
               title?: string;
               difficulty?: string;
               paidOnly?: boolean;
+              acRate?: number;
             }>;
             hasMore?: boolean;
           };
@@ -787,6 +789,7 @@ export class LeetCodeProvider implements IProblemProvider {
           title: q.title ?? q.titleSlug,
           difficulty: q.difficulty ?? "Unknown",
           paidOnly: q.paidOnly === true,
+          ...(typeof q.acRate === "number" ? { acRate: q.acRate } : {}),
         });
       }
       if (!block?.hasMore || questions.length < PROBLEMSET_PAGE_SIZE) break;

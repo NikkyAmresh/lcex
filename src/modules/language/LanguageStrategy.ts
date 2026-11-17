@@ -4,6 +4,7 @@ import * as path from "path";
 import { readFileSync } from "fs";
 import type { Problem, SupportedLanguage } from "../interface/Problem";
 import { runSandboxed } from "../Sandbox";
+import { ensurePythonAssertHarness, isPythonAssertLine, isSafePythonLiteral } from "./PythonAssertHarness";
 
 function quoteShellPath(p: string): string {
   return p.includes(" ") ? `"${p.replace(/"/g, '\\"')}"` : p;
@@ -271,6 +272,8 @@ export interface LanguageStrategy {
   getSnippetFromProblem(problem: Problem): string;
 
   isExampleOutputLine(line: string): boolean;
+  /** Self-checking example line (Python `assert`); its result comes from the runner, not stdout order. */
+  isAssertExampleLine?(line: string): boolean;
   parseExampleExpectedComment(line: string): string | null;
 
   runSolutionFile(normalizedPath: string, workDir: string): Promise<{ stdout: string; stderr: string }>;
@@ -286,6 +289,8 @@ export interface LanguageStrategy {
   /** `parsedArgs` are the JSON-parsed example arguments (typed languages need them per-arg). */
   renderExampleCall(fnName: string, argsStr: string, snippetBody: string, parsedArgs?: unknown[]): string;
   formatExpectedSuffix(expectedTrimmed: string): string;
+  /** Example line that checks itself against `expected` (e.g. Python `assert`); null → print + comment. */
+  renderAssertExampleCall?(fnName: string, argsStr: string, snippetBody: string, expected: string): string | null;
   /** `entryClassName` is the solution file base; Java wraps examples in a class of that name. */
   formatRunnableExampleSection(exampleLines: string[], entryClassName?: string): string;
 
@@ -456,7 +461,18 @@ const pythonStrategy: LanguageStrategy = {
     return m ? m[1].trim() : null;
   },
 
-  runSolutionFile(normalizedPath: string, workDir: string): Promise<{ stdout: string; stderr: string }> {
+  isAssertExampleLine: isPythonAssertLine,
+
+  async runSolutionFile(normalizedPath: string, workDir: string): Promise<{ stdout: string; stderr: string }> {
+    const source = await fs.readFile(normalizedPath, "utf8").catch(() => "");
+    if (/^\s*assert\b/m.test(source)) {
+      const harness = await ensurePythonAssertHarness();
+      return execCaptured(
+        `python3 -B ${quoteShellPath(harness)} ${quoteShellPath(normalizedPath)}`,
+        workDir,
+        15000
+      );
+    }
     return execCaptured(`python3 -B ${quoteShellPath(normalizedPath)}`, workDir, 15000);
   },
 
@@ -485,6 +501,14 @@ const pythonStrategy: LanguageStrategy = {
       ? `Solution().${fnName}(${argsStr})`
       : `${fnName}(${argsStr})`;
     return `print(${call})`;
+  },
+
+  renderAssertExampleCall(fnName: string, argsStr: string, snippetBody: string, expected: string): string | null {
+    if (!isSafePythonLiteral(expected)) return null;
+    const call = isPythonClassBased(snippetBody)
+      ? `Solution().${fnName}(${argsStr})`
+      : `${fnName}(${argsStr})`;
+    return `assert ${call} == ${expected}`;
   },
 
   formatExpectedSuffix(expectedTrimmed: string): string {
@@ -523,7 +547,9 @@ const pythonStrategy: LanguageStrategy = {
       `    return out`;
     const calls = examples
       .map(({ opsJson, argsJson, expected }) => {
-        const line = `print(_lcex_run(${className}, ${opsJson}, ${argsJson}))`;
+        const run = `_lcex_run(${className}, ${opsJson}, ${argsJson})`;
+        if (expected && isSafePythonLiteral(expected)) return `assert ${run} == ${expected}`;
+        const line = `print(${run})`;
         return expected ? `${line}  # ${expected}` : line;
       })
       .join("\n");

@@ -22,6 +22,10 @@ function hasPremiumInfo(items: ProblemListItem[]): boolean {
   return items.some((item) => typeof item.paidOnly === "boolean");
 }
 
+function hasAcRateInfo(items: ProblemListItem[]): boolean {
+  return items.some((item) => typeof item.acRate === "number");
+}
+
 /** "problemset" for full list; string = study plan or problem-list slug */
 export type ProblemListKind = "problemset" | string;
 
@@ -195,8 +199,9 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
 
   setSort(sort: ProblemSort): void {
     this.sortBy = sort;
-    const needsAcRate = sort !== "default" && this.list.length > 0;
-    if (needsAcRate && !this.list.some((item) => typeof item.acRate === "number")) {
+    const loaded = this.listKind === "problemset" ? this.list : this.groups.flatMap((g) => g.problems);
+    const needsAcRate = sort !== "default" && loaded.length > 0;
+    if (needsAcRate && !hasAcRateInfo(loaded)) {
       this.refresh();
       return;
     }
@@ -269,8 +274,14 @@ export class ProblemsTreeProvider implements vscode.TreeDataProvider<ProblemTree
             const cached = parsed as StudyPlanGroup[];
             const isStaleGeneralCache =
               cached.length === 1 && cached[0].category === "General";
-            const lacksPremiumInfo = !hasPremiumInfo(cached.flatMap((g) => g.problems));
-            if (!isStaleGeneralCache && !lacksPremiumInfo) {
+            const cachedProblems = cached.flatMap((g) => g.problems);
+            const lacksPremiumInfo = !hasPremiumInfo(cachedProblems);
+            // Older problem-list caches were saved without acceptance rate, so they can't be sorted.
+            const lacksAcRateForSort =
+              this.sortBy !== "default" &&
+              this.listSource === "problemList" &&
+              !hasAcRateInfo(cachedProblems);
+            if (!isStaleGeneralCache && !lacksPremiumInfo && !lacksAcRateForSort) {
               this.groups = cached;
             }
           }

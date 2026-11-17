@@ -90,6 +90,8 @@ function renderExampleWithExpected(
   const argsStr = args.map((a) => JSON.stringify(a)).join(", ");
   const code = s.renderExampleCall(fnName, argsStr, snippet, args);
   if (expectedLine?.trim()) {
+    const asserted = s.renderAssertExampleCall?.(fnName, argsStr, snippet, expectedLine.trim());
+    if (asserted) return asserted;
     return `${code}${s.formatExpectedSuffix(expectedLine.trim())}`;
   }
   return code;
