@@ -209,6 +209,7 @@ async function writeIfDifferent(filePath: string, content: string): Promise<"cre
 }
 
 export async function ensureCursorLcexPluginInstalled(_context: vscode.ExtensionContext): Promise<void> {
+  // 1. Cursor Plugin Install
   const interviewSkillPath = path.join(PLUGIN_ROOT, "skills", "lcex-interview-generator", "SKILL.md");
   const dsaHintSkillPath = path.join(PLUGIN_ROOT, "skills", "lcex-dsa-hint", "SKILL.md");
   const dsaAnalyzeSkillPath = path.join(PLUGIN_ROOT, "skills", "lcex-dsa-analyze", "SKILL.md");
@@ -221,5 +222,33 @@ export async function ensureCursorLcexPluginInstalled(_context: vscode.Extension
     Logger.log(
       `Cursor LCX plugin: interview ${r1}, dsa-hint ${r2}, dsa-analyze ${r4}, plugin.json ${r3} at ${PLUGIN_ROOT}`
     );
+  }
+
+  // 2. Antigravity & Copilot Install (Workspace Level)
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (workspaceFolders && workspaceFolders.length > 0) {
+    const wsRoot = workspaceFolders[0].uri.fsPath;
+    
+    // Antigravity IDE (Workspace customizations)
+    const agyInterviewSkillPath = path.join(wsRoot, ".agents", "skills", "lcex-interview-generator", "SKILL.md");
+    const agyDsaHintSkillPath = path.join(wsRoot, ".agents", "skills", "lcex-dsa-hint", "SKILL.md");
+    const agyDsaAnalyzeSkillPath = path.join(wsRoot, ".agents", "skills", "lcex-dsa-analyze", "SKILL.md");
+    
+    await writeIfDifferent(agyInterviewSkillPath, SKILL_MD);
+    await writeIfDifferent(agyDsaHintSkillPath, DSA_HINT_SKILL_MD);
+    await writeIfDifferent(agyDsaAnalyzeSkillPath, DSA_ANALYZE_SKILL_MD);
+
+    // VS Code Copilot
+    const copilotInstructionsPath = path.join(wsRoot, ".github", "copilot-instructions.md");
+    const copilotContent = [
+      "# Copilot LCX Instructions",
+      "## lcex-dsa-analyze",
+      DSA_ANALYZE_SKILL_MD.replace(/---[\s\S]*?---/, ""),
+      "## lcex-dsa-hint",
+      DSA_HINT_SKILL_MD.replace(/---[\s\S]*?---/, ""),
+      "## lcex-interview-generator",
+      SKILL_MD.replace(/---[\s\S]*?---/, "")
+    ].join("\n\n");
+    await writeIfDifferent(copilotInstructionsPath, copilotContent);
   }
 }
